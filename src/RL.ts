@@ -25,7 +25,7 @@ type RLTypedArg = { type: "typed"; typeName: RLObjectType; value: RLObject };
 export type RLArg = RLNamedArg | RLPositionalArg | RLTypedArg;
 
 export class RLComponentType {
-  static type = "component";
+  static type: RLObjectType = "component";
   type: "component";
 
   constructor(public name: string, public data: RLFnParam[]) {
@@ -34,7 +34,7 @@ export class RLComponentType {
 }
 
 export class RLFn {
-  static type = "fn";
+  static type: RLObjectType = "fn";
   type: "fn";
 
   constructor(
@@ -53,7 +53,7 @@ export class RLFn {
 }
 
 export class RLKeyEvent {
-  static type = "KeyEvent";
+  static type: RLObjectType = "KeyEvent";
   type: "KeyEvent";
 
   constructor(public key: string) {
@@ -74,7 +74,7 @@ function isExternal(p: RLSystemParam): p is RLFnParam {
   return p.typeName !== "entity" && !isConstraint(p);
 }
 export class RLSystem {
-  static type = "system";
+  static type: RLObjectType = "system";
   type: "system";
   params: RLFnParam[];
   query!: RLQuery;
@@ -99,7 +99,7 @@ export class RLSystem {
 }
 
 export class RLTag {
-  static type = "tag";
+  static type: RLObjectType = "tag";
   type: "tag";
 
   constructor(public typeName: RLTagName) {
@@ -215,7 +215,7 @@ function resolveArgs(
 }
 
 export class RLEntity {
-  static type = "entity";
+  static type: RLObjectType = "entity";
   type: "entity";
   id: string;
 
