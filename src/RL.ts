@@ -46,7 +46,7 @@ export class RLFn {
     this.type = "fn";
   }
 
-  apply(env: RLEnv, args: RLArg[]) {
+  apply(args: RLArg[]) {
     const resolved = resolveArgs(args, this.params, this.variadic);
     this.code(...resolved);
   }
@@ -92,7 +92,7 @@ export class RLSystem {
     this.params = allParams.filter((p) => p.type === "param") as RLFnParam[];
   }
 
-  apply(env: RLEnv, args: RLArg[]) {
+  apply(args: RLArg[]) {
     const resolved = resolveArgs(args, this.params, []);
     this.code(...resolved);
   }
@@ -328,10 +328,10 @@ export default class RL {
     const fn = this.env.get(name);
     if (!fn) throw new Error(`Unknown function: ${name}`);
     if (fn.type !== "fn") throw new Error(`Not a function: ${name}`);
-    fn.apply(this.env, args);
+    fn.apply(args);
   }
 
   runSystem(sys: RLSystem, ...args: RLArg[]) {
-    sys.apply(this.env, args);
+    sys.apply(args);
   }
 }
