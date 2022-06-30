@@ -4,9 +4,9 @@
   "description": "JS driver for RLscript",
   "main": "src/index.js",
   "scripts": {
-    "dev": "esbuild src/index.ts --bundle --sourcemap --outfile=public/build.js",
-    "watch": "esbuild src/index.ts --watch --bundle --sourcemap --outfile=public/build.js",
-    "build": "esbuild src/index.ts --bundle --minify --sourcemap --outfile=public/build.js",
+    "dev": "esbuild src/index.ts --bundle --sourcemap --outfile=docs/build.js",
+    "watch": "esbuild src/index.ts --watch --bundle --sourcemap --outfile=docs/build.js",
+    "build": "esbuild src/index.ts --bundle --minify --sourcemap --outfile=docs/build.js",
     "madge": "npx madge -c --extensions=ts src",
     "lint": "eslint --fix src",
     "test": "echo \"Error: no test specified\" && exit 1"
