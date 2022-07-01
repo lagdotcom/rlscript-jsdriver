@@ -1,3 +1,4 @@
 /docs
 /src/grammar.ts
 /.eslintrc.js
+*.template.ts
