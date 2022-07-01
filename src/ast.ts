@@ -15,7 +15,7 @@ export type ASTSystemDecl = {
 export type ASTFnDecl = {
   _: "fn";
   name: string;
-  params: ASTParam[];
+  params: ASTField[];
   code: ASTCode;
 };
 export type ASTDecl = ASTComponentDecl | ASTTagDecl | ASTSystemDecl | ASTFnDecl;
@@ -27,7 +27,7 @@ export type ASTParam = ASTField | ASTConstraint;
 export type ASTCode = ASTStatement[];
 export type ASTStatement = ASTCall | ASTAssignment;
 
-export type ASTCall = { _: "call"; name: string; args: ASTExpr[] };
+export type ASTCall = { _: "call"; name: ASTIdent | ASTQName; args: ASTExpr[] };
 
 export type ASTAssignment = {
   _: "assignment";

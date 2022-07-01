@@ -9,6 +9,7 @@
     "build": "esbuild src/index.ts --bundle --minify --sourcemap --outfile=docs/build.js",
     "grammar": "nearleyc grammar.ne -o src/grammar.ts",
     "gtest": "ts-node src/grammar-test.ts",
+    "ctest": "ts-node src/tscompiler-test.ts",
     "madge": "npx madge -c --extensions=ts src",
     "lint": "eslint --fix src",
     "test": "echo \"Error: no test specified\" && exit 1"

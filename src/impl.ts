@@ -11,18 +11,12 @@ import RL, {
 
 const IsPlayer = new RLTag("IsPlayer");
 
-const mkAppearance = (ch: string, fg = "white", bg = "black"): Appearance => ({
+const mkAppearance = (ch: string, fg: string, bg: string): Appearance => ({
   type: "component",
   typeName: "Appearance",
   ch,
   fg,
   bg,
-});
-const mkMoveAction = (x: number, y: number): MoveAction => ({
-  type: "component",
-  typeName: "MoveAction",
-  x,
-  y,
 });
 const mkOldPosition = (x: number, y: number): OldPosition => ({
   type: "component",
@@ -36,21 +30,47 @@ const mkPosition = (x: number, y: number): Position => ({
   x,
   y,
 });
+const mkMoveAction = (x: number, y: number): MoveAction => ({
+  type: "component",
+  typeName: "MoveAction",
+  x,
+  y,
+});
+
+function main() {
+  RL.instance.callNamedFunction(
+    "setSize",
+    { type: "positional", value: { type: "int", value: 80 } },
+    { type: "positional", value: { type: "int", value: 50 } }
+  );
+  RL.instance.callNamedFunction(
+    "spawn",
+    { type: "positional", value: IsPlayer },
+    { type: "positional", value: mkAppearance("@", "white", "black") },
+    { type: "positional", value: mkPosition(40, 25) },
+    { type: "positional", value: mkOldPosition(40, 25) }
+  );
+  RL.instance.callNamedFunction("pushKeyHandler", {
+    type: "positional",
+    value: system_onKey,
+  });
+}
+const fn_main = new RLFn("main", main, []);
 
 function onKey(e: RLEntity, k: RLKeyEvent) {
   e.add(
-    (() => {
-      if (k.key === "up") return mkMoveAction(0, -1);
-      else if (k.key === "right") return mkMoveAction(1, 0);
-      else if (k.key === "down") return mkMoveAction(0, 1);
-      else if (k.key === "left") return mkMoveAction(-1, 0);
-    })()
+    ((matchvar) => {
+      if (matchvar === "up") return mkMoveAction(0, -1);
+      else if (matchvar === "right") return mkMoveAction(1, 0);
+      else if (matchvar === "down") return mkMoveAction(0, 1);
+      else if (matchvar === "left") return mkMoveAction(-1, 0);
+    })(k.key)
   );
 }
 const system_onKey = new RLSystem("onKey", onKey, [
   { type: "param", name: "e", typeName: "entity" },
-  { type: "param", name: "k", typeName: "KeyEvent" },
   { type: "constraint", typeName: "IsPlayer" },
+  { type: "param", name: "k", typeName: "KeyEvent" },
 ]);
 
 function movement(e: RLEntity, p: Position, m: MoveAction) {
@@ -77,7 +97,6 @@ function drawAfterMove(
     { type: "positional", value: { type: "int", value: o.y } },
     { type: "positional", value: { type: "char", value: " " } }
   );
-
   e.remove(o);
   RL.instance.callNamedFunction(
     "draw",
@@ -95,31 +114,11 @@ const system_drawAfterMove = new RLSystem("drawAfterMove", drawAfterMove, [
   { type: "param", name: "p", typeName: "Position" },
 ]);
 
-function main() {
-  RL.instance.callNamedFunction(
-    "setSize",
-    { type: "positional", value: { type: "int", value: 80 } },
-    { type: "positional", value: { type: "int", value: 50 } }
-  );
-  RL.instance.callNamedFunction(
-    "spawn",
-    { type: "positional", value: IsPlayer },
-    { type: "positional", value: mkAppearance("@", "white", "black") },
-    { type: "positional", value: mkPosition(40, 25) },
-    { type: "positional", value: mkOldPosition(40, 25) }
-  );
-  RL.instance.callNamedFunction("pushKeyHandler", {
-    type: "positional",
-    value: system_onKey,
-  });
-}
-const fn_main = new RLFn("main", main, []);
-
 const impl: RLEnv = new Map<string, RLObject>([
-  ["IsPlayer", IsPlayer],
+  ["main", fn_main],
   ["onKey", system_onKey],
   ["movement", system_movement],
   ["drawAfterMove", system_drawAfterMove],
-  ["main", fn_main],
+  ["IsPlayer", IsPlayer],
 ]);
 export default impl;

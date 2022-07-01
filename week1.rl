@@ -1,7 +1,7 @@
 component Appearance
   ch: char
-  fg: string
-  bg: string
+  fg: str
+  bg: str
 end
 
 component OldPosition
@@ -34,10 +34,10 @@ system movement(e: entity, p: Position, m: MoveAction)
   e.add(OldPosition(p.x, p.y))
   p.x += m.x
   p.y += m.y
-  e.remove(a)
+  e.remove(m)
 end
 
-system draw(e: entity, a: Appearance,
+system drawAfterMove(e: entity, a: Appearance,
             o: OldPosition, p: Position)
   draw(o.x, o.y, ' ')
 

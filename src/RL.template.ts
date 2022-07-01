@@ -1,12 +1,4 @@
-import {
-  Appearance,
-  MoveAction,
-  OldPosition,
-  Position,
-  RLComponent,
-  RLComponentName,
-  RLTagName,
-} from "./implTypes";
+//#IMPLTYPES
 import Stack from "./Stack";
 import { nanoid } from "nanoid";
 
@@ -62,13 +54,7 @@ export class RLKeyEvent {
 }
 
 function isConstraint(p: RLSystemParam) {
-  return [
-    "Appearance",
-    "OldPosition",
-    "Position",
-    "MoveAction",
-    "IsPlayer",
-  ].includes(p.typeName);
+  //#ISCONSTRAINT
 }
 function isExternal(p: RLSystemParam): p is RLFnParam {
   return p.typeName !== "entity" && !isConstraint(p);
@@ -218,17 +204,13 @@ export class RLEntity {
   id: string;
 
   components: Set<string>;
-  Appearance?: Appearance;
-  OldPosition?: OldPosition;
-  Position?: Position;
-  MoveAction?: MoveAction;
-  IsPlayer: boolean;
+  //#ENTITYFIELDS
 
   constructor() {
     this.type = "entity";
     this.id = nanoid();
     this.components = new Set();
-    this.IsPlayer = false;
+    //#ENTITYCONSTRUCTOR
   }
 
   has(name: RLObjectType) {

@@ -868,7 +868,7 @@
       this.variadic = variadic;
       this.type = "fn";
     }
-    apply(env, args) {
+    apply(args) {
       const resolved = resolveArgs(args, this.params, this.variadic);
       this.code(...resolved);
     }
@@ -884,9 +884,9 @@
   function isConstraint(p) {
     return [
       "Appearance",
-      "MoveAction",
       "OldPosition",
       "Position",
+      "MoveAction",
       "IsPlayer"
     ].includes(p.typeName);
   }
@@ -903,7 +903,7 @@
       this.externals = allParams.filter(isExternal);
       this.params = allParams.filter((p) => p.type === "param");
     }
-    apply(env, args) {
+    apply(args) {
       const resolved = resolveArgs(args, this.params, []);
       this.code(...resolved);
     }
@@ -1064,10 +1064,10 @@
         throw new Error(`Unknown function: ${name}`);
       if (fn.type !== "fn")
         throw new Error(`Not a function: ${name}`);
-      fn.apply(this.env, args);
+      fn.apply(args);
     }
     runSystem(sys, ...args) {
-      sys.apply(this.env, args);
+      sys.apply(args);
     }
   };
 
@@ -1145,18 +1145,12 @@
 
   // src/impl.ts
   var IsPlayer = new RLTag("IsPlayer");
-  var mkAppearance = (ch, fg = "white", bg = "black") => ({
+  var mkAppearance = (ch, fg, bg) => ({
     type: "component",
     typeName: "Appearance",
     ch,
     fg,
     bg
-  });
-  var mkMoveAction = (x, y) => ({
-    type: "component",
-    typeName: "MoveAction",
-    x,
-    y
   });
   var mkOldPosition = (x, y) => ({
     type: "component",
@@ -1170,22 +1164,37 @@
     x,
     y
   });
+  var mkMoveAction = (x, y) => ({
+    type: "component",
+    typeName: "MoveAction",
+    x,
+    y
+  });
+  function main() {
+    RL.instance.callNamedFunction("setSize", { type: "positional", value: { type: "int", value: 80 } }, { type: "positional", value: { type: "int", value: 50 } });
+    RL.instance.callNamedFunction("spawn", { type: "positional", value: IsPlayer }, { type: "positional", value: mkAppearance("@", "white", "black") }, { type: "positional", value: mkPosition(40, 25) }, { type: "positional", value: mkOldPosition(40, 25) });
+    RL.instance.callNamedFunction("pushKeyHandler", {
+      type: "positional",
+      value: system_onKey
+    });
+  }
+  var fn_main = new RLFn("main", main, []);
   function onKey(e, k) {
-    e.add((() => {
-      if (k.key === "up")
+    e.add(((matchvar) => {
+      if (matchvar === "up")
         return mkMoveAction(0, -1);
-      else if (k.key === "right")
+      else if (matchvar === "right")
         return mkMoveAction(1, 0);
-      else if (k.key === "down")
+      else if (matchvar === "down")
         return mkMoveAction(0, 1);
-      else if (k.key === "left")
+      else if (matchvar === "left")
         return mkMoveAction(-1, 0);
-    })());
+    })(k.key));
   }
   var system_onKey = new RLSystem("onKey", onKey, [
     { type: "param", name: "e", typeName: "entity" },
-    { type: "param", name: "k", typeName: "KeyEvent" },
-    { type: "constraint", typeName: "IsPlayer" }
+    { type: "constraint", typeName: "IsPlayer" },
+    { type: "param", name: "k", typeName: "KeyEvent" }
   ]);
   function movement(e, p, m) {
     e.add(mkOldPosition(p.x, p.y));
@@ -1209,21 +1218,12 @@
     { type: "param", name: "o", typeName: "OldPosition" },
     { type: "param", name: "p", typeName: "Position" }
   ]);
-  function main() {
-    RL.instance.callNamedFunction("setSize", { type: "positional", value: { type: "int", value: 80 } }, { type: "positional", value: { type: "int", value: 50 } });
-    RL.instance.callNamedFunction("spawn", { type: "positional", value: IsPlayer }, { type: "positional", value: mkAppearance("@", "white", "black") }, { type: "positional", value: mkPosition(40, 25) }, { type: "positional", value: mkOldPosition(40, 25) });
-    RL.instance.callNamedFunction("pushKeyHandler", {
-      type: "positional",
-      value: system_onKey
-    });
-  }
-  var fn_main = new RLFn("main", main, []);
   var impl = /* @__PURE__ */ new Map([
-    ["IsPlayer", IsPlayer],
+    ["main", fn_main],
     ["onKey", system_onKey],
     ["movement", system_movement],
     ["drawAfterMove", system_drawAfterMove],
-    ["main", fn_main]
+    ["IsPlayer", IsPlayer]
   ]);
   var impl_default = impl;
 

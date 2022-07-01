@@ -37,8 +37,8 @@ decl -> componentdecl {% id %}
 
 componentdecl -> "component" __ name _ fieldlist "end" {% ([,,name,,fields]) => ({ _: 'component', name: name.value, fields }) %}
 tagdecl -> "tag" __ name {% ([,,name]) => ({ _: 'tag', name: name.value }) %}
-systemdecl -> "system" __ name _ paramlist _ code "end" {% ([,,name,,params,,code]) => ({ _: 'system', name, params, code }) %}
-fndecl -> "fn" __ name _ paramlist _ code "end" {% ([,,name,,params,,code]) => ({ _: 'fn', name, params, code }) %}
+systemdecl -> "system" __ name _ paramlist _ code "end" {% ([,,name,,params,,code]) => ({ _: 'system', name: name.value, params, code }) %}
+fndecl -> "fn" __ name _ paramlist _ code "end" {% ([,,name,,params,,code]) => ({ _: 'fn', name: name.value, params, code }) %}
 
 fieldlist -> fieldp:* {% id %}
 fieldp -> field _ {% id %}
@@ -80,8 +80,8 @@ unary -> unaryop value {% ([op,value]) => ({ _: 'unary', op, value }) %}
 unaryop -> "-" {% val %}
 
 value -> %sqstring {% ([tok]) => ({ _: 'char', value: tok.value[1] }) %}
-       | %dqstring {% ([tok]) => ({ _: 'string', value: tok.value.slice(1, -1) }) %}
-       | %number {% ([tok]) => ({ _: 'number', value: Number(tok.value) }) %}
+       | %dqstring {% ([tok]) => ({ _: 'str', value: tok.value.slice(1, -1) }) %}
+       | %number {% ([tok]) => ({ _: 'int', value: Number(tok.value) }) %}
 
 matchexpr -> "match" __ expr _ matchlist _ "end" {% ([,,expr,,matches]) => ({ _: 'match', expr, matches }) %}
 matchlist -> match
