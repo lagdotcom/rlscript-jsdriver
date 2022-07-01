@@ -1,7 +1,7 @@
 @{%
-const val = ([tok]) => tok.value;
+const val = ([tok]: NearleyToken[]) => tok.value;
 
-const moo = require('moo');
+import moo from 'moo';
 
 const lexer = moo.compile({
     ws:         { match: /[ \t\n\r]+/, lineBreaks: true },
@@ -23,6 +23,8 @@ const lexer = moo.compile({
     minus: "-",
 });
 %}
+@preprocessor typescript
+
 @lexer lexer
 
 document -> _ program {% ([,prog]) => prog %}

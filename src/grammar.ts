@@ -1,11 +1,18 @@
 // Generated automatically by nearley, version 2.20.1
 // http://github.com/Hardmath123/nearley
-(function () {
-function id(x) { return x[0]; }
+// Bypasses TS6133. Allow declared but unused functions.
+// @ts-ignore
+function id(d: any[]): any { return d[0]; }
+declare var sqstring: any;
+declare var dqstring: any;
+declare var number: any;
+declare var word: any;
+declare var ws: any;
+declare var comment: any;
 
-const val = ([tok]) => tok.value;
+const val = ([tok]: NearleyToken[]) => tok.value;
 
-const moo = require('moo');
+import moo from 'moo';
 
 const lexer = moo.compile({
     ws:         { match: /[ \t\n\r]+/, lineBreaks: true },
@@ -26,12 +33,40 @@ const lexer = moo.compile({
     equals: "=",
     minus: "-",
 });
-var grammar = {
-    Lexer: lexer,
-    ParserRules: [
+
+interface NearleyToken {
+  value: any;
+  [key: string]: any;
+};
+
+interface NearleyLexer {
+  reset: (chunk: string, info: any) => void;
+  next: () => NearleyToken | undefined;
+  save: () => any;
+  formatError: (token: never) => string;
+  has: (tokenType: string) => boolean;
+};
+
+interface NearleyRule {
+  name: string;
+  symbols: NearleySymbol[];
+  postprocess?: (d: any[], loc?: number, reject?: {}) => any;
+};
+
+type NearleySymbol = string | { literal: any } | { test: (token: any) => boolean };
+
+interface Grammar {
+  Lexer: NearleyLexer | undefined;
+  ParserRules: NearleyRule[];
+  ParserStart: string;
+};
+
+const grammar: Grammar = {
+  Lexer: lexer,
+  ParserRules: [
     {"name": "document", "symbols": ["_", "program"], "postprocess": ([,prog]) => prog},
     {"name": "program$ebnf$1", "symbols": []},
-    {"name": "program$ebnf$1", "symbols": ["program$ebnf$1", "declp"], "postprocess": function arrpush(d) {return d[0].concat([d[1]]);}},
+    {"name": "program$ebnf$1", "symbols": ["program$ebnf$1", "declp"], "postprocess": (d) => d[0].concat([d[1]])},
     {"name": "program", "symbols": ["program$ebnf$1"], "postprocess": id},
     {"name": "declp", "symbols": ["decl", "_"], "postprocess": id},
     {"name": "decl", "symbols": ["componentdecl"], "postprocess": id},
@@ -43,7 +78,7 @@ var grammar = {
     {"name": "systemdecl", "symbols": [{"literal":"system"}, "__", "name", "_", "paramlist", "_", "code", {"literal":"end"}], "postprocess": ([,,name,,params,,code]) => ({ _: 'system', name, params, code })},
     {"name": "fndecl", "symbols": [{"literal":"fn"}, "__", "name", "_", "paramlist", "_", "code", {"literal":"end"}], "postprocess": ([,,name,,params,,code]) => ({ _: 'fn', name, params, code })},
     {"name": "fieldlist$ebnf$1", "symbols": []},
-    {"name": "fieldlist$ebnf$1", "symbols": ["fieldlist$ebnf$1", "fieldp"], "postprocess": function arrpush(d) {return d[0].concat([d[1]]);}},
+    {"name": "fieldlist$ebnf$1", "symbols": ["fieldlist$ebnf$1", "fieldp"], "postprocess": (d) => d[0].concat([d[1]])},
     {"name": "fieldlist", "symbols": ["fieldlist$ebnf$1"], "postprocess": id},
     {"name": "fieldp", "symbols": ["field", "_"], "postprocess": id},
     {"name": "field", "symbols": ["name", "_", {"literal":":"}, "_", "type"], "postprocess": ([name,,,,type]) => ({ _: 'field', name: name.value, type: type.value })},
@@ -52,9 +87,9 @@ var grammar = {
     {"name": "params", "symbols": ["param"]},
     {"name": "params", "symbols": ["params", "_", {"literal":","}, "_", "param"], "postprocess": ([params,,,,param]) => params.concat(param)},
     {"name": "param", "symbols": ["field"], "postprocess": id},
-    {"name": "param", "symbols": ["type"], "postprocess": ([type]) => ({ _: 'constraint', value: type.value })},
+    {"name": "param", "symbols": ["type"], "postprocess": ([type]) => ({ _: 'constraint', type: type.value })},
     {"name": "code$ebnf$1", "symbols": []},
-    {"name": "code$ebnf$1", "symbols": ["code$ebnf$1", "stmtp"], "postprocess": function arrpush(d) {return d[0].concat([d[1]]);}},
+    {"name": "code$ebnf$1", "symbols": ["code$ebnf$1", "stmtp"], "postprocess": (d) => d[0].concat([d[1]])},
     {"name": "code", "symbols": ["code$ebnf$1"], "postprocess": id},
     {"name": "stmtp", "symbols": ["stmt", "_"], "postprocess": id},
     {"name": "stmt", "symbols": ["call"], "postprocess": id},
@@ -93,12 +128,8 @@ var grammar = {
     {"name": "__", "symbols": ["ws"], "postprocess": () => null},
     {"name": "ws", "symbols": [(lexer.has("ws") ? {type: "ws"} : ws)], "postprocess": () => null},
     {"name": "comment", "symbols": ["_", (lexer.has("comment") ? {type: "comment"} : comment), "_"], "postprocess": () => null}
-]
-  , ParserStart: "document"
-}
-if (typeof module !== 'undefined'&& typeof module.exports !== 'undefined') {
-   module.exports = grammar;
-} else {
-   window.grammar = grammar;
-}
-})();
+  ],
+  ParserStart: "document",
+};
+
+export default grammar;

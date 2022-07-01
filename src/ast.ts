@@ -1,57 +1,57 @@
-export type IProgram = IDecl[];
+export type ASTProgram = ASTDecl[];
 
-export type IComponentDecl = {
+export type ASTComponentDecl = {
   _: "component";
   name: string;
-  fields: IField[];
+  fields: ASTField[];
 };
-export type ITagDecl = { _: "tag"; name: string };
-export type ISystemDecl = {
+export type ASTTagDecl = { _: "tag"; name: string };
+export type ASTSystemDecl = {
   _: "system";
   name: string;
-  params: IParam[];
-  code: ICode;
+  params: ASTParam[];
+  code: ASTCode;
 };
-export type IFnDecl = {
+export type ASTFnDecl = {
   _: "fn";
   name: string;
-  params: IParam[];
-  code: ICode;
+  params: ASTParam[];
+  code: ASTCode;
 };
-export type IDecl = IComponentDecl | ITagDecl | ISystemDecl | IFnDecl;
+export type ASTDecl = ASTComponentDecl | ASTTagDecl | ASTSystemDecl | ASTFnDecl;
 
-export type IField = { _: "field"; name: string; type: string };
-export type IConstraint = { _: "constraint"; type: string };
-export type IParam = IField | IConstraint;
+export type ASTField = { _: "field"; name: string; type: string };
+export type ASTConstraint = { _: "constraint"; type: string };
+export type ASTParam = ASTField | ASTConstraint;
 
-export type ICode = IStatement[];
-export type IStatement = ICall | IAssignment;
+export type ASTCode = ASTStatement[];
+export type ASTStatement = ASTCall | ASTAssignment;
 
-export type ICall = { _: "call"; name: string; args: IExpr[] };
+export type ASTCall = { _: "call"; name: string; args: ASTExpr[] };
 
-export type IAssignment = {
+export type ASTAssignment = {
   _: "assignment";
-  name: IQName;
-  op: IAssignmentOp;
-  expr: IExpr;
+  name: ASTQName;
+  op: ASTAssignmentOp;
+  expr: ASTExpr;
 };
-export type IAssignmentOp = "=" | "+=";
+export type ASTAssignmentOp = "=" | "+=";
 
-export type IExpr = IQName | IMatch | IECall | IValue | IUnary;
+export type ASTExpr = ASTQName | ASTMatch | ASTECall | ASTValue | ASTUnary;
 
-export type IECall = { _: "call"; name: IIdent; args: IExpr[] };
+export type ASTECall = { _: "call"; name: ASTIdent; args: ASTExpr[] };
 
-export type IIdent = { _: "id"; value: string };
+export type ASTIdent = { _: "id"; value: string };
 
-export type IMatch = { _: "match"; expr: IExpr; matches: ICase[] };
-export type ICase = { _: "case"; expr: IExpr; value: IExpr };
+export type ASTMatch = { _: "match"; expr: ASTExpr; matches: ASTCase[] };
+export type ASTCase = { _: "case"; expr: ASTExpr; value: ASTExpr };
 
-export type IQName = { _: "qname"; chain: string[] };
+export type ASTQName = { _: "qname"; chain: string[] };
 
-export type IUnary = { _: "unary"; op: IUnaryOp; value: IExpr };
-export type IUnaryOp = "-";
+export type ASTUnary = { _: "unary"; op: ASTUnaryOp; value: ASTExpr };
+export type ASTUnaryOp = "-";
 
-export type IValue = IChar | IStr | IInt;
-export type IChar = { _: "char"; value: string };
-export type IStr = { _: "str"; value: string };
-export type IInt = { _: "int"; value: number };
+export type ASTValue = ASTChar | ASTStr | ASTInt;
+export type ASTChar = { _: "char"; value: string };
+export type ASTStr = { _: "str"; value: string };
+export type ASTInt = { _: "int"; value: number };
