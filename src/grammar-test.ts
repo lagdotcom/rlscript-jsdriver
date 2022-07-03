@@ -1,8 +1,7 @@
-import { Grammar, Parser } from "nearley";
-import grammar from "./grammar";
+import { getParser } from "./parser";
 import { readFileSync } from "fs";
 
-const parser = new Parser(grammar as unknown as Grammar);
+const parser = getParser();
 const src = readFileSync("./week1.rl", { encoding: "utf-8" });
 parser.feed(src);
 

@@ -1,5 +1,6 @@
 import {
   ASTComponentDecl,
+  ASTECall,
   ASTExpr,
   ASTFnDecl,
   ASTIdent,
@@ -11,6 +12,113 @@ import {
 import { readFileSync, writeFileSync } from "fs";
 import Stack from "./Stack";
 import { join } from "path";
+
+export class CannotResolveError extends Error {
+  constructor(name: string, scope: TSScope) {
+    super(`Cannot resolve: ${name} in ${scope.name}`);
+  }
+}
+
+export class CoerceCallError extends Error {
+  constructor(expr: ASTECall) {
+    super(`Cannot coerce: ${JSON.stringify(expr)}`);
+  }
+}
+
+export class UnknownTypeError extends Error {
+  constructor(type: string) {
+    super(`Unknown type: ${type}`);
+  }
+}
+
+const reserved = new Set<string>([
+  // reserved words
+  "break",
+  "case",
+  "catch",
+  "class",
+  "const",
+  "continue",
+  "debugger",
+  "default",
+  "delete",
+  "do",
+  "else",
+  "enum",
+  "export",
+  "extends",
+  "false",
+  "finally",
+  "for",
+  "function",
+  "if",
+  "import",
+  "in",
+  "instanceof",
+  "new",
+  "null",
+  "return",
+  "super",
+  "switch",
+  "this",
+  "throw",
+  "true",
+  "try",
+  "typeof",
+  "var",
+  "void",
+  "while",
+  "with",
+
+  // strict mode reserved words
+  "as",
+  "implements",
+  "interface",
+  "let",
+  "package",
+  "private",
+  "protected",
+  "public",
+  "static",
+  "yield",
+  "symbol",
+  "type",
+  "from",
+  "of",
+
+  // contextual keywords
+  "any",
+  "boolean",
+  "constructor",
+  "declare",
+  "get",
+  "module",
+  "require",
+  "number",
+  "set",
+  "string",
+]);
+function fixName(n: string) {
+  if (reserved.has(n)) return "_" + n;
+  return n;
+}
+
+const builtinTypes = new Set<string>([
+  "char",
+  "component",
+  "fn",
+  "int",
+  "str",
+  "system",
+  "tag",
+
+  "entity",
+  "KeyEvent",
+]);
+function fixType(n: string) {
+  if (builtinTypes.has(n)) return n;
+  return fixName(n);
+}
 
 const read = (fn: string) => readFileSync(fn, { encoding: "utf-8" });
 const write = (fn: string, data: string) =>
@@ -48,13 +156,14 @@ class EntityScope implements TSScope {
   }
 
   get members() {
-    const m: Map<string, string> = new Map();
-    m.set("id", "str");
-    m.set("add", "builtin");
-    m.set("has", "builtin");
-    m.set("remove", "builtin");
+    const m: Map<string, string> = new Map([
+      ["id", "str"],
+      ["add", "builtin"],
+      ["has", "builtin"],
+      ["remove", "builtin"],
+    ]);
 
-    for (const c of this.compiler.componentNames) m.set(c, c);
+    for (const c of this.compiler.componentNames) m.set(c, fixName(c));
     for (const t of this.compiler.tagNames) m.set(t, "bool");
 
     return m;
@@ -68,11 +177,19 @@ class ComponentScope implements TSScope {
   }
 
   get members() {
-    const m: Map<string, string> = new Map();
+    return new Map<string, string>(
+      this.component.fields.map((f) => [f.name, fixType(f.type)])
+    );
+  }
+}
 
-    for (const f of this.component.fields) m.set(f.name, f.type);
+class KeyEventScope implements TSScope {
+  members: Map<string, string>;
+  name: "KeyEvent";
 
-    return m;
+  constructor(public parent: TSScope) {
+    this.name = "KeyEvent";
+    this.members = new Map<string, string>([["key", "str"]]);
   }
 }
 
@@ -99,7 +216,7 @@ export default class TSCompiler implements TSScope {
     m.set("setSize", "global");
     m.set("spawn", "global");
 
-    for (const c of this.components) m.set(c.name, c.name);
+    for (const c of this.components) m.set(c.name, fixType(c.name));
     for (const f of this.functions) m.set(f.name, "fn");
     for (const s of this.systems) m.set(s.name, "system");
     for (const t of this.tags) m.set(t.name, "tag");
@@ -124,10 +241,50 @@ export default class TSCompiler implements TSScope {
   }
 
   write(dir: string) {
-    write(join(dir, "implTypes.ts"), this.getImplTypes());
+    write(join(dir, "implTypes.ts"), this.generateImplTypes());
+    write(join(dir, "RL.ts"), this.generateRL());
+    write(join(dir, "impl.ts"), this.generateImpl());
+  }
 
-    this.templateWrite(
-      join(dir, "RL.ts"),
+  template(template: string, values: Map<string, string>) {
+    let filled = template;
+    for (const [name, value] of values)
+      filled = filled.replace(`//#${name}`, value);
+
+    return filled;
+  }
+
+  generateImplTypes() {
+    return this.components
+      .map(
+        (c) => `export type ${fixName(c.name)} = {
+  type: "component";
+  typeName: "${c.name}";
+  ${c.fields
+    .map((f) => `${fixName(f.name)}: ${this.getTSType(f.type)};`)
+    .join("\n")}
+}`
+      )
+      .concat(
+        `export type RLComponent = ${
+          this.componentNames.length
+            ? this.componentNames.map(fixName).join(" | ")
+            : "never"
+        };`
+      )
+      .concat(`export type RLComponentName = RLComponent["typeName"];`)
+      .concat(
+        `export type RLTagName = ${
+          this.tagNames.length
+            ? this.tagNames.map((n) => `"${n}"`).join(" | ")
+            : "never"
+        };`
+      )
+      .join("\n");
+  }
+
+  generateRL() {
+    return this.template(
       rlTemplate,
       new Map([
         ["IMPLTYPES", this.getImplImport(true)],
@@ -136,9 +293,10 @@ export default class TSCompiler implements TSScope {
         ["ENTITYCONSTRUCTOR", this.getEntityConstructor()],
       ])
     );
+  }
 
-    this.templateWrite(
-      join(dir, "impl.ts"),
+  generateImpl() {
+    return this.template(
       implTemplate,
       new Map([
         ["IMPLTYPES", this.getImplImport()],
@@ -151,33 +309,6 @@ export default class TSCompiler implements TSScope {
     );
   }
 
-  templateWrite(fn: string, template: string, values: Map<string, string>) {
-    let filled = template;
-    for (const [name, value] of values)
-      filled = filled.replace(`//#${name}`, value);
-
-    write(fn, filled);
-  }
-
-  getImplTypes() {
-    return this.components
-      .map(
-        (c) => `export type ${c.name} = {
-      type: "component";
-      typeName: "${c.name}";
-      ${c.fields.map((f) => `${f.name}: ${this.getTSType(f.type)};`).join("\n")}
-    }`
-      )
-      .concat(`export type RLComponent = ${this.componentNames.join(" | ")};`)
-      .concat(`export type RLComponentName = RLComponent["typeName"];`)
-      .concat(
-        `export type RLTagName = ${this.tagNames
-          .map((n) => `"${n}"`)
-          .join(" | ")};`
-      )
-      .join("\n");
-  }
-
   getImplImport(meta = false) {
     return `import { ${this.componentNames.join(", ")}${
       meta ? ", RLComponent, RLComponentName, RLTagName" : ""
@@ -187,35 +318,37 @@ export default class TSCompiler implements TSScope {
   getIsConstraint() {
     return `return [${this.componentNames
       .concat(this.tagNames)
-      .map((name) => `"${name}"`)
+      .map((name) => `"${fixName(name)}"`)
       .join(", ")}].includes(p.typeName);`;
   }
 
   getEntityFields() {
     return this.componentNames
-      .map((name) => `${name}?: ${name};`)
-      .concat(this.tagNames.map((name) => `${name}: boolean;`))
+      .map((name) => `${fixName(name)}?: ${fixName(name)};`)
+      .concat(this.tagNames.map((name) => `${fixName(name)}: boolean;`))
       .join("\n");
   }
 
   getEntityConstructor() {
-    return this.tagNames.map((name) => `this.${name} = false;`).join("\n");
+    return this.tagNames
+      .map((name) => `this.${fixName(name)} = false;`)
+      .join("\n");
   }
 
   getTagTypes() {
     return this.tagNames
-      .map((name) => `const ${name} = new RLTag("${name}");`)
+      .map((name) => `const ${fixName(name)} = new RLTag("${name}");`)
       .join("\n");
   }
 
   getComponentMakers() {
     return this.components
       .map(
-        (c) => `const mk${c.name} = (${this.getComponentArgs(c)}): ${
-          c.name
-        } => ({
+        (c) => `const mk${fixName(c.name)} = (${this.getComponentArgs(
+          c
+        )}): ${fixName(c.name)} => ({
       type: "component",
-      typeName: "${c.name}",
+      typeName: "${fixName(c.name)}",
       ${this.getComponentFields(c)}
     });`
       )
@@ -224,22 +357,24 @@ export default class TSCompiler implements TSScope {
 
   getComponentArgs(c: ASTComponentDecl) {
     return c.fields
-      .map((f) => `${f.name}: ${this.getTSType(f.type)}`)
+      .map((f) => `${fixName(f.name)}: ${this.getTSType(f.type)}`)
       .join(", ");
   }
 
   getComponentFields(c: ASTComponentDecl) {
-    return c.fields.map((f) => f.name).join(", ");
+    return c.fields.map((f) => fixName(f.name)).join(", ");
   }
 
   getFunctions() {
     return this.functions
       .map(
         (f) =>
-          `function ${f.name}(${this.getParams(f)}) {
+          `function ${fixName(f.name)}(${this.getParams(f)}) {
         ${this.getCode(f)}
       }
-      const fn_${f.name} = new RLFn("${f.name}", ${f.name}, [
+      const fn_${fixName(f.name)} = new RLFn("${fixName(f.name)}", ${fixName(
+            f.name
+          )}, [
         ${this.getStructArgs(f)}
       ])`
       )
@@ -250,10 +385,12 @@ export default class TSCompiler implements TSScope {
     return this.systems
       .map(
         (s) =>
-          `function ${s.name}(${this.getParams(s)}) {
+          `function ${fixName(s.name)}(${this.getParams(s)}) {
         ${this.getCode(s)}
       }
-      const system_${s.name} = new RLSystem("${s.name}", ${s.name}, [
+      const system_${s.name} = new RLSystem("${fixName(s.name)}", ${fixName(
+            s.name
+          )}, [
         ${this.getStructArgs(s)}
       ])`
       )
@@ -281,16 +418,20 @@ export default class TSCompiler implements TSScope {
   }
 
   getQName(q: ASTQName) {
-    return q.chain.join(".");
+    // check it exists, first
+    this.resolveTypeChain(q);
+
+    return q.chain.map(fixName).join(".");
   }
 
   getCall(x: ASTQName | ASTIdent, args: ASTExpr[]): string {
     const s =
       x._ === "id" ? this.resolveType(x.value) : this.resolveTypeChain(x);
-    const n = x._ === "id" ? x.value : x.chain.join(".");
+    const n = x._ === "id" ? x.value : this.getQName(x);
 
-    if (s === "tag") return n;
-    if (this.componentNames.includes(s)) return `mk${n}(${this.getArgs(args)})`;
+    if (s === "tag") return fixName(n);
+    if (this.componentNames.includes(s))
+      return `mk${fixName(n)}(${this.getArgs(args)})`;
 
     if (s === "builtin") return `${n}(${this.getArgs(args)})`;
 
@@ -316,11 +457,11 @@ export default class TSCompiler implements TSScope {
 
           case "qname": {
             const type = this.resolveTypeChain(a);
-            const name = a.chain.join(".");
+            const name = this.getQName(a);
 
-            if (type === "tag") return name;
+            if (type === "tag") return fixName(name);
             else if (type === "system") return "system_" + name;
-            else if (this.componentNames.includes(type)) return name;
+            else if (this.componentNames.includes(type)) return fixName(name);
             return `{ type: "${type}", value: ${name} }`;
           }
 
@@ -329,7 +470,7 @@ export default class TSCompiler implements TSScope {
             if (this.componentNames.includes(type))
               return this.getCall(a.name, a.args);
 
-            throw new Error(`How to coerce ${JSON.stringify(a)}?`);
+            throw new CoerceCallError(a);
           }
 
           default:
@@ -344,7 +485,7 @@ export default class TSCompiler implements TSScope {
     return x.params
       .map((p) => {
         if (p._ === "constraint") return "";
-        return `${p.name}: ${this.getTSType(p.type)}`;
+        return `${fixName(p.name)}: ${this.getTSType(p.type)}`;
       })
       .filter((x) => x)
       .join(", ");
@@ -383,8 +524,10 @@ export default class TSCompiler implements TSScope {
         return "RLKeyEvent";
 
       default:
-        // TODO throw error if really unknown
-        return t;
+        if (this.componentNames.includes(t) || this.tagNames.includes(t))
+          return fixType(t);
+
+        throw new UnknownTypeError(t);
     }
   }
 
@@ -429,7 +572,7 @@ export default class TSCompiler implements TSScope {
       scope = scope.parent;
     }
 
-    throw new Error(`Could not resolve "${name}" in ${this.scopes.top.name}`);
+    throw new CannotResolveError(name, scope || this.scopes.top);
   }
 
   resolveTypeChain(q: ASTQName) {
@@ -439,7 +582,9 @@ export default class TSCompiler implements TSScope {
     for (const name of q.chain) {
       type = this.resolveType(name, scope);
 
+      // TODO generalise this
       if (type === "entity") scope = new EntityScope(scope, this);
+      else if (type === "KeyEvent") scope = new KeyEventScope(scope);
       else if (this.componentNames.includes(type))
         scope = new ComponentScope(
           scope,
