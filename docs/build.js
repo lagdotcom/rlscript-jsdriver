@@ -1170,9 +1170,14 @@
     x,
     y
   });
+  var tmPlayer = {
+    type: "template",
+    name: "Player",
+    get: () => [IsPlayer, mkAppearance("@", "white", "black")]
+  };
   function main() {
     RL.instance.callNamedFunction("setSize", { type: "positional", value: { type: "int", value: 80 } }, { type: "positional", value: { type: "int", value: 50 } });
-    RL.instance.callNamedFunction("spawn", { type: "positional", value: IsPlayer }, { type: "positional", value: mkAppearance("@", "white", "black") }, { type: "positional", value: mkPosition(40, 25) }, { type: "positional", value: mkOldPosition(40, 25) });
+    RL.instance.callNamedFunction("spawn", { type: "positional", value: tmPlayer }, { type: "positional", value: mkPosition(40, 25) }, { type: "positional", value: mkOldPosition(40, 25) });
     RL.instance.callNamedFunction("pushKeyHandler", {
       type: "positional",
       value: system_onKey
@@ -2117,7 +2122,11 @@
   function spawn(...args) {
     const e = new RLEntity();
     for (const a of args) {
-      e.add(a);
+      if (a.type === "template") {
+        for (const part of a.get())
+          e.add(part);
+      } else
+        e.add(a);
     }
     Game.instance.rl.entities.set(e.id, e);
     return e;
@@ -2164,7 +2173,7 @@
         { type: "param", typeName: "int", name: "height" }
       ])
     ],
-    ["spawn", new RLFn("spawn", spawn, [], ["component", "tag"])]
+    ["spawn", new RLFn("spawn", spawn, [], ["component", "tag", "template"])]
   ]);
   var lib_default = lib;
 

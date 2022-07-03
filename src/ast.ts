@@ -18,7 +18,17 @@ export type ASTFnDecl = {
   params: ASTField[];
   code: ASTCode;
 };
-export type ASTDecl = ASTComponentDecl | ASTTagDecl | ASTSystemDecl | ASTFnDecl;
+export type ASTTemplateDecl = {
+  _: "template";
+  name: string;
+  fields: ASTTemplateField[];
+};
+export type ASTDecl =
+  | ASTComponentDecl
+  | ASTTagDecl
+  | ASTSystemDecl
+  | ASTFnDecl
+  | ASTTemplateDecl;
 
 export type ASTField = { _: "field"; name: string; type: string };
 export type ASTConstraint = { _: "constraint"; type: string };
@@ -28,6 +38,8 @@ export type ASTCode = ASTStatement[];
 export type ASTStatement = ASTCall | ASTAssignment;
 
 export type ASTCall = { _: "call"; name: ASTIdent | ASTQName; args: ASTExpr[] };
+export type ASTTemplateTag = { _: "tag"; name: ASTIdent };
+export type ASTTemplateField = ASTECall | ASTTemplateTag;
 
 export type ASTAssignment = {
   _: "assignment";

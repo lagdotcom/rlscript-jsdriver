@@ -8,6 +8,7 @@ import {
   ASTQName,
   ASTSystemDecl,
   ASTTagDecl,
+  ASTTemplateDecl,
 } from "./ast";
 import { readFileSync, writeFileSync } from "fs";
 import Stack from "./Stack";
@@ -117,6 +118,7 @@ const builtinTypes = new Set<string>([
   "str",
   "system",
   "tag",
+  "template",
 
   "entity",
   "KeyEvent",
@@ -207,6 +209,7 @@ export default class TSCompiler implements TSScope {
   scopes: Stack<TSScope>;
   systems: ASTSystemDecl[];
   tags: ASTTagDecl[];
+  templates: ASTTemplateDecl[];
 
   constructor() {
     this.name = "global";
@@ -215,6 +218,7 @@ export default class TSCompiler implements TSScope {
     this.scopes = new Stack([this]);
     this.systems = [];
     this.tags = [];
+    this.templates = [];
 
     this.members = new Map<string, string>([
       ["draw", "global"],
@@ -238,6 +242,9 @@ export default class TSCompiler implements TSScope {
       } else if (d._ === "tag") {
         this.tags.push(d);
         this.define(d.name, "tag");
+      } else if (d._ === "template") {
+        this.templates.push(d);
+        this.define(d.name, "template");
       }
     }
   }
@@ -318,6 +325,7 @@ export default class TSCompiler implements TSScope {
         ["IMPLTYPES", this.getImplImport()],
         ["TAGTYPES", this.getTagTypes()],
         ["COMPONENTMAKERS", this.getComponentMakers()],
+        ["TEMPLATES", this.getTemplates()],
         ["FUNCTIONS", this.getFunctions()],
         ["SYSTEMS", this.getSystems()],
         ["ENV", this.getEnv()],
@@ -379,6 +387,25 @@ export default class TSCompiler implements TSScope {
 
   getComponentFields(c: ASTComponentDecl) {
     return c.fields.map((f) => fixName(f.name)).join(", ");
+  }
+
+  getTemplates() {
+    return this.templates
+      .map((t) => {
+        return `const tm${t.name}: RLTemplate = {
+  type: "template",
+  name: "${t.name}",
+  get: () => [${t.fields
+    .map((f) => {
+      if (f._ === "tag") return `${fixName(f.name.value)}`;
+      return `mk${f.name.value}(${f.args
+        .map((a) => this.getExpr(a))
+        .join(", ")})`;
+    })
+    .join(", ")}]
+}`;
+      })
+      .join("\n");
   }
 
   getFunctions() {
@@ -477,7 +504,9 @@ export default class TSCompiler implements TSScope {
 
             if (type === "tag") return fixName(name);
             else if (type === "system") return "system_" + name;
+            else if (type === "template") return "tm" + name;
             else if (this.componentNames.includes(type)) return fixName(name);
+
             return `{ type: "${type}", value: ${name} }`;
           }
 

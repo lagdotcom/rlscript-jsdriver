@@ -110,6 +110,11 @@ export class RLTag {
 export type RLChar = { type: "char"; value: string };
 export type RLInt = { type: "int"; value: number };
 export type RLStr = { type: "str"; value: string };
+export type RLTemplate = {
+  type: "template";
+  name: string;
+  get: () => (RLTag | RLComponent)[];
+};
 
 type ParamPredicate = (p: RLFnParam) => boolean;
 function getParam(
@@ -273,7 +278,8 @@ export type RLObject =
   | RLKeyEvent
   | RLStr
   | RLSystem
-  | RLTag;
+  | RLTag
+  | RLTemplate;
 export type RLObjectType = RLObject["type"] | RLComponentName | RLTagName;
 export type RLEnv = Map<string, RLObject>;
 

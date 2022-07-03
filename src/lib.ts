@@ -1,4 +1,13 @@
-import { RLEntity, RLEnv, RLFn, RLInt, RLStr, RLSystem, RLTag } from "./RL";
+import {
+  RLEntity,
+  RLEnv,
+  RLFn,
+  RLInt,
+  RLStr,
+  RLSystem,
+  RLTag,
+  RLTemplate,
+} from "./RL";
 import Game from "./Game";
 import { RLComponent } from "./implTypes";
 import { TinyColor } from "tinycolor-ts";
@@ -8,10 +17,12 @@ function setSize(w: RLInt, h: RLInt) {
   Game.instance.height = h.value;
 }
 
-function spawn(...args: (RLComponent | RLTag)[]) {
+function spawn(...args: (RLComponent | RLTag | RLTemplate)[]) {
   const e = new RLEntity();
   for (const a of args) {
-    e.add(a);
+    if (a.type === "template") {
+      for (const part of a.get()) e.add(part);
+    } else e.add(a);
   }
 
   Game.instance.rl.entities.set(e.id, e);
@@ -63,6 +74,6 @@ const lib: RLEnv = new Map([
       { type: "param", typeName: "int", name: "height" },
     ]),
   ],
-  ["spawn", new RLFn("spawn", spawn, [], ["component", "tag"])],
+  ["spawn", new RLFn("spawn", spawn, [], ["component", "tag", "template"])],
 ]);
 export default lib;

@@ -7,11 +7,14 @@ import RL, {
   RLObject,
   RLSystem,
   RLTag,
+  RLTemplate,
 } from "./RL";
 
 //#TAGTYPES
 
 //#COMPONENTMAKERS
+
+//#TEMPLATES
 
 //#FUNCTIONS
 

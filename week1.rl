@@ -21,6 +21,11 @@ end
 
 tag IsPlayer
 
+template Player
+  IsPlayer
+  Appearance('@', "white", "black")
+end
+
 system onKey(e: entity, IsPlayer, k: KeyEvent)
   e.add(match k.key
     "up"    = MoveAction( 0, -1)
@@ -47,8 +52,7 @@ end
 
 fn main()
   setSize(80, 50)
-  spawn(IsPlayer,
-    Appearance('@', "white", "black"),
+  spawn(Player,
     Position(40, 25),
     ; this is to make sure that draw() is called
     OldPosition(40, 25)

@@ -7,6 +7,7 @@ import RL, {
   RLObject,
   RLSystem,
   RLTag,
+  RLTemplate,
 } from "./RL";
 
 const IsPlayer = new RLTag("IsPlayer");
@@ -37,6 +38,12 @@ const mkMoveAction = (x: number, y: number): MoveAction => ({
   y,
 });
 
+const tmPlayer: RLTemplate = {
+  type: "template",
+  name: "Player",
+  get: () => [IsPlayer, mkAppearance("@", "white", "black")],
+};
+
 function main() {
   RL.instance.callNamedFunction(
     "setSize",
@@ -45,8 +52,7 @@ function main() {
   );
   RL.instance.callNamedFunction(
     "spawn",
-    { type: "positional", value: IsPlayer },
-    { type: "positional", value: mkAppearance("@", "white", "black") },
+    { type: "positional", value: tmPlayer },
     { type: "positional", value: mkPosition(40, 25) },
     { type: "positional", value: mkOldPosition(40, 25) }
   );

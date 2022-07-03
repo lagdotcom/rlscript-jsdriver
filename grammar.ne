@@ -34,11 +34,13 @@ decl -> componentdecl {% id %}
       | tagdecl {% id %}
       | systemdecl {% id %}
       | fndecl {% id %}
+      | templatedecl {% id %}
 
 componentdecl -> "component" __ name _ fieldlist "end" {% ([,,name,,fields]) => ({ _: 'component', name: name.value, fields }) %}
 tagdecl -> "tag" __ name {% ([,,name]) => ({ _: 'tag', name: name.value }) %}
 systemdecl -> "system" __ name _ paramlist _ code "end" {% ([,,name,,params,,code]) => ({ _: 'system', name: name.value, params, code }) %}
 fndecl -> "fn" __ name _ paramlist _ code "end" {% ([,,name,,params,,code]) => ({ _: 'fn', name: name.value, params, code }) %}
+templatedecl -> "template" __ name _ templatelist "end" {% ([,,name,,fields]) => ({ _: 'template', name: name.value, fields }) %}
 
 fieldlist -> fieldp:* {% id %}
 fieldp -> field _ {% id %}
@@ -50,6 +52,11 @@ params -> null {% () => [] %}
         | params _ "," _ param {% ([params,,,,param]) => params.concat(param) %}
 param -> field {% id %}
        | type {% ([type]) => ({ _: 'constraint', type: type.value }) %}
+
+templatelist -> templatefieldp:* {% id %}
+templatefieldp -> templatefield _ {% id %}
+templatefield -> name {% ([name]) => ({ _: 'tag', name }) %}
+               | ecall {% id %}
 
 code -> stmtp:* {% id %}
 stmtp -> stmt _ {% id %}
