@@ -15,5 +15,5 @@ else {
 
   const compiler = new TSCompiler();
   compiler.feed(parser.results[0] as ASTProgram);
-  compiler.write("src");
+  compiler.writeAll("src");
 }

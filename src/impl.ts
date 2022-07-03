@@ -126,5 +126,6 @@ const impl: RLEnv = new Map<string, RLObject>([
   ["movement", system_movement],
   ["drawAfterMove", system_drawAfterMove],
   ["IsPlayer", IsPlayer],
+  ["Player", tmPlayer],
 ]);
 export default impl;

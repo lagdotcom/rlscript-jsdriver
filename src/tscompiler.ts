@@ -263,10 +263,15 @@ export default class TSCompiler implements TSScope {
     return this.tags.map((t) => t.name);
   }
 
-  write(dir: string) {
-    write(join(dir, "implTypes.ts"), this.generateImplTypes());
-    write(join(dir, "RL.ts"), this.generateRL());
-    write(join(dir, "impl.ts"), this.generateImpl());
+  writeAll(dir: string) {
+    this.write(join(dir, "implTypes.ts"), this.generateImplTypes());
+    this.write(join(dir, "RL.ts"), this.generateRL());
+    this.write(join(dir, "impl.ts"), this.generateImpl());
+  }
+
+  write(fn: string, value: string) {
+    write(fn, value);
+    console.log("Wrote:", fn);
   }
 
   template(template: string, values: Map<string, string>) {
@@ -551,6 +556,7 @@ export default class TSCompiler implements TSScope {
       .map((f) => `["${f.name}", fn_${f.name}],`)
       .concat(this.systems.map((s) => `["${s.name}", system_${s.name}],`))
       .concat(this.tagNames.map((t) => `["${t}", ${t}],`))
+      .concat(this.templates.map((t) => `["${t.name}", tm${t.name}],`))
       .join("\n");
   }
 

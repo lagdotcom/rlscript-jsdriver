@@ -1228,7 +1228,8 @@
     ["onKey", system_onKey],
     ["movement", system_movement],
     ["drawAfterMove", system_drawAfterMove],
-    ["IsPlayer", IsPlayer]
+    ["IsPlayer", IsPlayer],
+    ["Player", tmPlayer]
   ]);
   var impl_default = impl;
 
