@@ -407,8 +407,8 @@ export default class TSCompiler implements TSScope {
         .map((a) => this.getExpr(a))
         .join(", ")})`;
     })
-    .join(", ")}]
-}`;
+    .join(", ")}],
+};`;
       })
       .join("\n");
   }
@@ -424,7 +424,7 @@ export default class TSCompiler implements TSScope {
             f.name
           )}, [
         ${this.getStructArgs(f)}
-      ])`
+      ]);`
       )
       .join("\n\n");
   }
@@ -593,10 +593,12 @@ export default class TSCompiler implements TSScope {
         return e.value.toString();
       case "char":
       case "str":
-        return `"${e.value}"`;
+        return `"${e.value.replace('"', '\\"')}"`;
 
       case "unary":
         return `${e.op}(${this.getExpr(e.value)})`;
+      case "binary":
+        return `(${this.getExpr(e.left)} ${e.op} ${this.getExpr(e.right)})`;
 
       case "match":
         return `((matchvar) => {

@@ -3,9 +3,9 @@
 // Bypasses TS6133. Allow declared but unused functions.
 // @ts-ignore
 function id(d: any[]): any { return d[0]; }
+declare var number: any;
 declare var sqstring: any;
 declare var dqstring: any;
-declare var number: any;
 declare var word: any;
 declare var ws: any;
 declare var comment: any;
@@ -30,8 +30,16 @@ const lexer = moo.compile({
     rp: ")",
     dot: ".",
     plusequals: "+=",
+    minusequals: "-=",
+    timesequals: "*=",
+    divideequals: "/=",
+    expequals: "^=",
     equals: "=",
+    plus: "+",
     minus: "-",
+    times: "*",
+    divide: "/",
+    exp: "^",
 });
 
 interface NearleyToken {
@@ -106,6 +114,10 @@ const grammar: Grammar = {
     {"name": "assignment", "symbols": ["qname", "_", "assignop", "_", "expr"], "postprocess": ([name,,op,,expr]) => ({ _: 'assignment', name, op, expr })},
     {"name": "assignop", "symbols": [{"literal":"="}], "postprocess": val},
     {"name": "assignop", "symbols": [{"literal":"+="}], "postprocess": val},
+    {"name": "assignop", "symbols": [{"literal":"-="}], "postprocess": val},
+    {"name": "assignop", "symbols": [{"literal":"*="}], "postprocess": val},
+    {"name": "assignop", "symbols": [{"literal":"/="}], "postprocess": val},
+    {"name": "assignop", "symbols": [{"literal":"^="}], "postprocess": val},
     {"name": "arglist", "symbols": [{"literal":"("}, "_", "args", "_", {"literal":")"}], "postprocess": ([,,args,,]) => args},
     {"name": "args", "symbols": [], "postprocess": () => []},
     {"name": "args", "symbols": ["arg"]},
@@ -114,14 +126,27 @@ const grammar: Grammar = {
     {"name": "expr", "symbols": ["qname"], "postprocess": id},
     {"name": "expr", "symbols": ["matchexpr"], "postprocess": id},
     {"name": "expr", "symbols": ["ecall"], "postprocess": id},
-    {"name": "expr", "symbols": ["value"], "postprocess": id},
-    {"name": "expr", "symbols": ["unary"], "postprocess": id},
+    {"name": "expr", "symbols": ["maths"], "postprocess": id},
+    {"name": "expr", "symbols": ["nonnumber"], "postprocess": id},
     {"name": "ecall", "symbols": ["name", "arglist"], "postprocess": ([name,args]) => ({ _: 'call', name, args })},
-    {"name": "unary", "symbols": ["unaryop", "value"], "postprocess": ([op,value]) => ({ _: 'unary', op, value })},
+    {"name": "maths", "symbols": ["sum"], "postprocess": id},
+    {"name": "sum", "symbols": ["sum", "_", "sumop", "_", "product"], "postprocess": ([left,,op,,right]) => ({ _: 'binary', left, op, right })},
+    {"name": "sum", "symbols": ["product"], "postprocess": id},
+    {"name": "product", "symbols": ["product", "_", "mulop", "_", "exp"], "postprocess": ([left,,op,,right]) => ({ _: 'binary', left, op, right })},
+    {"name": "product", "symbols": ["exp"], "postprocess": id},
+    {"name": "exp", "symbols": ["unary", "_", "expop", "_", "exp"], "postprocess": ([left,,op,,right]) => ({ _: 'binary', left, op, right })},
+    {"name": "exp", "symbols": ["unary"], "postprocess": id},
+    {"name": "unary", "symbols": ["unaryop", "number"], "postprocess": ([op,value]) => ({ _: 'unary', op, value })},
+    {"name": "unary", "symbols": ["number"], "postprocess": id},
+    {"name": "sumop", "symbols": [{"literal":"+"}], "postprocess": val},
+    {"name": "sumop", "symbols": [{"literal":"-"}], "postprocess": val},
+    {"name": "mulop", "symbols": [{"literal":"*"}], "postprocess": val},
+    {"name": "mulop", "symbols": [{"literal":"/"}], "postprocess": val},
+    {"name": "expop", "symbols": [{"literal":"^"}], "postprocess": val},
     {"name": "unaryop", "symbols": [{"literal":"-"}], "postprocess": val},
-    {"name": "value", "symbols": [(lexer.has("sqstring") ? {type: "sqstring"} : sqstring)], "postprocess": ([tok]) => ({ _: 'char', value: tok.value[1] })},
-    {"name": "value", "symbols": [(lexer.has("dqstring") ? {type: "dqstring"} : dqstring)], "postprocess": ([tok]) => ({ _: 'str', value: tok.value.slice(1, -1) })},
-    {"name": "value", "symbols": [(lexer.has("number") ? {type: "number"} : number)], "postprocess": ([tok]) => ({ _: 'int', value: Number(tok.value) })},
+    {"name": "number", "symbols": [(lexer.has("number") ? {type: "number"} : number)], "postprocess": ([tok]) => ({ _: 'int', value: Number(tok.value) })},
+    {"name": "nonnumber", "symbols": [(lexer.has("sqstring") ? {type: "sqstring"} : sqstring)], "postprocess": ([tok]) => ({ _: 'char', value: tok.value[1] })},
+    {"name": "nonnumber", "symbols": [(lexer.has("dqstring") ? {type: "dqstring"} : dqstring)], "postprocess": ([tok]) => ({ _: 'str', value: tok.value.slice(1, -1) })},
     {"name": "matchexpr", "symbols": [{"literal":"match"}, "__", "expr", "_", "matchlist", "_", {"literal":"end"}], "postprocess": ([,,expr,,matches]) => ({ _: 'match', expr, matches })},
     {"name": "matchlist", "symbols": ["match"]},
     {"name": "matchlist", "symbols": ["matchlist", "_", "match"], "postprocess": ([matches,,match]) => matches.concat(match)},

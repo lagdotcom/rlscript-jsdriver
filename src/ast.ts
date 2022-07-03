@@ -47,9 +47,15 @@ export type ASTAssignment = {
   op: ASTAssignmentOp;
   expr: ASTExpr;
 };
-export type ASTAssignmentOp = "=" | "+=";
+export type ASTAssignmentOp = "=" | "+=" | "-=" | "*-" | "/=" | "^=";
 
-export type ASTExpr = ASTQName | ASTMatch | ASTECall | ASTValue | ASTUnary;
+export type ASTExpr =
+  | ASTQName
+  | ASTMatch
+  | ASTECall
+  | ASTValue
+  | ASTUnary
+  | ASTBinary;
 
 export type ASTECall = { _: "call"; name: ASTIdent; args: ASTExpr[] };
 
@@ -62,6 +68,14 @@ export type ASTQName = { _: "qname"; chain: string[] };
 
 export type ASTUnary = { _: "unary"; op: ASTUnaryOp; value: ASTExpr };
 export type ASTUnaryOp = "-";
+
+export type ASTBinary = {
+  _: "binary";
+  op: ASTBinaryOp;
+  left: ASTExpr;
+  right: ASTExpr;
+};
+export type ASTBinaryOp = "+" | "-" | "*" | "/" | "^";
 
 export type ASTValue = ASTChar | ASTStr | ASTInt;
 export type ASTChar = { _: "char"; value: string };

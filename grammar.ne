@@ -19,8 +19,16 @@ const lexer = moo.compile({
     rp: ")",
     dot: ".",
     plusequals: "+=",
+    minusequals: "-=",
+    timesequals: "*=",
+    divideequals: "/=",
+    expequals: "^=",
     equals: "=",
+    plus: "+",
     minus: "-",
+    times: "*",
+    divide: "/",
+    exp: "^",
 });
 %}
 @preprocessor typescript
@@ -68,6 +76,10 @@ call -> qname arglist {% ([name,args]) => ({ _: 'call', name, args }) %}
 assignment -> qname _ assignop _ expr {% ([name,,op,,expr]) => ({ _: 'assignment', name, op, expr }) %}
 assignop -> "=" {% val %}
           | "+=" {% val %}
+          | "-=" {% val %}
+          | "*=" {% val %}
+          | "/=" {% val %}
+          | "^=" {% val %}
 
 arglist -> "(" _ args _ ")" {% ([,,args,,]) => args %}
 args -> null {% () => [] %}
@@ -78,17 +90,32 @@ arg -> expr {% id %}
 expr -> qname {% id %}
       | matchexpr {% id %}
       | ecall {% id %}
-      | value {% id %}
-      | unary {% id %}
+      | maths {% id %}
+      | nonnumber {% id %}
 
 ecall -> name arglist {% ([name,args]) => ({ _: 'call', name, args }) %}
 
-unary -> unaryop value {% ([op,value]) => ({ _: 'unary', op, value }) %}
+maths   -> sum {% id %}
+sum     -> sum _ sumop _ product {% ([left,,op,,right]) => ({ _: 'binary', left, op, right }) %}
+         | product {% id %}
+product -> product _ mulop _ exp {% ([left,,op,,right]) => ({ _: 'binary', left, op, right }) %}
+         | exp {% id %}
+exp     -> unary _ expop _ exp {% ([left,,op,,right]) => ({ _: 'binary', left, op, right }) %}
+         | unary {% id %}
+unary   -> unaryop number {% ([op,value]) => ({ _: 'unary', op, value }) %}
+         | number {% id %}
+
+sumop   -> "+" {% val %}
+         | "-" {% val %}
+mulop   -> "*" {% val %}
+         | "/" {% val %}
+expop   -> "^" {% val %}
 unaryop -> "-" {% val %}
 
-value -> %sqstring {% ([tok]) => ({ _: 'char', value: tok.value[1] }) %}
-       | %dqstring {% ([tok]) => ({ _: 'str', value: tok.value.slice(1, -1) }) %}
-       | %number {% ([tok]) => ({ _: 'int', value: Number(tok.value) }) %}
+number -> %number {% ([tok]) => ({ _: 'int', value: Number(tok.value) }) %}
+
+nonnumber -> %sqstring {% ([tok]) => ({ _: 'char', value: tok.value[1] }) %}
+           | %dqstring {% ([tok]) => ({ _: 'str', value: tok.value.slice(1, -1) }) %}
 
 matchexpr -> "match" __ expr _ matchlist _ "end" {% ([,,expr,,matches]) => ({ _: 'match', expr, matches }) %}
 matchlist -> match
