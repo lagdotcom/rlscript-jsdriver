@@ -1,6 +1,7 @@
 import { ASTProgram } from "../src/ast";
 import TSCompiler, {
   CannotResolveError,
+  RedefinitionError,
   UnknownTypeError,
 } from "../src/tscompiler";
 import { getParser } from "../src/parser";
@@ -23,6 +24,10 @@ test("detect undeclared types", () => {
 test("detect missing members", () => {
   const c = getCompiler("fn handle(e: KeyEvent) e.something = 3 end");
   expect(() => c.getFunctions()).toThrow(CannotResolveError);
+});
+
+test("detect name reuse", () => {
+  expect(() => getCompiler("tag a fn a() end")).toThrow(RedefinitionError);
 });
 
 test("escape reserved words in TS", () => {

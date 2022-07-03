@@ -25,6 +25,12 @@ export class CoerceCallError extends Error {
   }
 }
 
+export class RedefinitionError extends Error {
+  constructor(name: string, type: string) {
+    super(`Tried to redefine: ${name} (was ${type})`);
+  }
+}
+
 export class UnknownTypeError extends Error {
   constructor(type: string) {
     super(`Unknown type: ${type}`);
@@ -195,6 +201,7 @@ class KeyEventScope implements TSScope {
 
 export default class TSCompiler implements TSScope {
   name: "global";
+  members: Map<string, string>;
   components: ASTComponentDecl[];
   functions: ASTFnDecl[];
   scopes: Stack<TSScope>;
@@ -208,29 +215,38 @@ export default class TSCompiler implements TSScope {
     this.scopes = new Stack([this]);
     this.systems = [];
     this.tags = [];
-  }
-  get members() {
-    const m: Map<string, string> = new Map();
-    m.set("draw", "global");
-    m.set("pushKeyHandler", "global");
-    m.set("setSize", "global");
-    m.set("spawn", "global");
 
-    for (const c of this.components) m.set(c.name, fixType(c.name));
-    for (const f of this.functions) m.set(f.name, "fn");
-    for (const s of this.systems) m.set(s.name, "system");
-    for (const t of this.tags) m.set(t.name, "tag");
-
-    return m;
+    this.members = new Map<string, string>([
+      ["draw", "global"],
+      ["pushKeyHandler", "global"],
+      ["setSize", "global"],
+      ["spawn", "global"],
+    ]);
   }
 
   feed(ast: ASTProgram) {
     for (const d of ast) {
-      if (d._ === "component") this.components.push(d);
-      else if (d._ === "fn") this.functions.push(d);
-      else if (d._ === "system") this.systems.push(d);
-      else if (d._ === "tag") this.tags.push(d);
+      if (d._ === "component") {
+        this.components.push(d);
+        this.define(d.name, fixType(d.name));
+      } else if (d._ === "fn") {
+        this.functions.push(d);
+        this.define(d.name, "fn");
+      } else if (d._ === "system") {
+        this.systems.push(d);
+        this.define(d.name, "system");
+      } else if (d._ === "tag") {
+        this.tags.push(d);
+        this.define(d.name, "tag");
+      }
     }
+  }
+
+  define(name: string, type: string) {
+    const old = this.members.get(name);
+    if (old) throw new RedefinitionError(name, old);
+
+    this.members.set(name, type);
   }
 
   get componentNames() {
