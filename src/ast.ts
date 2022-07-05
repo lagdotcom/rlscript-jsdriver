@@ -23,23 +23,46 @@ export type ASTTemplateDecl = {
   name: string;
   fields: ASTTemplateField[];
 };
+export type ASTTileTypeDecl = {
+  _: "tiletype";
+  name: string;
+  char: string;
+  fields: ASTTileMember[];
+};
+export type ASTGlobalDecl = {
+  _: "global";
+  name: string;
+  type: ASTType;
+};
 export type ASTDecl =
   | ASTComponentDecl
   | ASTTagDecl
   | ASTSystemDecl
   | ASTFnDecl
-  | ASTTemplateDecl;
+  | ASTTemplateDecl
+  | ASTTileTypeDecl
+  | ASTGlobalDecl;
 
-export type ASTField = { _: "field"; name: string; type: string };
+export type ASTField = { _: "field"; name: string; type: ASTType };
 export type ASTConstraint = { _: "constraint"; type: string };
 export type ASTParam = ASTField | ASTConstraint;
 
-export type ASTCode = ASTStatement[];
-export type ASTStatement = ASTCall | ASTAssignment;
-
 export type ASTCall = { _: "call"; name: ASTIdent | ASTQName; args: ASTExpr[] };
 export type ASTTemplateTag = { _: "tag"; name: ASTIdent };
-export type ASTTemplateField = ASTECall | ASTTemplateTag;
+export type ASTTemplateField = ASTCall | ASTTemplateTag;
+
+export type ASTTileFlag = { _: "flag"; name: string };
+export type ASTTileField = { _: "field"; name: string; expr: ASTExpr };
+export type ASTTileMember = ASTTileFlag | ASTTileField;
+
+export type ASTCode = ASTStatement[];
+export type ASTStatement =
+  | ASTCall
+  | ASTAssignment
+  | ASTLocal
+  | ASTIf
+  | ASTReturn
+  | ASTFor;
 
 export type ASTAssignment = {
   _: "assignment";
@@ -49,15 +72,34 @@ export type ASTAssignment = {
 };
 export type ASTAssignmentOp = "=" | "+=" | "-=" | "*-" | "/=" | "^=";
 
+export type ASTLocal = {
+  _: "local";
+  name: string;
+  type: ASTType;
+  expr?: ASTExpr;
+};
+
+export type ASTIf = { _: "if"; expr: ASTExpr; code: ASTCode; code2?: ASTCode };
+
+export type ASTReturn = { _: "return"; expr?: ASTExpr };
+
+export type ASTFor = {
+  _: "for";
+  name: ASTIdent;
+  start: ASTExpr;
+  end: ASTExpr;
+  code: ASTCode;
+};
+
+export type ASTType = { _: "type"; value: string; optional?: boolean };
+
 export type ASTExpr =
   | ASTQName
   | ASTMatch
-  | ASTECall
+  | ASTCall
   | ASTValue
   | ASTUnary
   | ASTBinary;
-
-export type ASTECall = { _: "call"; name: ASTIdent; args: ASTExpr[] };
 
 export type ASTIdent = { _: "id"; value: string };
 
@@ -67,7 +109,7 @@ export type ASTCase = { _: "case"; expr: ASTExpr; value: ASTExpr };
 export type ASTQName = { _: "qname"; chain: string[] };
 
 export type ASTUnary = { _: "unary"; op: ASTUnaryOp; value: ASTExpr };
-export type ASTUnaryOp = "-";
+export type ASTUnaryOp = "-" | "not";
 
 export type ASTBinary = {
   _: "binary";
@@ -75,7 +117,7 @@ export type ASTBinary = {
   left: ASTExpr;
   right: ASTExpr;
 };
-export type ASTBinaryOp = "+" | "-" | "*" | "/" | "^";
+export type ASTBinaryOp = "+" | "-" | "*" | "/" | "^" | "and";
 
 export type ASTValue = ASTChar | ASTStr | ASTInt;
 export type ASTChar = { _: "char"; value: string };

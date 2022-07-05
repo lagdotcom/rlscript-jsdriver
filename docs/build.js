@@ -815,6 +815,47 @@
     }
   });
 
+  // node_modules/bresenham/index.js
+  var require_bresenham = __commonJS({
+    "node_modules/bresenham/index.js"(exports, module) {
+      module.exports = function(x0, y0, x1, y1, fn) {
+        if (!fn) {
+          var arr = [];
+          fn = function(x2, y2) {
+            arr.push({ x: x2, y: y2 });
+          };
+        }
+        var dx = x1 - x0;
+        var dy = y1 - y0;
+        var adx = Math.abs(dx);
+        var ady = Math.abs(dy);
+        var eps = 0;
+        var sx = dx > 0 ? 1 : -1;
+        var sy = dy > 0 ? 1 : -1;
+        if (adx > ady) {
+          for (var x = x0, y = y0; sx < 0 ? x >= x1 : x <= x1; x += sx) {
+            fn(x, y);
+            eps += ady;
+            if (eps << 1 >= adx) {
+              y += sy;
+              eps -= adx;
+            }
+          }
+        } else {
+          for (var x = x0, y = y0; sy < 0 ? y >= y1 : y <= y1; y += sy) {
+            fn(x, y);
+            eps += adx;
+            if (eps << 1 >= ady) {
+              x += sx;
+              eps -= ady;
+            }
+          }
+        }
+        return arr;
+      };
+    }
+  });
+
   // src/Game.ts
   var import_wglt = __toESM(require_wglt());
 
@@ -852,6 +893,7 @@
   }, "");
 
   // src/RL.ts
+  var import_bresenham = __toESM(require_bresenham());
   var RLComponentType = class {
     constructor(name, data) {
       this.name = name;
@@ -870,7 +912,7 @@
     }
     apply(args) {
       const resolved = resolveArgs(args, this.params, this.variadic);
-      this.code(...resolved);
+      return this.code(...resolved);
     }
   };
   RLFn.type = "fn";
@@ -887,7 +929,8 @@
       "OldPosition",
       "Position",
       "MoveAction",
-      "IsPlayer"
+      "IsPlayer",
+      "DrawTiles"
     ].includes(p.typeName);
   }
   function isExternal(p) {
@@ -990,12 +1033,96 @@
     }
     return results;
   }
+  var RLTile = class {
+    constructor(ch, walkable, transparent) {
+      this.ch = ch;
+      this.walkable = walkable;
+      this.transparent = transparent;
+      this.type = "tile";
+    }
+  };
+  RLTile.type = "tile";
+  var RLGrid = class {
+    constructor(width, height, empty) {
+      this.width = width;
+      this.height = height;
+      this.empty = empty;
+      this.type = "grid";
+      this.contents = /* @__PURE__ */ new Map();
+      this.fill(empty);
+    }
+    tag(x, y) {
+      return `${x},${y}`;
+    }
+    at(x, y) {
+      const tag = this.tag(x, y);
+      return this.contents.get(tag);
+    }
+    put(x, y, item) {
+      this.contents.set(this.tag(x, y), item);
+    }
+    fill(item) {
+      this.rect(0, 0, this.width - 1, this.height - 1, item);
+    }
+    rect(sx, sy, ex, ey, item) {
+      for (let y = sy; y <= ey; y++) {
+        for (let x = sx; x <= ex; x++) {
+          this.put(x, y, item);
+        }
+      }
+    }
+    findInRegion(region, item) {
+      for (let y = region.y; y <= region.y2; y++) {
+        for (let x = region.x; x <= region.x2; x++) {
+          if (this.at(x, y) === item)
+            return true;
+        }
+      }
+      return false;
+    }
+    line(x1, y1, x2, y2, item) {
+      (0, import_bresenham.default)(x1, y1, x2, y2, (x, y) => this.put(x, y, item));
+    }
+    draw() {
+      RL.instance.callNamedFunction("drawGrid", {
+        type: "positional",
+        value: this
+      });
+    }
+  };
+  RLGrid.type = "grid";
+  var RLRect = class {
+    constructor(x, y, width, height) {
+      this.x = x;
+      this.y = y;
+      this.width = width;
+      this.height = height;
+      this.type = "rect";
+    }
+    get x2() {
+      return this.x + this.width;
+    }
+    get y2() {
+      return this.y + this.height;
+    }
+    get cx() {
+      return Math.floor(this.x + this.width / 2);
+    }
+    get cy() {
+      return Math.floor(this.y + this.height / 2);
+    }
+    intersects(o) {
+      return this.x <= o.x2 && this.x2 >= o.x && this.y <= o.y2 && this.y2 >= o.y;
+    }
+  };
+  RLRect.type = "rect";
   var RLEntity = class {
     constructor() {
       this.type = "entity";
       this.id = nanoid();
       this.components = /* @__PURE__ */ new Set();
       this.IsPlayer = false;
+      this.DrawTiles = false;
     }
     has(name) {
       return this.components.has(name);
@@ -1064,7 +1191,7 @@
         throw new Error(`Unknown function: ${name}`);
       if (fn.type !== "fn")
         throw new Error(`Not a function: ${name}`);
-      fn.apply(args);
+      return fn.apply(args);
     }
     runSystem(sys, ...args) {
       sys.apply(args);
@@ -1145,6 +1272,7 @@
 
   // src/impl.ts
   var IsPlayer = new RLTag("IsPlayer");
+  var DrawTiles = new RLTag("DrawTiles");
   var mkAppearance = (ch, fg, bg) => ({
     type: "component",
     typeName: "Appearance",
@@ -1175,9 +1303,68 @@
     name: "Player",
     get: () => [IsPlayer, mkAppearance("@", "white", "black")]
   };
+  var tmNPC = {
+    type: "template",
+    name: "NPC",
+    get: () => [mkAppearance("@", "yellow", "black")]
+  };
+  var Floor = new RLTile(".", true, true);
+  var Wall = new RLTile("#", false, false);
+  var map;
+  function drawEntity(e) {
+    if (e.Position && e.Appearance) {
+      RL.instance.callNamedFunction("draw", { type: "positional", value: { type: "int", value: e.Position.x } }, { type: "positional", value: { type: "int", value: e.Position.y } }, { type: "positional", value: { type: "char", value: e.Appearance.ch } }, { type: "positional", value: { type: "str", value: e.Appearance.fg } }, { type: "positional", value: { type: "str", value: e.Appearance.bg } });
+    }
+  }
+  var fn_drawEntity = new RLFn("drawEntity", drawEntity, [
+    { type: "param", name: "e", typeName: "entity" }
+  ]);
+  function randomRoom() {
+    const w = RL.instance.callNamedFunction("randInt", { type: "positional", value: { type: "int", value: 6 } }, { type: "positional", value: { type: "int", value: 14 } });
+    const h = RL.instance.callNamedFunction("randInt", { type: "positional", value: { type: "int", value: 6 } }, { type: "positional", value: { type: "int", value: 14 } });
+    const x = RL.instance.callNamedFunction("randInt", { type: "positional", value: { type: "int", value: 1 } }, { type: "positional", value: { type: "int", value: map.width - w - 1 } });
+    const y = RL.instance.callNamedFunction("randInt", { type: "positional", value: { type: "int", value: 1 } }, { type: "positional", value: { type: "int", value: map.height - h - 1 } });
+    return new RLRect(x, y, w, h);
+  }
+  var fn_randomRoom = new RLFn("randomRoom", randomRoom, []);
+  function randomCorridor(x1, y1, x2, y2) {
+    let cx = x2;
+    let cy = y1;
+    if (RL.instance.callNamedFunction("randInt", { type: "positional", value: { type: "int", value: 0 } }, { type: "positional", value: { type: "int", value: 1 } })) {
+      cx = x1;
+      cy = y2;
+    }
+    map.line(x1, y1, cx, cy, Floor);
+    map.line(cx, cy, x2, y2, Floor);
+  }
+  var fn_randomCorridor = new RLFn("randomCorridor", randomCorridor, [
+    { type: "param", name: "x1", typeName: "int" },
+    { type: "param", name: "y1", typeName: "int" },
+    { type: "param", name: "x2", typeName: "int" },
+    { type: "param", name: "y2", typeName: "int" }
+  ]);
+  function generateDungeon() {
+    map = new RLGrid(80, 50, Wall);
+    let prev;
+    let room;
+    for (let r = 1; r <= 30; r++) {
+      room = randomRoom();
+      if (!map.findInRegion(room, Floor)) {
+        map.rect(room.x + 1, room.y + 1, room.x2 - 1, room.y2 - 1, Floor);
+        if (prev) {
+          randomCorridor(prev.cx, prev.cy, room.cx, room.cy);
+        } else {
+          RL.instance.callNamedFunction("spawn", { type: "positional", value: tmPlayer }, { type: "positional", value: mkPosition(room.cx, room.cy) }, { type: "positional", value: mkOldPosition(0, 0) }, { type: "positional", value: DrawTiles });
+        }
+        prev = room;
+      }
+    }
+    RL.instance.callNamedFunction("spawn", { type: "positional", value: tmNPC }, { type: "positional", value: mkPosition(prev.cx, prev.cy) }, { type: "positional", value: mkOldPosition(0, 0) });
+  }
+  var fn_generateDungeon = new RLFn("generateDungeon", generateDungeon, []);
   function main() {
     RL.instance.callNamedFunction("setSize", { type: "positional", value: { type: "int", value: 80 } }, { type: "positional", value: { type: "int", value: 50 } });
-    RL.instance.callNamedFunction("spawn", { type: "positional", value: tmPlayer }, { type: "positional", value: mkPosition(40, 25) }, { type: "positional", value: mkOldPosition(40, 25) });
+    generateDungeon();
     RL.instance.callNamedFunction("pushKeyHandler", {
       type: "positional",
       value: system_onKey
@@ -1202,9 +1389,14 @@
     { type: "param", name: "k", typeName: "KeyEvent" }
   ]);
   function movement(e, p, m) {
-    e.add(mkOldPosition(p.x, p.y));
-    p.x += m.x;
-    p.y += m.y;
+    const x = p.x + m.x;
+    const y = p.y + m.y;
+    const t = map.at(x, y);
+    if (t && t.walkable) {
+      e.add(mkOldPosition(p.x, p.y));
+      p.x = x;
+      p.y = y;
+    }
     e.remove(m);
   }
   var system_movement = new RLSystem("movement", movement, [
@@ -1212,8 +1404,19 @@
     { type: "param", name: "p", typeName: "Position" },
     { type: "param", name: "m", typeName: "MoveAction" }
   ]);
+  function screenRefresh(e) {
+    map.draw();
+    e.remove(DrawTiles);
+  }
+  var system_screenRefresh = new RLSystem("screenRefresh", screenRefresh, [
+    { type: "param", name: "e", typeName: "entity" },
+    { type: "constraint", typeName: "DrawTiles" }
+  ]);
   function drawAfterMove(e, a, o, p) {
-    RL.instance.callNamedFunction("draw", { type: "positional", value: { type: "int", value: o.x } }, { type: "positional", value: { type: "int", value: o.y } }, { type: "positional", value: { type: "char", value: " " } });
+    const t = map.at(o.x, o.y);
+    if (t) {
+      RL.instance.callNamedFunction("draw", { type: "positional", value: { type: "int", value: o.x } }, { type: "positional", value: { type: "int", value: o.y } }, { type: "positional", value: { type: "char", value: t.ch } }, { type: "positional", value: { type: "str", value: "silver" } });
+    }
     e.remove(o);
     RL.instance.callNamedFunction("draw", { type: "positional", value: { type: "int", value: p.x } }, { type: "positional", value: { type: "int", value: p.y } }, { type: "positional", value: { type: "char", value: a.ch } }, { type: "positional", value: { type: "str", value: a.fg } }, { type: "positional", value: { type: "str", value: a.bg } });
   }
@@ -1224,12 +1427,19 @@
     { type: "param", name: "p", typeName: "Position" }
   ]);
   var impl = /* @__PURE__ */ new Map([
+    ["drawEntity", fn_drawEntity],
+    ["randomRoom", fn_randomRoom],
+    ["randomCorridor", fn_randomCorridor],
+    ["generateDungeon", fn_generateDungeon],
     ["main", fn_main],
     ["onKey", system_onKey],
     ["movement", system_movement],
+    ["screenRefresh", system_screenRefresh],
     ["drawAfterMove", system_drawAfterMove],
     ["IsPlayer", IsPlayer],
-    ["Player", tmPlayer]
+    ["DrawTiles", DrawTiles],
+    ["Player", tmPlayer],
+    ["NPC", tmNPC]
   ]);
   var impl_default = impl;
 
@@ -2116,9 +2326,9 @@
   }();
 
   // src/lib.ts
-  function setSize(w, h) {
-    Game.instance.width = w.value;
-    Game.instance.height = h.value;
+  function setSize({ value: width }, { value: height }) {
+    Game.instance.width = width;
+    Game.instance.height = height;
   }
   function spawn(...args) {
     const e = new RLEntity();
@@ -2135,10 +2345,22 @@
   function pushKeyHandler(handler) {
     Game.instance.rl.keyHandlers.push(handler);
   }
-  function draw(x, y, ch, fg, bg) {
+  function draw({ value: x }, { value: y }, { value: ch }, fg, bg) {
     const f = fg ? new TinyColor(fg.value).toNumber() << 8 : void 0;
     const b = bg ? new TinyColor(bg.value).toNumber() << 8 : void 0;
-    Game.instance.terminal.drawChar(x.value, y.value, ch.value, f, b);
+    Game.instance.terminal.drawChar(x, y, ch, f, b);
+  }
+  function drawGrid(g) {
+    for (let y = 0; y < g.height; y++) {
+      for (let x = 0; x < g.width; x++) {
+        const t = g.at(x, y);
+        if (t)
+          draw({ type: "int", value: x }, { type: "int", value: y }, { type: "char", value: t.ch }, { type: "str", value: "silver" });
+      }
+    }
+  }
+  function randInt({ value: min }, { value: max }) {
+    return Math.floor(Math.random() * (max + 1 - min) + min);
   }
   var lib = /* @__PURE__ */ new Map([
     [
@@ -2162,9 +2384,22 @@
       ])
     ],
     [
+      "drawGrid",
+      new RLFn("drawGrid", drawGrid, [
+        { type: "param", typeName: "grid", name: "g" }
+      ])
+    ],
+    [
       "pushKeyHandler",
       new RLFn("pushKeyHandler", pushKeyHandler, [
         { type: "param", typeName: "system", name: "handler" }
+      ])
+    ],
+    [
+      "randInt",
+      new RLFn("randInt", randInt, [
+        { type: "param", typeName: "int", name: "min" },
+        { type: "param", typeName: "int", name: "max" }
       ])
     ],
     [

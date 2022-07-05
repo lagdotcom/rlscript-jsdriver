@@ -1,14 +1,20 @@
 import {
+  ASTBinaryOp,
+  ASTCall,
+  ASTCode,
   ASTComponentDecl,
-  ASTECall,
   ASTExpr,
   ASTFnDecl,
+  ASTGlobalDecl,
   ASTIdent,
   ASTProgram,
   ASTQName,
   ASTSystemDecl,
   ASTTagDecl,
   ASTTemplateDecl,
+  ASTTileTypeDecl,
+  ASTType,
+  ASTUnaryOp,
 } from "./ast";
 import { readFileSync, writeFileSync } from "fs";
 import Stack from "./Stack";
@@ -21,20 +27,24 @@ export class CannotResolveError extends Error {
 }
 
 export class CoerceCallError extends Error {
-  constructor(expr: ASTECall) {
+  constructor(expr: ASTCall) {
     super(`Cannot coerce: ${JSON.stringify(expr)}`);
   }
 }
 
 export class RedefinitionError extends Error {
-  constructor(name: string, type: string) {
-    super(`Tried to redefine: ${name} (was ${type})`);
+  constructor(name: string, type: ASTType) {
+    super(
+      `Tried to redefine: ${name} (was ${type.value}${
+        type.optional ? "?" : ""
+      })`
+    );
   }
 }
 
 export class UnknownTypeError extends Error {
-  constructor(type: string) {
-    super(`Unknown type: ${type}`);
+  constructor(type: ASTType) {
+    super(`Unknown type: ${type.value}`);
   }
 }
 
@@ -110,22 +120,39 @@ function fixName(n: string) {
   return n;
 }
 
+function asType(n: string): ASTType {
+  return { _: "type", value: fixName(n) };
+}
+const boolType = asType("bool");
+const builtinType = asType("builtin");
+const charType = asType("char");
+const fnType = asType("fn");
+const globalType = asType("global");
+const intType = asType("int");
+const strType = asType("str");
+const systemType = asType("system");
+const tagType = asType("tag");
+const templateType = asType("template");
+const tileType = asType("tile");
+
 const builtinTypes = new Set<string>([
   "char",
   "component",
   "fn",
+  "grid",
   "int",
   "str",
   "system",
   "tag",
   "template",
+  "tile",
 
   "entity",
   "KeyEvent",
 ]);
-function fixType(n: string) {
-  if (builtinTypes.has(n)) return n;
-  return fixName(n);
+function fixType(n: ASTType) {
+  const base = builtinTypes.has(n.value) ? n.value : fixName(n.value);
+  return n.optional ? `(${base})|undefined` : base;
 }
 
 const read = (fn: string) => readFileSync(fn, { encoding: "utf-8" });
@@ -137,23 +164,21 @@ const rlTemplate = read("src/RL.template.ts");
 
 type TSScope = {
   name: string;
-  members: Map<string, string>;
+  members: Map<string, ASTType>;
   parent?: TSScope;
 };
 
 class FnScope implements TSScope {
   name: string;
+  members: Map<string, ASTType>;
+
   constructor(public parent: TSScope, public fn: ASTFnDecl | ASTSystemDecl) {
     this.name = `fn[${fn.name}]`;
-  }
 
-  get members() {
-    const m: Map<string, string> = new Map();
+    this.members = new Map<string, ASTType>();
     for (const p of this.fn.params) {
-      if (p._ === "field") m.set(p.name, p.type);
+      if (p._ === "field") this.members.set(p.name, p.type);
     }
-
-    return m;
   }
 }
 
@@ -164,15 +189,15 @@ class EntityScope implements TSScope {
   }
 
   get members() {
-    const m: Map<string, string> = new Map([
-      ["id", "str"],
-      ["add", "builtin"],
-      ["has", "builtin"],
-      ["remove", "builtin"],
+    const m: Map<string, ASTType> = new Map([
+      ["id", strType],
+      ["add", builtinType],
+      ["has", builtinType],
+      ["remove", builtinType],
     ]);
 
-    for (const c of this.compiler.componentNames) m.set(c, fixName(c));
-    for (const t of this.compiler.tagNames) m.set(t, "bool");
+    for (const c of this.compiler.componentNames) m.set(c, asType(c));
+    for (const t of this.compiler.tagNames) m.set(t, boolType);
 
     return m;
   }
@@ -185,46 +210,111 @@ class ComponentScope implements TSScope {
   }
 
   get members() {
-    return new Map<string, string>(
-      this.component.fields.map((f) => [f.name, fixType(f.type)])
+    return new Map<string, ASTType>(
+      this.component.fields.map((f) => [f.name, f.type])
     );
   }
 }
 
 class KeyEventScope implements TSScope {
-  members: Map<string, string>;
+  members: Map<string, ASTType>;
   name: "KeyEvent";
 
   constructor(public parent: TSScope) {
     this.name = "KeyEvent";
-    this.members = new Map<string, string>([["key", "str"]]);
+    this.members = new Map<string, ASTType>([["key", strType]]);
+  }
+}
+
+class GridScope implements TSScope {
+  members: Map<string, ASTType>;
+  name: "grid";
+
+  constructor(public parent: TSScope) {
+    this.name = "grid";
+    this.members = new Map<string, ASTType>([
+      ["width", intType],
+      ["height", intType],
+      ["contains", builtinType],
+      ["at", builtinType],
+      ["draw", builtinType],
+      ["fill", builtinType],
+      ["findInRegion", builtinType],
+      ["line", builtinType],
+      ["rect", builtinType],
+    ]);
+  }
+}
+
+class RectScope implements TSScope {
+  members: Map<string, ASTType>;
+  name: "rect";
+
+  constructor(public parent: TSScope) {
+    this.name = "rect";
+    this.members = new Map<string, ASTType>([
+      ["x", intType],
+      ["y", intType],
+      ["width", intType],
+      ["height", intType],
+      ["cx", intType],
+      ["cy", intType],
+      ["x2", intType],
+      ["y2", intType],
+      ["intersects", builtinType],
+    ]);
+  }
+}
+
+class TileScope implements TSScope {
+  name: "tile";
+
+  constructor(public parent: TSScope, public compiler: TSCompiler) {
+    this.name = "tile";
+  }
+
+  get members() {
+    const fields: [string, ASTType][] = [["ch", charType]];
+    for (const [name, type] of this.compiler.tileFields)
+      fields.push([name, type]);
+
+    return new Map<string, ASTType>(fields);
   }
 }
 
 export default class TSCompiler implements TSScope {
   name: "global";
-  members: Map<string, string>;
+  members: Map<string, ASTType>;
   components: ASTComponentDecl[];
   functions: ASTFnDecl[];
+  globals: ASTGlobalDecl[];
   scopes: Stack<TSScope>;
   systems: ASTSystemDecl[];
   tags: ASTTagDecl[];
   templates: ASTTemplateDecl[];
+  tileFields: Map<string, ASTType>;
+  tileTypes: ASTTileTypeDecl[];
 
   constructor() {
     this.name = "global";
     this.components = [];
     this.functions = [];
+    this.globals = [];
     this.scopes = new Stack([this]);
     this.systems = [];
     this.tags = [];
     this.templates = [];
+    this.tileFields = new Map();
+    this.tileTypes = [];
 
-    this.members = new Map<string, string>([
-      ["draw", "global"],
-      ["pushKeyHandler", "global"],
-      ["setSize", "global"],
-      ["spawn", "global"],
+    this.members = new Map<string, ASTType>([
+      ["draw", globalType],
+      ["grid", globalType],
+      ["pushKeyHandler", globalType],
+      ["randInt", globalType],
+      ["rect", globalType],
+      ["setSize", globalType],
+      ["spawn", globalType],
     ]);
   }
 
@@ -232,24 +322,40 @@ export default class TSCompiler implements TSScope {
     for (const d of ast) {
       if (d._ === "component") {
         this.components.push(d);
-        this.define(d.name, fixType(d.name));
+        this.define(d.name, asType(d.name));
       } else if (d._ === "fn") {
         this.functions.push(d);
-        this.define(d.name, "fn");
+        this.define(d.name, fnType);
       } else if (d._ === "system") {
         this.systems.push(d);
-        this.define(d.name, "system");
+        this.define(d.name, systemType);
       } else if (d._ === "tag") {
         this.tags.push(d);
-        this.define(d.name, "tag");
+        this.define(d.name, tagType);
       } else if (d._ === "template") {
         this.templates.push(d);
-        this.define(d.name, "template");
+        this.define(d.name, templateType);
+      } else if (d._ === "global") {
+        this.globals.push(d);
+        this.define(d.name, d.type);
+      } else if (d._ === "tiletype") {
+        for (const f of d.fields) {
+          const type = f._ === "flag" ? boolType : this.getExprType(f.expr);
+
+          const old = this.tileFields.get(f.name);
+          if (old && old !== type)
+            throw new RedefinitionError(`tile.${f.name}`, old);
+
+          this.tileFields.set(f.name, type);
+        }
+
+        this.tileTypes.push(d);
+        this.define(d.name, tileType);
       }
     }
   }
 
-  define(name: string, type: string) {
+  define(name: string, type: ASTType) {
     const old = this.members.get(name);
     if (old) throw new RedefinitionError(name, old);
 
@@ -319,6 +425,7 @@ export default class TSCompiler implements TSScope {
         ["ISCONSTRAINT", this.getIsConstraint()],
         ["ENTITYFIELDS", this.getEntityFields()],
         ["ENTITYCONSTRUCTOR", this.getEntityConstructor()],
+        ["TILECONSTRUCTOR", this.getTileConstructor()],
       ])
     );
   }
@@ -333,6 +440,8 @@ export default class TSCompiler implements TSScope {
         ["TEMPLATES", this.getTemplates()],
         ["FUNCTIONS", this.getFunctions()],
         ["SYSTEMS", this.getSystems()],
+        ["TILETYPES", this.getTileTypes()],
+        ["GLOBALS", this.getGlobals()],
         ["ENV", this.getEnv()],
       ])
     );
@@ -362,6 +471,12 @@ export default class TSCompiler implements TSScope {
     return this.tagNames
       .map((name) => `this.${fixName(name)} = false;`)
       .join("\n");
+  }
+
+  getTileConstructor() {
+    return Array.from(this.tileFields.entries())
+      .map(([name, type]) => `public ${name}: ${this.getTSType(type)}`)
+      .join(", ");
   }
 
   getTagTypes() {
@@ -403,9 +518,8 @@ export default class TSCompiler implements TSScope {
   get: () => [${t.fields
     .map((f) => {
       if (f._ === "tag") return `${fixName(f.name.value)}`;
-      return `mk${f.name.value}(${f.args
-        .map((a) => this.getExpr(a))
-        .join(", ")})`;
+      const name = f.name._ === "id" ? f.name.value : this.getQName(f.name);
+      return `mk${name}(${f.args.map((a) => this.getExpr(a)).join(", ")})`;
     })
     .join(", ")}],
 };`;
@@ -418,7 +532,7 @@ export default class TSCompiler implements TSScope {
       .map(
         (f) =>
           `function ${fixName(f.name)}(${this.getParams(f)}) {
-        ${this.getCode(f)}
+        ${this.getCode(f.code, new FnScope(this.scopes.top, f))}
       }
       const fn_${fixName(f.name)} = new RLFn("${fixName(f.name)}", ${fixName(
             f.name
@@ -434,7 +548,7 @@ export default class TSCompiler implements TSScope {
       .map(
         (s) =>
           `function ${fixName(s.name)}(${this.getParams(s)}) {
-        ${this.getCode(s)}
+        ${this.getCode(s.code, new FnScope(this.scopes.top, s))}
       }
       const system_${s.name} = new RLSystem("${fixName(s.name)}", ${fixName(
             s.name
@@ -445,9 +559,9 @@ export default class TSCompiler implements TSScope {
       .join("\n\n");
   }
 
-  getCode(x: ASTFnDecl | ASTSystemDecl) {
-    this.scopes.push(new FnScope(this.scopes.top, x));
-    const result = x.code
+  getCode(code: ASTCode, scope?: TSScope): string {
+    if (scope) this.scopes.push(scope);
+    const result = code
       .map((s) => {
         switch (s._) {
           case "assignment":
@@ -455,13 +569,40 @@ export default class TSCompiler implements TSScope {
           case "call":
             return `${this.getCall(s.name, s.args)};`;
 
+          case "local": {
+            let str = `let ${s.name}: ${this.getTSType(s.type)}`;
+            if (s.expr) str += ` = ${this.getExpr(s.expr)};`;
+            else str += ";";
+
+            this.scopes.top.members.set(s.name, s.type);
+            return str;
+          }
+
+          case "if": {
+            const code = `if (${this.getExpr(s.expr)}) {${this.getCode(
+              s.code
+            )}}`;
+            if (s.code2) return code + ` else {${this.getCode(s.code2)}}`;
+            return code;
+          }
+
+          case "return":
+            return `return ${s.expr ? this.getExpr(s.expr) : ""}`;
+
+          case "for":
+            return `for (let ${s.name.value} = ${this.getExpr(s.start)}; ${
+              s.name.value
+            } <= ${this.getExpr(s.end)}; ${s.name.value}++) {${this.getCode(
+              s.code
+            )}}`;
+
           default:
             return `// invalid? ${JSON.stringify(s)}`;
         }
       })
       .join("\n");
 
-    this.scopes.pop();
+    if (scope) this.scopes.pop();
     return result;
   }
 
@@ -477,11 +618,18 @@ export default class TSCompiler implements TSScope {
       x._ === "id" ? this.resolveType(x.value) : this.resolveTypeChain(x);
     const n = x._ === "id" ? x.value : this.getQName(x);
 
-    if (s === "tag") return fixName(n);
-    if (this.componentNames.includes(s))
+    if (s.value === "tag") return fixName(n);
+    if (this.componentNames.includes(s.value))
       return `mk${fixName(n)}(${this.getArgs(args)})`;
 
-    if (s === "builtin") return `${n}(${this.getArgs(args)})`;
+    if (s.value === "builtin") return `${n}(${this.getArgs(args)})`;
+
+    if (s.value === "global") {
+      if (n === "grid") return `new RLGrid(${this.getArgs(args)})`;
+      else if (n === "rect") return `new RLRect(${this.getArgs(args)})`;
+    }
+
+    if (s.value === "fn") return `${fixName(n)}(${this.getArgs(args)})`;
 
     return `RL.instance.callNamedFunction("${n}", ${this.getWrappedArgs(
       args
@@ -507,20 +655,32 @@ export default class TSCompiler implements TSScope {
             const type = this.resolveTypeChain(a);
             const name = this.getQName(a);
 
-            if (type === "tag") return fixName(name);
-            else if (type === "system") return "system_" + name;
-            else if (type === "template") return "tm" + name;
-            else if (this.componentNames.includes(type)) return fixName(name);
+            if (type.value === "tag") return fixName(name);
+            else if (type.value === "system") return "system_" + name;
+            else if (type.value === "template") return "tm" + name;
+            else if (type.value === "tile") return fixName(name);
+            else if (type.value === "entity") return fixName(name);
+            else if (this.componentNames.includes(type.value))
+              return fixName(name);
 
-            return `{ type: "${type}", value: ${name} }`;
+            return `{ type: "${type.value}", value: ${name} }`;
           }
 
           case "call": {
-            const type = this.resolveType(a.name.value);
-            if (this.componentNames.includes(type))
+            const type =
+              a.name._ === "id"
+                ? this.resolveType(a.name.value)
+                : this.resolveTypeChain(a.name);
+
+            if (this.componentNames.includes(type.value))
               return this.getCall(a.name, a.args);
 
             throw new CoerceCallError(a);
+          }
+
+          case "binary": {
+            const type = this.getExprType(a);
+            return `{ type: "${type.value}", value: ${this.getExpr(a)} }`;
           }
 
           default:
@@ -546,9 +706,45 @@ export default class TSCompiler implements TSScope {
       .map((p) => {
         if (p._ === "constraint")
           return `{ type: "constraint", typeName: "${p.type}" }`;
-        return `{ type: "param", name: "${p.name}", typeName: "${p.type}" }`;
+        return `{ type: "param", name: "${p.name}", typeName: "${p.type.value}" }`;
       })
       .join(",\n");
+  }
+
+  getTileTypes() {
+    return this.tileTypes
+      .map(
+        (t) =>
+          `const ${fixName(t.name)} = new RLTile('${t.char}', ${Array.from(
+            this.tileFields.entries()
+          )
+            .map(([name, type]) => {
+              const f = t.fields.find((f) => f.name === name);
+              if (f) {
+                if (f._ === "flag") return "true";
+                return this.getExpr(f.expr);
+              } else {
+                switch (type.value) {
+                  case "bool":
+                    return "false";
+                  default:
+                    if (type.optional) return "undefined";
+
+                    throw new Error(
+                      `Unknown default for type "${type.value}}"`
+                    );
+                }
+              }
+            })
+            .join(", ")});`
+      )
+      .join("\n");
+  }
+
+  getGlobals() {
+    return this.globals
+      .map((g) => `let ${g.name}: ${this.getTSType(g.type)};`)
+      .join("\n");
   }
 
   getEnv() {
@@ -560,22 +756,48 @@ export default class TSCompiler implements TSScope {
       .join("\n");
   }
 
-  getTSType(t: string) {
-    switch (t) {
-      case "int":
-        return "number";
-      case "str":
-        return "string";
-      case "char":
-        return "string";
+  getTSOp(s: ASTUnaryOp | ASTBinaryOp) {
+    switch (s) {
+      case "and":
+        return "&&";
 
-      case "entity":
-        return "RLEntity";
-      case "KeyEvent":
-        return "RLKeyEvent";
+      case "not":
+        return "!";
 
       default:
-        if (this.componentNames.includes(t) || this.tagNames.includes(t))
+        return s;
+    }
+  }
+
+  getTSType(t: ASTType): string {
+    const suffix = t.optional ? "|undefined" : "";
+
+    switch (t.value) {
+      case "int":
+        return "number" + suffix;
+      case "str":
+        return "string" + suffix;
+      case "char":
+        return "string" + suffix;
+      case "bool":
+        return "boolean" + suffix;
+
+      case "entity":
+        return "RLEntity" + suffix;
+      case "grid":
+        return "RLGrid" + suffix;
+      case "rect":
+        return "RLRect" + suffix;
+      case "tile":
+        return "RLTile" + suffix;
+      case "KeyEvent":
+        return "RLKeyEvent" + suffix;
+
+      default:
+        if (
+          this.componentNames.includes(t.value) ||
+          this.tagNames.includes(t.value)
+        )
           return fixType(t);
 
         throw new UnknownTypeError(t);
@@ -596,9 +818,11 @@ export default class TSCompiler implements TSScope {
         return `"${e.value.replace('"', '\\"')}"`;
 
       case "unary":
-        return `${e.op}(${this.getExpr(e.value)})`;
+        return `${this.getTSOp(e.op)}(${this.getExpr(e.value)})`;
       case "binary":
-        return `(${this.getExpr(e.left)} ${e.op} ${this.getExpr(e.right)})`;
+        return `(${this.getExpr(e.left)} ${this.getTSOp(e.op)} ${this.getExpr(
+          e.right
+        )})`;
 
       case "match":
         return `((matchvar) => {
@@ -617,10 +841,42 @@ export default class TSCompiler implements TSScope {
     }
   }
 
-  resolveType(name: string, scope: TSScope | undefined = this.scopes.top) {
+  getExprType(e: ASTExpr): ASTType {
+    switch (e._) {
+      case "char":
+      case "int":
+      case "str":
+        return asType(e._);
+
+      case "qname":
+        return this.resolveTypeChain(e);
+
+      case "binary": {
+        const left = this.getExprType(e.left);
+        const right = this.getExprType(e.right);
+
+        if (left.value !== right.value || left.optional !== right.optional)
+          throw new Error(
+            `Cannot apply operator ${e.op} to types "${left.value}${
+              left.optional ? "?" : ""
+            }" and "${right.value}${right.optional ? "?" : ""}"`
+          );
+        return left;
+      }
+
+      default:
+        throw new Error(`Cannot determine type: ${JSON.stringify(e)}`);
+    }
+  }
+
+  resolveType(
+    name: string,
+    scope: TSScope | undefined = this.scopes.top
+  ): ASTType {
     while (scope) {
       const known = scope.members;
-      if (known.has(name)) return known.get(name) as string;
+      const sub = known.get(name);
+      if (sub) return sub;
 
       scope = scope.parent;
     }
@@ -630,18 +886,21 @@ export default class TSCompiler implements TSScope {
 
   resolveTypeChain(q: ASTQName) {
     let scope = this.scopes.top;
-    let type = "scope";
+    let type: ASTType = asType("scope");
 
     for (const name of q.chain) {
       type = this.resolveType(name, scope);
 
       // TODO generalise this
-      if (type === "entity") scope = new EntityScope(scope, this);
-      else if (type === "KeyEvent") scope = new KeyEventScope(scope);
-      else if (this.componentNames.includes(type))
+      if (type.value === "entity") scope = new EntityScope(scope, this);
+      else if (type.value === "grid") scope = new GridScope(scope);
+      else if (type.value === "rect") scope = new RectScope(scope);
+      else if (type.value === "tile") scope = new TileScope(scope, this);
+      else if (type.value === "KeyEvent") scope = new KeyEventScope(scope);
+      else if (this.componentNames.includes(type.value))
         scope = new ComponentScope(
           scope,
-          this.components.find((c) => c.name === type) as ASTComponentDecl
+          this.components.find((c) => c.name === type.value) as ASTComponentDecl
         );
     }
 

@@ -1,6 +1,7 @@
 //#IMPLTYPES
 import Stack from "./Stack";
 import { nanoid } from "nanoid";
+import bresenham from "bresenham";
 
 export type RLFnParam = {
   type: "param";
@@ -40,7 +41,7 @@ export class RLFn {
 
   apply(args: RLArg[]) {
     const resolved = resolveArgs(args, this.params, this.variadic);
-    this.code(...resolved);
+    return this.code(...resolved);
   }
 }
 
@@ -203,6 +204,101 @@ function resolveArgs(
   return results as RLObject[];
 }
 
+export class RLTile {
+  static type: RLObjectType = "tile";
+  type: "tile";
+
+  constructor(public ch: string,
+    //#TILECONSTRUCTOR
+  ) {
+    this.type = "tile";
+  }
+}
+
+export class RLGrid<T> {
+  static type: RLObjectType = "grid";
+  type: "grid";
+  contents: Map<string, T>;
+
+  constructor(public width: number, public height: number, public empty: T) {
+    this.type = "grid";
+    this.contents = new Map<string, T>();
+    this.fill(empty);
+  }
+
+  tag(x: number, y: number) {
+    return `${x},${y}`;
+  }
+
+  at(x: number, y: number) {
+    const tag = this.tag(x, y);
+    return this.contents.get(tag);
+  }
+
+  put(x: number, y: number, item: T) {
+    this.contents.set(this.tag(x, y), item);
+  }
+
+  fill(item: T) {
+    this.rect(0, 0, this.width - 1, this.height - 1, item);
+  }
+
+  rect(sx: number, sy: number, ex: number, ey: number, item: T) {
+    for (let y = sy; y <= ey; y++) {
+      for (let x = sx; x <= ex; x++) {
+        this.put(x, y, item);
+      }
+    }
+  }
+
+  findInRegion(region: RLRect, item: T) {
+    for (let y = region.y; y <= region.y2; y++) {
+      for (let x = region.x; x <= region.x2; x++) {
+        if (this.at(x, y) === item) return true;
+      }
+    }
+
+    return false;
+  }
+
+  line(x1: number, y1: number, x2: number, y2: number, item: T) {
+    bresenham(x1, y1, x2, y2, (x, y) => this.put(x, y, item));
+  }
+
+  draw() {
+    RL.instance.callNamedFunction("drawGrid", { type: "positional", value: this });
+  }
+}
+
+export class RLRect {
+  static type: RLObjectType = "rect";
+  type: "rect";
+
+  constructor(public x: number, public y: number, public width: number, public height: number) {
+    this.type = "rect";
+  }
+
+  get x2() {
+    return this.x + this.width;
+  }
+
+  get y2() {
+    return this.y + this.height;
+  }
+
+  get cx() {
+    return Math.floor(this.x + this.width / 2);
+  }
+
+  get cy() {
+    return Math.floor(this.y + this.height / 2);
+  }
+
+  intersects(o: RLRect) {
+    return this.x <= o.x2 && this.x2 >= o.x && this.y <= o.y2 && this.y2 >= o.y;
+  }
+}
+
 export class RLEntity {
   static type: RLObjectType = "entity";
   type: "entity";
@@ -256,12 +352,15 @@ export type RLObject =
   | RLComponent
   | RLEntity
   | RLFn
+  | RLGrid<unknown>
   | RLInt
   | RLKeyEvent
+  | RLRect
   | RLStr
   | RLSystem
   | RLTag
-  | RLTemplate;
+  | RLTemplate
+  | RLTile;
 export type RLObjectType = RLObject["type"] | RLComponentName | RLTagName;
 export type RLEnv = Map<string, RLObject>;
 
@@ -314,7 +413,7 @@ export default class RL {
     const fn = this.env.get(name);
     if (!fn) throw new Error(`Unknown function: ${name}`);
     if (fn.type !== "fn") throw new Error(`Not a function: ${name}`);
-    fn.apply(args);
+    return fn.apply(args);
   }
 
   runSystem(sys: RLSystem, ...args: RLArg[]) {

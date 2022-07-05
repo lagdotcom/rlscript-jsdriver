@@ -1,0 +1,128 @@
+component Appearance
+  ch: char
+  fg: str
+  bg: str
+end
+
+component OldPosition
+  x: int
+  y: int
+end
+
+component Position
+  x: int
+  y: int
+end
+
+component MoveAction
+  x: int
+  y: int
+end
+
+tag IsPlayer
+tag DrawTiles
+
+template Player
+  IsPlayer
+  Appearance('@', "white", "black")
+end
+
+template NPC
+  Appearance('@', "yellow", "black")
+end
+
+tiletype Floor '.' walkable transparent end
+tiletype Wall '#' end
+global map: grid
+
+system onKey(e: entity, IsPlayer, k: KeyEvent)
+  e.add(match k.key
+    "up"    = MoveAction( 0, -1)
+    "right" = MoveAction( 1,  0)
+    "down"  = MoveAction( 0,  1)
+    "left"  = MoveAction(-1,  0)
+  end)
+end
+
+system movement(e: entity, p: Position, m: MoveAction)
+  local x: int = p.x + m.x
+  local y: int = p.y + m.y
+
+  local t: tile? = map.at(x, y)
+  if t and t.walkable
+    e.add(OldPosition(p.x, p.y))
+    p.x = x
+    p.y = y
+  end
+
+  e.remove(m)
+end
+
+system screenRefresh(e: entity, DrawTiles)
+  map.draw()
+  e.remove(DrawTiles)
+end
+
+system drawAfterMove(e: entity, a: Appearance, o: OldPosition, p: Position)
+  local t: tile? = map.at(o.x, o.y)
+  if t draw(o.x, o.y, t.ch, "silver") end
+
+  e.remove(o)
+  draw(p.x, p.y, a.ch, a.fg, a.bg)
+end
+
+fn drawEntity(e: entity)
+  if e.Position and e.Appearance
+    draw(e.Position.x, e.Position.y, e.Appearance.ch, e.Appearance.fg, e.Appearance.bg)
+  end
+end
+
+fn randomRoom()
+  local w: int = randInt(6, 14)
+  local h: int = randInt(6, 14)
+  local x: int = randInt(1, map.width - w - 1)
+  local y: int = randInt(1, map.height - h - 1)
+  return rect(x, y, w, h)
+end
+
+fn randomCorridor(x1: int, y1: int, x2: int, y2: int)
+  local cx: int = x2
+  local cy: int = y1
+
+  if randInt(0, 1)
+    cx = x1
+    cy = y2
+  end
+
+  map.line(x1, y1, cx, cy, Floor)
+  map.line(cx, cy, x2, y2, Floor)
+end
+
+fn generateDungeon()
+  map = grid(80, 50, Wall)
+
+  local prev: rect?
+  local room: rect
+
+  for r = 1 to 30
+    room = randomRoom()
+    if not map.findInRegion(room, Floor)
+      map.rect(room.x + 1, room.y + 1, room.x2 - 1, room.y2 - 1, Floor)
+      if prev
+        randomCorridor(prev.cx, prev.cy, room.cx, room.cy)
+      else
+        spawn(Player, Position(room.cx, room.cy), OldPosition(0, 0), DrawTiles)
+      end
+
+      prev = room
+    end
+  end
+
+  spawn(NPC, Position(prev.cx, prev.cy), OldPosition(0, 0))
+end
+
+fn main()
+  setSize(80, 50)
+  generateDungeon()
+  pushKeyHandler(onKey)
+end

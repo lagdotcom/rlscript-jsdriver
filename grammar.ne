@@ -7,8 +7,10 @@ const lexer = moo.compile({
     ws:         { match: /[ \t\n\r]+/, lineBreaks: true },
     comment:    { match: /;[^\n]*\n/, lineBreaks: true },
     number:     /[0-9]+/,
-    sqstring:   /'.*?'/,
+    sqstring:   /'.'/,
     dqstring:   /".*?"/,
+    keywords:   ["else", "end", "if", "not", "return"],
+
     word: {
         match: /[a-zA-Z][a-zA-Z0-9_]*/,
     },
@@ -29,6 +31,11 @@ const lexer = moo.compile({
     times: "*",
     divide: "/",
     exp: "^",
+    le: "<=",
+    lt: "<",
+    ge: ">=",
+    gt: ">",
+    qm: "?",
 });
 %}
 @preprocessor typescript
@@ -43,16 +50,20 @@ decl -> componentdecl {% id %}
       | systemdecl {% id %}
       | fndecl {% id %}
       | templatedecl {% id %}
+      | tiletypedecl {% id %}
+      | globaldecl {% id %}
 
 componentdecl -> "component" __ name _ fieldlist "end" {% ([,,name,,fields]) => ({ _: 'component', name: name.value, fields }) %}
 tagdecl -> "tag" __ name {% ([,,name]) => ({ _: 'tag', name: name.value }) %}
 systemdecl -> "system" __ name _ paramlist _ code "end" {% ([,,name,,params,,code]) => ({ _: 'system', name: name.value, params, code }) %}
 fndecl -> "fn" __ name _ paramlist _ code "end" {% ([,,name,,params,,code]) => ({ _: 'fn', name: name.value, params, code }) %}
 templatedecl -> "template" __ name _ templatelist "end" {% ([,,name,,fields]) => ({ _: 'template', name: name.value, fields }) %}
+tiletypedecl -> "tiletype" __ name _ %sqstring _ tiletypefieldlist "end" {% ([,,name,,char,,fields]) => ({ _: 'tiletype', name: name.value, char: char.value.slice(1, -1), fields }) %}
+globaldecl -> "global" __ field {% ([,,field]) => ({ _: 'global', name: field.name, type: field.type }) %}
 
 fieldlist -> fieldp:* {% id %}
-fieldp -> field _ {% id %}
-field -> name _ ":" _ type {% ([name,,,,type]) => ({ _: 'field', name: name.value, type: type.value }) %}
+fieldp -> field __ {% id %}
+field -> name _ ":" _ ntype {% ([name,,,,type]) => ({ _: 'field', name: name.value, type }) %}
 
 paramlist -> "(" _ params _ ")" {% ([,,params]) => params %}
 params -> null {% () => [] %}
@@ -64,12 +75,21 @@ param -> field {% id %}
 templatelist -> templatefieldp:* {% id %}
 templatefieldp -> templatefield _ {% id %}
 templatefield -> name {% ([name]) => ({ _: 'tag', name }) %}
-               | ecall {% id %}
+               | call {% id %}
+
+tiletypefieldlist -> tiletypefieldp:* {% id %}
+tiletypefieldp -> tiletypefield __ {% id %}
+tiletypefield -> name {% ([name]) => ({ _: 'flag', name: name.value }) %}
+               | name _ "=" _ expr {% ([name,,,,expr]) => ({ _: 'field', name: name.value, expr }) %}
 
 code -> stmtp:* {% id %}
 stmtp -> stmt _ {% id %}
 stmt -> call {% id %}
       | assignment {% id %}
+      | local {% id %}
+      | if {% id %}
+      | return {% id %}
+      | for {% id %}
 
 call -> qname arglist {% ([name,args]) => ({ _: 'call', name, args }) %}
 
@@ -81,41 +101,55 @@ assignop -> "=" {% val %}
           | "/=" {% val %}
           | "^=" {% val %}
 
+local -> "local" __ field {% ([,,field]) => ({ _: 'local', name: field.name, type: field.type }) %}
+       | "local" __ field _ "=" _ expr {% ([,,field,,,,expr]) => ({ _: 'local', name: field.name, type: field.type, expr }) %}
+
+if -> "if" __ expr _ code "end" {% ([,,expr,,code]) => ({ _: 'if', expr, code }) %}
+    | "if" __ expr _ code _ "else" _ code "end" {% ([,,expr,,code,,,,code2]) => ({ _: 'if', expr, code, code2 }) %}
+
+return -> "exit" {% () => ({ _: 'return' }) %}
+        | "return" __ expr {% ([,,expr]) => ({ _: 'return', expr }) %}
+
+for -> "for" __ name _ "=" _ expr __ "to" __ expr _ code "end" {% ([,,name,,,,start,,,,end,,code]) => ({ _: 'for', name, start, end, code }) %}
+
 arglist -> "(" _ args _ ")" {% ([,,args,,]) => args %}
 args -> null {% () => [] %}
       | arg
       | args _ "," _ arg {% ([args,,,,arg]) => args.concat(arg) %}
 arg -> expr {% id %}
 
-expr -> qname {% id %}
-      | matchexpr {% id %}
-      | ecall {% id %}
-      | maths {% id %}
-      | nonnumber {% id %}
+expr -> maths {% id %}
 
-ecall -> name arglist {% ([name,args]) => ({ _: 'call', name, args }) %}
-
-maths   -> sum {% id %}
+maths   -> logic {% id %}
+logic   -> logic _ logicop _ sum {% ([left,,op,,right]) => ({ _: 'binary', left, op, right }) %}
+         | sum {% id %}
 sum     -> sum _ sumop _ product {% ([left,,op,,right]) => ({ _: 'binary', left, op, right }) %}
          | product {% id %}
 product -> product _ mulop _ exp {% ([left,,op,,right]) => ({ _: 'binary', left, op, right }) %}
          | exp {% id %}
 exp     -> unary _ expop _ exp {% ([left,,op,,right]) => ({ _: 'binary', left, op, right }) %}
          | unary {% id %}
-unary   -> unaryop number {% ([op,value]) => ({ _: 'unary', op, value }) %}
-         | number {% id %}
+unary   -> "-" number {% ([op,value]) => ({ _: 'unary', op: op.value, value }) %}
+         | "not" _ value {% ([op,,value]) => ({ _: 'unary', op: op.value, value }) %}
+         | value {% id %}
 
+logicop -> "and" {% val %}
 sumop   -> "+" {% val %}
          | "-" {% val %}
 mulop   -> "*" {% val %}
          | "/" {% val %}
 expop   -> "^" {% val %}
-unaryop -> "-" {% val %}
 
-number -> %number {% ([tok]) => ({ _: 'int', value: Number(tok.value) }) %}
+value -> number {% id %}
+       | nonnumber {% id %}
+       | qname {% id %}
+       | call {% id %}
+       | matchexpr {% id %}
 
 nonnumber -> %sqstring {% ([tok]) => ({ _: 'char', value: tok.value[1] }) %}
            | %dqstring {% ([tok]) => ({ _: 'str', value: tok.value.slice(1, -1) }) %}
+
+number -> %number {% ([tok]) => ({ _: 'int', value: Number(tok.value) }) %}
 
 matchexpr -> "match" __ expr _ matchlist _ "end" {% ([,,expr,,matches]) => ({ _: 'match', expr, matches }) %}
 matchlist -> match
@@ -124,6 +158,9 @@ match -> expr _ "=" _ expr {% ([expr,,,,value]) => ({ _: 'case', expr, value }) 
 
 qname -> name {% ([name]) => ({ _: 'qname', chain: [name.value] }) %}
        | qname "." name {% ([qname,,name]) => ({ ...qname, chain: qname.chain.concat(name.value) }) %}
+
+ntype -> type {% ([name]) => ({ _: 'type', value: name.value }) %}
+       | type "?" {% ([name]) => ({ _: 'type', value: name.value, optional: true }) %}
 
 type -> name {% id %}
 name -> %word {% ([tok]) => ({ _: 'id', value: tok.value }) %}

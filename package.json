@@ -17,6 +17,7 @@
   "author": "Lag.Com <lagdotcom@gmail.com>",
   "license": "ISC",
   "dependencies": {
+    "bresenham": "^0.0.4",
     "moo": "^0.5.1",
     "nanoid": "^4.0.0",
     "nearley": "^2.20.1",
@@ -24,6 +25,7 @@
     "wglt": "^0.2.6"
   },
   "devDependencies": {
+    "@types/bresenham": "^0.0.0",
     "@types/jest": "^28.1.4",
     "@types/moo": "^0.5.5",
     "@types/nearley": "^2.11.2",

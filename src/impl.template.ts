@@ -3,11 +3,14 @@ import RL, {
   RLEntity,
   RLEnv,
   RLFn,
+  RLGrid,
   RLKeyEvent,
   RLObject,
+  RLRect,
   RLSystem,
   RLTag,
   RLTemplate,
+  RLTile,
 } from "./RL";
 
 //#TAGTYPES
@@ -15,6 +18,10 @@ import RL, {
 //#COMPONENTMAKERS
 
 //#TEMPLATES
+
+//#TILETYPES
+
+//#GLOBALS
 
 //#FUNCTIONS
 
