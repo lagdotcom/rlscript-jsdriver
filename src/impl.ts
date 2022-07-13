@@ -15,6 +15,7 @@ import RL, {
 
 const IsPlayer = new RLTag("IsPlayer");
 const RecalculateFOV = new RLTag("RecalculateFOV");
+const Redraw = new RLTag("Redraw");
 
 const mkAppearance = (ch: string, fg: string, bg: string): Appearance => ({
   type: "component",
@@ -88,7 +89,7 @@ const fn_drawTileAt = new RLFn("drawTileAt", drawTileAt, [
 ]);
 
 function drawEntity(e: RLEntity) {
-  if (e.Position && e.Appearance) {
+  if (e.Position && e.Appearance && visible.at(e.Position.x, e.Position.y)) {
     RL.instance.callNamedFunction(
       "draw",
       { type: "positional", value: { type: "int", value: e.Position.x } },
@@ -167,8 +168,7 @@ function generateDungeon() {
         RL.instance.callNamedFunction(
           "spawn",
           { type: "positional", value: tmPlayer },
-          { type: "positional", value: mkPosition(room.cx, room.cy) },
-          { type: "positional", value: mkOldPosition(0, 0) }
+          { type: "positional", value: mkPosition(room.cx, room.cy) }
         );
       }
       prev = room;
@@ -177,8 +177,7 @@ function generateDungeon() {
   RL.instance.callNamedFunction(
     "spawn",
     { type: "positional", value: tmNPC },
-    { type: "positional", value: mkPosition(prev.cx, prev.cy) },
-    { type: "positional", value: mkOldPosition(0, 0) }
+    { type: "positional", value: mkPosition(prev.cx, prev.cy) }
   );
 }
 const fn_generateDungeon = new RLFn("generateDungeon", generateDungeon, []);
@@ -249,6 +248,7 @@ function fov(e: RLEntity, p: Position) {
       drawTileAt(x, y);
     }
   }
+  RL.instance.callNamedFunction("add", { type: "positional", value: Redraw });
 }
 const system_fov = new RLSystem("fov", fov, [
   { type: "param", name: "e", typeName: "entity" },
@@ -256,15 +256,28 @@ const system_fov = new RLSystem("fov", fov, [
   { type: "constraint", typeName: "RecalculateFOV" },
 ]);
 
-function drawAfterMove(e: RLEntity, o: OldPosition) {
+function drawUnderTile(e: RLEntity, o: OldPosition) {
   drawTileAt(o.x, o.y);
   e.remove(o);
-  drawEntity(e);
+  e.add(Redraw);
 }
-const system_drawAfterMove = new RLSystem("drawAfterMove", drawAfterMove, [
+const system_drawUnderTile = new RLSystem("drawUnderTile", drawUnderTile, [
   { type: "param", name: "e", typeName: "entity" },
   { type: "param", name: "o", typeName: "OldPosition" },
 ]);
+
+function drawKnownEntities(e: RLEntity) {
+  e.remove(Redraw);
+  drawEntity(e);
+}
+const system_drawKnownEntities = new RLSystem(
+  "drawKnownEntities",
+  drawKnownEntities,
+  [
+    { type: "param", name: "e", typeName: "entity" },
+    { type: "constraint", typeName: "Redraw" },
+  ]
+);
 
 const impl: RLEnv = new Map<string, RLObject>([
   ["drawTileAt", fn_drawTileAt],
@@ -276,9 +289,11 @@ const impl: RLEnv = new Map<string, RLObject>([
   ["onKey", system_onKey],
   ["movement", system_movement],
   ["fov", system_fov],
-  ["drawAfterMove", system_drawAfterMove],
+  ["drawUnderTile", system_drawUnderTile],
+  ["drawKnownEntities", system_drawKnownEntities],
   ["IsPlayer", IsPlayer],
   ["RecalculateFOV", RecalculateFOV],
+  ["Redraw", Redraw],
   ["Player", tmPlayer],
   ["NPC", tmNPC],
 ]);

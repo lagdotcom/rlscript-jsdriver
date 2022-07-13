@@ -21,6 +21,7 @@ end
 
 tag IsPlayer
 tag RecalculateFOV
+tag Redraw
 
 template Player
   IsPlayer
@@ -75,6 +76,8 @@ system fov(e: entity, p: Position, RecalculateFOV)
       drawTileAt(x, y)
     end
   end
+
+  add(Redraw)
 end
 
 fn drawTileAt(x: int, y: int)
@@ -96,14 +99,19 @@ fn drawTileAt(x: int, y: int)
 end
 
 fn drawEntity(e: entity)
-  if e.Position and e.Appearance
+  if e.Position and e.Appearance and visible.at(e.Position.x, e.Position.y)
     draw(e.Position.x, e.Position.y, e.Appearance.ch, e.Appearance.fg, e.Appearance.bg)
   end
 end
 
-system drawAfterMove(e: entity, o: OldPosition)
+system drawUnderTile(e: entity, o: OldPosition)
   drawTileAt(o.x, o.y)
   e.remove(o)
+  e.add(Redraw)
+end
+
+system drawKnownEntities(e: entity, Redraw)
+  e.remove(Redraw)
   drawEntity(e)
 end
 
@@ -143,14 +151,14 @@ fn generateDungeon()
       if prev
         randomCorridor(prev.cx, prev.cy, room.cx, room.cy)
       else
-        spawn(Player, Position(room.cx, room.cy), OldPosition(0, 0))
+        spawn(Player, Position(room.cx, room.cy))
       end
 
       prev = room
     end
   end
 
-  spawn(NPC, Position(prev.cx, prev.cy), OldPosition(0, 0))
+  spawn(NPC, Position(prev.cx, prev.cy))
 end
 
 fn main()

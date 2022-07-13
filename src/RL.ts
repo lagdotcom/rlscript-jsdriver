@@ -70,6 +70,7 @@ function isConstraint(p: RLSystemParam) {
     "MoveAction",
     "IsPlayer",
     "RecalculateFOV",
+    "Redraw",
   ].includes(p.typeName);
 }
 function isExternal(p: RLSystemParam): p is RLFnParam {
@@ -336,6 +337,7 @@ export class RLEntity {
   MoveAction?: MoveAction;
   IsPlayer: boolean;
   RecalculateFOV: boolean;
+  Redraw: boolean;
 
   constructor() {
     this.type = "entity";
@@ -343,6 +345,7 @@ export class RLEntity {
     this.components = new Set();
     this.IsPlayer = false;
     this.RecalculateFOV = false;
+    this.Redraw = false;
   }
 
   has(name: RLObjectType) {

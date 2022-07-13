@@ -932,7 +932,8 @@
       "Position",
       "MoveAction",
       "IsPlayer",
-      "RecalculateFOV"
+      "RecalculateFOV",
+      "Redraw"
     ].includes(p.typeName);
   }
   function isExternal(p) {
@@ -1125,6 +1126,7 @@
       this.components = /* @__PURE__ */ new Set();
       this.IsPlayer = false;
       this.RecalculateFOV = false;
+      this.Redraw = false;
     }
     has(name) {
       return this.components.has(name);
@@ -1275,6 +1277,7 @@
   // src/impl.ts
   var IsPlayer = new RLTag("IsPlayer");
   var RecalculateFOV = new RLTag("RecalculateFOV");
+  var Redraw = new RLTag("Redraw");
   var mkAppearance = (ch, fg, bg) => ({
     type: "component",
     typeName: "Appearance",
@@ -1336,7 +1339,7 @@
     { type: "param", name: "y", typeName: "int" }
   ]);
   function drawEntity(e) {
-    if (e.Position && e.Appearance) {
+    if (e.Position && e.Appearance && visible.at(e.Position.x, e.Position.y)) {
       RL.instance.callNamedFunction("draw", { type: "positional", value: { type: "int", value: e.Position.x } }, { type: "positional", value: { type: "int", value: e.Position.y } }, { type: "positional", value: { type: "char", value: e.Appearance.ch } }, { type: "positional", value: { type: "str", value: e.Appearance.fg } }, { type: "positional", value: { type: "str", value: e.Appearance.bg } });
     }
   }
@@ -1380,12 +1383,12 @@
         if (prev) {
           randomCorridor(prev.cx, prev.cy, room.cx, room.cy);
         } else {
-          RL.instance.callNamedFunction("spawn", { type: "positional", value: tmPlayer }, { type: "positional", value: mkPosition(room.cx, room.cy) }, { type: "positional", value: mkOldPosition(0, 0) });
+          RL.instance.callNamedFunction("spawn", { type: "positional", value: tmPlayer }, { type: "positional", value: mkPosition(room.cx, room.cy) });
         }
         prev = room;
       }
     }
-    RL.instance.callNamedFunction("spawn", { type: "positional", value: tmNPC }, { type: "positional", value: mkPosition(prev.cx, prev.cy) }, { type: "positional", value: mkOldPosition(0, 0) });
+    RL.instance.callNamedFunction("spawn", { type: "positional", value: tmNPC }, { type: "positional", value: mkPosition(prev.cx, prev.cy) });
   }
   var fn_generateDungeon = new RLFn("generateDungeon", generateDungeon, []);
   function main() {
@@ -1441,20 +1444,29 @@
         drawTileAt(x, y);
       }
     }
+    RL.instance.callNamedFunction("add", { type: "positional", value: Redraw });
   }
   var system_fov = new RLSystem("fov", fov, [
     { type: "param", name: "e", typeName: "entity" },
     { type: "param", name: "p", typeName: "Position" },
     { type: "constraint", typeName: "RecalculateFOV" }
   ]);
-  function drawAfterMove(e, o) {
+  function drawUnderTile(e, o) {
     drawTileAt(o.x, o.y);
     e.remove(o);
-    drawEntity(e);
+    e.add(Redraw);
   }
-  var system_drawAfterMove = new RLSystem("drawAfterMove", drawAfterMove, [
+  var system_drawUnderTile = new RLSystem("drawUnderTile", drawUnderTile, [
     { type: "param", name: "e", typeName: "entity" },
     { type: "param", name: "o", typeName: "OldPosition" }
+  ]);
+  function drawKnownEntities(e) {
+    e.remove(Redraw);
+    drawEntity(e);
+  }
+  var system_drawKnownEntities = new RLSystem("drawKnownEntities", drawKnownEntities, [
+    { type: "param", name: "e", typeName: "entity" },
+    { type: "constraint", typeName: "Redraw" }
   ]);
   var impl = /* @__PURE__ */ new Map([
     ["drawTileAt", fn_drawTileAt],
@@ -1466,9 +1478,11 @@
     ["onKey", system_onKey],
     ["movement", system_movement],
     ["fov", system_fov],
-    ["drawAfterMove", system_drawAfterMove],
+    ["drawUnderTile", system_drawUnderTile],
+    ["drawKnownEntities", system_drawKnownEntities],
     ["IsPlayer", IsPlayer],
     ["RecalculateFOV", RecalculateFOV],
+    ["Redraw", Redraw],
     ["Player", tmPlayer],
     ["NPC", tmNPC]
   ]);
@@ -2490,7 +2504,14 @@
       explored2.put(pos.x, pos.y, true);
     }
   }
+  function add(...args) {
+    for (const a of args) {
+      for (const e of RL.instance.entities.values())
+        e.add(a);
+    }
+  }
   var lib = /* @__PURE__ */ new Map([
+    ["add", new RLFn("add", add, [], ["component", "tag"])],
     [
       "draw",
       new RLFn("draw", draw, [

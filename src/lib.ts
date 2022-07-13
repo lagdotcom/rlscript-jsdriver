@@ -1,5 +1,6 @@
 import { ComputeVisibility, ShadowCastingGrid } from "./RecursiveShadowCasting";
-import {
+import Game from "./Game";
+import RL, {
   RLChar,
   RLEntity,
   RLEnv,
@@ -12,7 +13,6 @@ import {
   RLTemplate,
   RLTile,
 } from "./RL";
-import Game from "./Game";
 import { RLComponent } from "./implTypes";
 import { TinyColor } from "tinycolor-ts";
 
@@ -94,7 +94,14 @@ function getFOV(
   }
 }
 
+function add(...args: (RLComponent | RLTag)[]) {
+  for (const a of args) {
+    for (const e of RL.instance.entities.values()) e.add(a);
+  }
+}
+
 const lib: RLEnv = new Map([
+  ["add", new RLFn("add", add, [], ["component", "tag"])],
   [
     "draw",
     new RLFn("draw", draw, [

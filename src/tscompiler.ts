@@ -319,6 +319,7 @@ export default class TSCompiler implements TSScope {
     this.tileTypes = [];
 
     this.members = new Map<string, ASTType>([
+      ["add", globalType],
       ["draw", globalType],
       ["getFOV", globalType],
       ["grid", globalType],
