@@ -1500,12 +1500,12 @@
       this.isOpaque = isOpaque;
       this.values = /* @__PURE__ */ new Map();
     }
-    setLight(x, y, value) {
+    light(x, y, value) {
       this.values.set({ x, y }, value);
     }
   };
   function ComputeVisibility(grid, gridPosn, viewRadius) {
-    grid.setLight(gridPosn.x, gridPosn.y, 0);
+    grid.light(gridPosn.x, gridPosn.y, 0);
     for (const tf of transforms)
       CastLight(grid, gridPosn, viewRadius, 1, 1, 0, tf);
   }
@@ -1533,7 +1533,7 @@
         }
         const distanceSquared = xc * xc + yc * yc;
         if (distanceSquared <= viewRadiusSq) {
-          grid.setLight(gridX, gridY, distanceSquared);
+          grid.light(gridX, gridY, distanceSquared);
         }
         const curBlocked = grid.isOpaque(gridX, gridY);
         if (prevWasBlocked) {
