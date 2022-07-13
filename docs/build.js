@@ -877,6 +877,9 @@
     }
   };
 
+  // src/RL.ts
+  var import_bresenham = __toESM(require_bresenham());
+
   // node_modules/nanoid/index.browser.js
   var nanoid = (size = 21) => crypto.getRandomValues(new Uint8Array(size)).reduce((id, byte) => {
     byte &= 63;
@@ -893,7 +896,6 @@
   }, "");
 
   // src/RL.ts
-  var import_bresenham = __toESM(require_bresenham());
   var RLComponentType = class {
     constructor(name, data) {
       this.name = name;
@@ -930,7 +932,7 @@
       "Position",
       "MoveAction",
       "IsPlayer",
-      "DrawTiles"
+      "RecalculateFOV"
     ].includes(p.typeName);
   }
   function isExternal(p) {
@@ -1122,7 +1124,7 @@
       this.id = nanoid();
       this.components = /* @__PURE__ */ new Set();
       this.IsPlayer = false;
-      this.DrawTiles = false;
+      this.RecalculateFOV = false;
     }
     has(name) {
       return this.components.has(name);
@@ -1272,7 +1274,7 @@
 
   // src/impl.ts
   var IsPlayer = new RLTag("IsPlayer");
-  var DrawTiles = new RLTag("DrawTiles");
+  var RecalculateFOV = new RLTag("RecalculateFOV");
   var mkAppearance = (ch, fg, bg) => ({
     type: "component",
     typeName: "Appearance",
@@ -1301,7 +1303,7 @@
   var tmPlayer = {
     type: "template",
     name: "Player",
-    get: () => [IsPlayer, mkAppearance("@", "white", "black")]
+    get: () => [IsPlayer, mkAppearance("@", "white", "black"), RecalculateFOV]
   };
   var tmNPC = {
     type: "template",
@@ -1311,6 +1313,28 @@
   var Floor = new RLTile(".", true, true);
   var Wall = new RLTile("#", false, false);
   var map;
+  var explored;
+  var visible;
+  function drawTileAt(x, y) {
+    let ch = " ";
+    let fg = "white";
+    if (explored.at(x, y)) {
+      const t = map.at(x, y);
+      if (t) {
+        ch = t.ch;
+        if (visible.at(x, y)) {
+          fg = "silver";
+        } else {
+          fg = "#444";
+        }
+      }
+    }
+    RL.instance.callNamedFunction("draw", { type: "positional", value: { type: "int", value: x } }, { type: "positional", value: { type: "int", value: y } }, { type: "positional", value: { type: "char", value: ch } }, { type: "positional", value: { type: "str", value: fg } });
+  }
+  var fn_drawTileAt = new RLFn("drawTileAt", drawTileAt, [
+    { type: "param", name: "x", typeName: "int" },
+    { type: "param", name: "y", typeName: "int" }
+  ]);
   function drawEntity(e) {
     if (e.Position && e.Appearance) {
       RL.instance.callNamedFunction("draw", { type: "positional", value: { type: "int", value: e.Position.x } }, { type: "positional", value: { type: "int", value: e.Position.y } }, { type: "positional", value: { type: "char", value: e.Appearance.ch } }, { type: "positional", value: { type: "str", value: e.Appearance.fg } }, { type: "positional", value: { type: "str", value: e.Appearance.bg } });
@@ -1345,6 +1369,8 @@
   ]);
   function generateDungeon() {
     map = new RLGrid(80, 50, Wall);
+    explored = new RLGrid(80, 50, false);
+    visible = new RLGrid(80, 50, false);
     let prev;
     let room;
     for (let r = 1; r <= 30; r++) {
@@ -1354,7 +1380,7 @@
         if (prev) {
           randomCorridor(prev.cx, prev.cy, room.cx, room.cy);
         } else {
-          RL.instance.callNamedFunction("spawn", { type: "positional", value: tmPlayer }, { type: "positional", value: mkPosition(room.cx, room.cy) }, { type: "positional", value: mkOldPosition(0, 0) }, { type: "positional", value: DrawTiles });
+          RL.instance.callNamedFunction("spawn", { type: "positional", value: tmPlayer }, { type: "positional", value: mkPosition(room.cx, room.cy) }, { type: "positional", value: mkOldPosition(0, 0) });
         }
         prev = room;
       }
@@ -1396,6 +1422,9 @@
       e.add(mkOldPosition(p.x, p.y));
       p.x = x;
       p.y = y;
+      if (e.IsPlayer) {
+        e.add(RecalculateFOV);
+      }
     }
     e.remove(m);
   }
@@ -1404,29 +1433,31 @@
     { type: "param", name: "p", typeName: "Position" },
     { type: "param", name: "m", typeName: "MoveAction" }
   ]);
-  function screenRefresh(e) {
-    map.draw();
-    e.remove(DrawTiles);
-  }
-  var system_screenRefresh = new RLSystem("screenRefresh", screenRefresh, [
-    { type: "param", name: "e", typeName: "entity" },
-    { type: "constraint", typeName: "DrawTiles" }
-  ]);
-  function drawAfterMove(e, a, o, p) {
-    const t = map.at(o.x, o.y);
-    if (t) {
-      RL.instance.callNamedFunction("draw", { type: "positional", value: { type: "int", value: o.x } }, { type: "positional", value: { type: "int", value: o.y } }, { type: "positional", value: { type: "char", value: t.ch } }, { type: "positional", value: { type: "str", value: "silver" } });
+  function fov(e, p) {
+    RL.instance.callNamedFunction("getFOV", { type: "positional", value: { type: "grid", value: map } }, { type: "positional", value: { type: "int", value: p.x } }, { type: "positional", value: { type: "int", value: p.y } }, { type: "positional", value: { type: "int", value: 5 } }, { type: "positional", value: { type: "grid", value: visible } }, { type: "positional", value: { type: "grid", value: explored } });
+    e.remove(RecalculateFOV);
+    for (let x = 0; x <= 80; x++) {
+      for (let y = 0; y <= 50; y++) {
+        drawTileAt(x, y);
+      }
     }
+  }
+  var system_fov = new RLSystem("fov", fov, [
+    { type: "param", name: "e", typeName: "entity" },
+    { type: "param", name: "p", typeName: "Position" },
+    { type: "constraint", typeName: "RecalculateFOV" }
+  ]);
+  function drawAfterMove(e, o) {
+    drawTileAt(o.x, o.y);
     e.remove(o);
-    RL.instance.callNamedFunction("draw", { type: "positional", value: { type: "int", value: p.x } }, { type: "positional", value: { type: "int", value: p.y } }, { type: "positional", value: { type: "char", value: a.ch } }, { type: "positional", value: { type: "str", value: a.fg } }, { type: "positional", value: { type: "str", value: a.bg } });
+    drawEntity(e);
   }
   var system_drawAfterMove = new RLSystem("drawAfterMove", drawAfterMove, [
     { type: "param", name: "e", typeName: "entity" },
-    { type: "param", name: "a", typeName: "Appearance" },
-    { type: "param", name: "o", typeName: "OldPosition" },
-    { type: "param", name: "p", typeName: "Position" }
+    { type: "param", name: "o", typeName: "OldPosition" }
   ]);
   var impl = /* @__PURE__ */ new Map([
+    ["drawTileAt", fn_drawTileAt],
     ["drawEntity", fn_drawEntity],
     ["randomRoom", fn_randomRoom],
     ["randomCorridor", fn_randomCorridor],
@@ -1434,14 +1465,99 @@
     ["main", fn_main],
     ["onKey", system_onKey],
     ["movement", system_movement],
-    ["screenRefresh", system_screenRefresh],
+    ["fov", system_fov],
     ["drawAfterMove", system_drawAfterMove],
     ["IsPlayer", IsPlayer],
-    ["DrawTiles", DrawTiles],
+    ["RecalculateFOV", RecalculateFOV],
     ["Player", tmPlayer],
     ["NPC", tmNPC]
   ]);
   var impl_default = impl;
+
+  // src/RecursiveShadowCasting.ts
+  var OctantTransform = class {
+    constructor(xx, xy, yx, yy) {
+      this.xx = xx;
+      this.xy = xy;
+      this.yx = yx;
+      this.yy = yy;
+    }
+  };
+  var transforms = [
+    new OctantTransform(1, 0, 0, 1),
+    new OctantTransform(0, 1, 1, 0),
+    new OctantTransform(0, -1, 1, 0),
+    new OctantTransform(-1, 0, 0, 1),
+    new OctantTransform(-1, 0, 0, -1),
+    new OctantTransform(0, -1, -1, 0),
+    new OctantTransform(0, 1, -1, 0),
+    new OctantTransform(1, 0, 0, -1)
+  ];
+  var ShadowCastingGrid = class {
+    constructor(width, height, isOpaque) {
+      this.width = width;
+      this.height = height;
+      this.isOpaque = isOpaque;
+      this.values = /* @__PURE__ */ new Map();
+    }
+    setLight(x, y, value) {
+      this.values.set({ x, y }, value);
+    }
+  };
+  function ComputeVisibility(grid, gridPosn, viewRadius) {
+    grid.setLight(gridPosn.x, gridPosn.y, 0);
+    for (const tf of transforms)
+      CastLight(grid, gridPosn, viewRadius, 1, 1, 0, tf);
+  }
+  function CastLight(grid, gridPosn, viewRadius, startColumn, leftViewSlope, rightViewSlope, txfrm) {
+    const viewRadiusSq = viewRadius * viewRadius;
+    const viewCeiling = Math.ceil(viewRadius);
+    let prevWasBlocked = false;
+    let savedRightSlope = -1;
+    const xDim = grid.width;
+    const yDim = grid.height;
+    for (let currentCol = startColumn; currentCol <= viewCeiling; currentCol++) {
+      const xc = currentCol;
+      for (let yc = currentCol; yc >= 0; yc--) {
+        const gridX = gridPosn.x + xc * txfrm.xx + yc * txfrm.xy;
+        const gridY = gridPosn.y + xc * txfrm.yx + yc * txfrm.yy;
+        if (gridX < 0 || gridX >= xDim || gridY < 0 || gridY >= yDim) {
+          continue;
+        }
+        const leftBlockSlope = (yc + 0.5) / (xc - 0.5);
+        const rightBlockSlope = (yc - 0.5) / (xc + 0.5);
+        if (rightBlockSlope > leftViewSlope) {
+          continue;
+        } else if (leftBlockSlope < rightViewSlope) {
+          break;
+        }
+        const distanceSquared = xc * xc + yc * yc;
+        if (distanceSquared <= viewRadiusSq) {
+          grid.setLight(gridX, gridY, distanceSquared);
+        }
+        const curBlocked = grid.isOpaque(gridX, gridY);
+        if (prevWasBlocked) {
+          if (curBlocked) {
+            savedRightSlope = rightBlockSlope;
+          } else {
+            prevWasBlocked = false;
+            leftViewSlope = savedRightSlope;
+          }
+        } else {
+          if (curBlocked) {
+            if (leftBlockSlope <= leftViewSlope) {
+              CastLight(grid, gridPosn, viewRadius, currentCol + 1, leftViewSlope, leftBlockSlope, txfrm);
+            }
+            prevWasBlocked = true;
+            savedRightSlope = rightBlockSlope;
+          }
+        }
+      }
+      if (prevWasBlocked) {
+        break;
+      }
+    }
+  }
 
   // node_modules/tinycolor-ts/dist/module/util.js
   function bound01(n, max) {
@@ -2350,7 +2466,7 @@
     const b = bg ? new TinyColor(bg.value).toNumber() << 8 : void 0;
     Game.instance.terminal.drawChar(x, y, ch, f, b);
   }
-  function drawGrid(g) {
+  function drawGrid({ value: g }) {
     for (let y = 0; y < g.height; y++) {
       for (let x = 0; x < g.width; x++) {
         const t = g.at(x, y);
@@ -2361,6 +2477,18 @@
   }
   function randInt({ value: min }, { value: max }) {
     return Math.floor(Math.random() * (max + 1 - min) + min);
+  }
+  function getFOV({ value: tiles }, { value: x }, { value: y }, { value: radius }, { value: visible2 }, { value: explored2 }) {
+    visible2.fill(visible2.empty);
+    const grid = new ShadowCastingGrid(tiles.width, tiles.height, (x2, y2) => {
+      var _a;
+      return !((_a = tiles.at(x2, y2)) == null ? void 0 : _a.transparent);
+    });
+    ComputeVisibility(grid, { x, y }, radius);
+    for (const pos of grid.values.keys()) {
+      visible2.put(pos.x, pos.y, true);
+      explored2.put(pos.x, pos.y, true);
+    }
   }
   var lib = /* @__PURE__ */ new Map([
     [
@@ -2387,6 +2515,17 @@
       "drawGrid",
       new RLFn("drawGrid", drawGrid, [
         { type: "param", typeName: "grid", name: "g" }
+      ])
+    ],
+    [
+      "getFOV",
+      new RLFn("getFOV", getFOV, [
+        { type: "param", typeName: "grid", name: "tiles" },
+        { type: "param", typeName: "int", name: "x" },
+        { type: "param", typeName: "int", name: "y" },
+        { type: "param", typeName: "int", name: "radius" },
+        { type: "param", typeName: "grid", name: "visible" },
+        { type: "param", typeName: "grid", name: "explored" }
       ])
     ],
     [

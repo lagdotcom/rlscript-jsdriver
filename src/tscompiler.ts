@@ -182,6 +182,17 @@ class FnScope implements TSScope {
   }
 }
 
+class ForScope implements TSScope {
+  name: string;
+  members: Map<string, ASTType>;
+
+  constructor(public parent: TSScope, public loopvar: string) {
+    this.name = `for[${loopvar}]`;
+
+    this.members = new Map<string, ASTType>([[loopvar, intType]]);
+  }
+}
+
 class EntityScope implements TSScope {
   name: "entity";
   constructor(public parent: TSScope, public compiler: TSCompiler) {
@@ -309,6 +320,7 @@ export default class TSCompiler implements TSScope {
 
     this.members = new Map<string, ASTType>([
       ["draw", globalType],
+      ["getFOV", globalType],
       ["grid", globalType],
       ["pushKeyHandler", globalType],
       ["randInt", globalType],
@@ -593,7 +605,8 @@ export default class TSCompiler implements TSScope {
             return `for (let ${s.name.value} = ${this.getExpr(s.start)}; ${
               s.name.value
             } <= ${this.getExpr(s.end)}; ${s.name.value}++) {${this.getCode(
-              s.code
+              s.code,
+              new ForScope(scope || this.scopes.top, s.name.value)
             )}}`;
 
           default:
@@ -816,6 +829,8 @@ export default class TSCompiler implements TSScope {
       case "char":
       case "str":
         return `"${e.value.replace('"', '\\"')}"`;
+      case "bool":
+        return e.value ? "true" : "false";
 
       case "unary":
         return `${this.getTSOp(e.op)}(${this.getExpr(e.value)})`;

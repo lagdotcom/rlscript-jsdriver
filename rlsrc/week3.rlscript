@@ -1,0 +1,160 @@
+component Appearance
+  ch: char
+  fg: str
+  bg: str
+end
+
+component OldPosition
+  x: int
+  y: int
+end
+
+component Position
+  x: int
+  y: int
+end
+
+component MoveAction
+  x: int
+  y: int
+end
+
+tag IsPlayer
+tag RecalculateFOV
+
+template Player
+  IsPlayer
+  Appearance('@', "white", "black")
+  RecalculateFOV
+end
+
+template NPC
+  Appearance('@', "yellow", "black")
+end
+
+tiletype Floor '.' walkable transparent end
+tiletype Wall '#' end
+global map: grid
+global explored: grid
+global visible: grid
+
+system onKey(e: entity, IsPlayer, k: KeyEvent)
+  e.add(match k.key
+    "up"    = MoveAction( 0, -1)
+    "right" = MoveAction( 1,  0)
+    "down"  = MoveAction( 0,  1)
+    "left"  = MoveAction(-1,  0)
+  end)
+end
+
+system movement(e: entity, p: Position, m: MoveAction)
+  local x: int = p.x + m.x
+  local y: int = p.y + m.y
+
+  local t: tile? = map.at(x, y)
+  if t and t.walkable
+    e.add(OldPosition(p.x, p.y))
+    p.x = x
+    p.y = y
+
+    if e.IsPlayer
+      e.add(RecalculateFOV)
+    end
+  end
+
+  e.remove(m)
+end
+
+system fov(e: entity, p: Position, RecalculateFOV)
+  getFOV(map, p.x, p.y, 5, visible, explored)
+  e.remove(RecalculateFOV)
+
+  ;; TODO this is kinda inefficient
+  for x = 0 to 80
+    for y = 0 to 50
+      drawTileAt(x, y)
+    end
+  end
+end
+
+fn drawTileAt(x: int, y: int)
+  local ch: char = ' '
+  local fg: str = "white"
+
+  if explored.at(x, y)
+    local t: tile? = map.at(x, y)
+    if t
+      ch = t.ch
+      if visible.at(x, y)
+        fg = "silver"
+      else
+        fg = "#444"
+      end
+    end
+  end
+  draw(x, y, ch, fg)
+end
+
+fn drawEntity(e: entity)
+  if e.Position and e.Appearance
+    draw(e.Position.x, e.Position.y, e.Appearance.ch, e.Appearance.fg, e.Appearance.bg)
+  end
+end
+
+system drawAfterMove(e: entity, o: OldPosition)
+  drawTileAt(o.x, o.y)
+  e.remove(o)
+  drawEntity(e)
+end
+
+fn randomRoom()
+  local w: int = randInt(6, 14)
+  local h: int = randInt(6, 14)
+  local x: int = randInt(1, map.width - w - 1)
+  local y: int = randInt(1, map.height - h - 1)
+  return rect(x, y, w, h)
+end
+
+fn randomCorridor(x1: int, y1: int, x2: int, y2: int)
+  local cx: int = x2
+  local cy: int = y1
+
+  if randInt(0, 1)
+    cx = x1
+    cy = y2
+  end
+
+  map.line(x1, y1, cx, cy, Floor)
+  map.line(cx, cy, x2, y2, Floor)
+end
+
+fn generateDungeon()
+  map = grid(80, 50, Wall)
+  explored = grid(80, 50, false)
+  visible = grid(80, 50, false)
+
+  local prev: rect?
+  local room: rect
+
+  for r = 1 to 30
+    room = randomRoom()
+    if not map.findInRegion(room, Floor)
+      map.rect(room.x + 1, room.y + 1, room.x2 - 1, room.y2 - 1, Floor)
+      if prev
+        randomCorridor(prev.cx, prev.cy, room.cx, room.cy)
+      else
+        spawn(Player, Position(room.cx, room.cy), OldPosition(0, 0))
+      end
+
+      prev = room
+    end
+  end
+
+  spawn(NPC, Position(prev.cx, prev.cy), OldPosition(0, 0))
+end
+
+fn main()
+  setSize(80, 50)
+  generateDungeon()
+  pushKeyHandler(onKey)
+end

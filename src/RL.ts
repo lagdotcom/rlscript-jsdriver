@@ -8,8 +8,8 @@ import {
   RLTagName,
 } from "./implTypes";
 import Stack from "./Stack";
-import { nanoid } from "nanoid";
 import bresenham from "bresenham";
+import { nanoid } from "nanoid";
 
 export type RLFnParam = {
   type: "param";
@@ -69,7 +69,7 @@ function isConstraint(p: RLSystemParam) {
     "Position",
     "MoveAction",
     "IsPlayer",
-    "DrawTiles",
+    "RecalculateFOV",
   ].includes(p.typeName);
 }
 function isExternal(p: RLSystemParam): p is RLFnParam {
@@ -335,14 +335,14 @@ export class RLEntity {
   Position?: Position;
   MoveAction?: MoveAction;
   IsPlayer: boolean;
-  DrawTiles: boolean;
+  RecalculateFOV: boolean;
 
   constructor() {
     this.type = "entity";
     this.id = nanoid();
     this.components = new Set();
     this.IsPlayer = false;
-    this.DrawTiles = false;
+    this.RecalculateFOV = false;
   }
 
   has(name: RLObjectType) {

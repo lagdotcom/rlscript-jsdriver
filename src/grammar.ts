@@ -20,7 +20,7 @@ const lexer = moo.compile({
     number:     /[0-9]+/,
     sqstring:   /'.'/,
     dqstring:   /".*?"/,
-    keywords:   ["else", "end", "if", "not", "return"],
+    keywords:   ["else", "end", "false", "if", "not", "return", "true"],
 
     word: {
         match: /[a-zA-Z][a-zA-Z0-9_]*/,
@@ -177,6 +177,8 @@ const grammar: Grammar = {
     {"name": "value", "symbols": ["matchexpr"], "postprocess": id},
     {"name": "nonnumber", "symbols": [(lexer.has("sqstring") ? {type: "sqstring"} : sqstring)], "postprocess": ([tok]) => ({ _: 'char', value: tok.value[1] })},
     {"name": "nonnumber", "symbols": [(lexer.has("dqstring") ? {type: "dqstring"} : dqstring)], "postprocess": ([tok]) => ({ _: 'str', value: tok.value.slice(1, -1) })},
+    {"name": "nonnumber", "symbols": [{"literal":"true"}], "postprocess": () => ({ _: 'bool', value: true })},
+    {"name": "nonnumber", "symbols": [{"literal":"false"}], "postprocess": () => ({ _: 'bool', value: false })},
     {"name": "number", "symbols": [(lexer.has("number") ? {type: "number"} : number)], "postprocess": ([tok]) => ({ _: 'int', value: Number(tok.value) })},
     {"name": "matchexpr", "symbols": [{"literal":"match"}, "__", "expr", "_", "matchlist", "_", {"literal":"end"}], "postprocess": ([,,expr,,matches]) => ({ _: 'match', expr, matches })},
     {"name": "matchlist", "symbols": ["match"]},

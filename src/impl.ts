@@ -14,7 +14,7 @@ import RL, {
 } from "./RL";
 
 const IsPlayer = new RLTag("IsPlayer");
-const DrawTiles = new RLTag("DrawTiles");
+const RecalculateFOV = new RLTag("RecalculateFOV");
 
 const mkAppearance = (ch: string, fg: string, bg: string): Appearance => ({
   type: "component",
@@ -45,7 +45,7 @@ const mkMoveAction = (x: number, y: number): MoveAction => ({
 const tmPlayer: RLTemplate = {
   type: "template",
   name: "Player",
-  get: () => [IsPlayer, mkAppearance("@", "white", "black")],
+  get: () => [IsPlayer, mkAppearance("@", "white", "black"), RecalculateFOV],
 };
 const tmNPC: RLTemplate = {
   type: "template",
@@ -57,6 +57,35 @@ const Floor = new RLTile(".", true, true);
 const Wall = new RLTile("#", false, false);
 
 let map: RLGrid;
+let explored: RLGrid;
+let visible: RLGrid;
+
+function drawTileAt(x: number, y: number) {
+  let ch = " ";
+  let fg = "white";
+  if (explored.at(x, y)) {
+    const t: RLTile | undefined = map.at(x, y);
+    if (t) {
+      ch = t.ch;
+      if (visible.at(x, y)) {
+        fg = "silver";
+      } else {
+        fg = "#444";
+      }
+    }
+  }
+  RL.instance.callNamedFunction(
+    "draw",
+    { type: "positional", value: { type: "int", value: x } },
+    { type: "positional", value: { type: "int", value: y } },
+    { type: "positional", value: { type: "char", value: ch } },
+    { type: "positional", value: { type: "str", value: fg } }
+  );
+}
+const fn_drawTileAt = new RLFn("drawTileAt", drawTileAt, [
+  { type: "param", name: "x", typeName: "int" },
+  { type: "param", name: "y", typeName: "int" },
+]);
 
 function drawEntity(e: RLEntity) {
   if (e.Position && e.Appearance) {
@@ -124,6 +153,8 @@ const fn_randomCorridor = new RLFn("randomCorridor", randomCorridor, [
 
 function generateDungeon() {
   map = new RLGrid(80, 50, Wall);
+  explored = new RLGrid(80, 50, false);
+  visible = new RLGrid(80, 50, false);
   let prev: RLRect | undefined;
   let room: RLRect;
   for (let r = 1; r <= 30; r++) {
@@ -137,8 +168,7 @@ function generateDungeon() {
           "spawn",
           { type: "positional", value: tmPlayer },
           { type: "positional", value: mkPosition(room.cx, room.cy) },
-          { type: "positional", value: mkOldPosition(0, 0) },
-          { type: "positional", value: DrawTiles }
+          { type: "positional", value: mkOldPosition(0, 0) }
         );
       }
       prev = room;
@@ -191,6 +221,9 @@ function movement(e: RLEntity, p: Position, m: MoveAction) {
     e.add(mkOldPosition(p.x, p.y));
     p.x = x;
     p.y = y;
+    if (e.IsPlayer) {
+      e.add(RecalculateFOV);
+    }
   }
   e.remove(m);
 }
@@ -200,49 +233,41 @@ const system_movement = new RLSystem("movement", movement, [
   { type: "param", name: "m", typeName: "MoveAction" },
 ]);
 
-function screenRefresh(e: RLEntity) {
-  map.draw();
-  e.remove(DrawTiles);
-}
-const system_screenRefresh = new RLSystem("screenRefresh", screenRefresh, [
-  { type: "param", name: "e", typeName: "entity" },
-  { type: "constraint", typeName: "DrawTiles" },
-]);
-
-function drawAfterMove(
-  e: RLEntity,
-  a: Appearance,
-  o: OldPosition,
-  p: Position
-) {
-  const t: RLTile | undefined = map.at(o.x, o.y);
-  if (t) {
-    RL.instance.callNamedFunction(
-      "draw",
-      { type: "positional", value: { type: "int", value: o.x } },
-      { type: "positional", value: { type: "int", value: o.y } },
-      { type: "positional", value: { type: "char", value: t.ch } },
-      { type: "positional", value: { type: "str", value: "silver" } }
-    );
-  }
-  e.remove(o);
+function fov(e: RLEntity, p: Position) {
   RL.instance.callNamedFunction(
-    "draw",
+    "getFOV",
+    { type: "positional", value: { type: "grid", value: map } },
     { type: "positional", value: { type: "int", value: p.x } },
     { type: "positional", value: { type: "int", value: p.y } },
-    { type: "positional", value: { type: "char", value: a.ch } },
-    { type: "positional", value: { type: "str", value: a.fg } },
-    { type: "positional", value: { type: "str", value: a.bg } }
+    { type: "positional", value: { type: "int", value: 5 } },
+    { type: "positional", value: { type: "grid", value: visible } },
+    { type: "positional", value: { type: "grid", value: explored } }
   );
+  e.remove(RecalculateFOV);
+  for (let x = 0; x <= 80; x++) {
+    for (let y = 0; y <= 50; y++) {
+      drawTileAt(x, y);
+    }
+  }
+}
+const system_fov = new RLSystem("fov", fov, [
+  { type: "param", name: "e", typeName: "entity" },
+  { type: "param", name: "p", typeName: "Position" },
+  { type: "constraint", typeName: "RecalculateFOV" },
+]);
+
+function drawAfterMove(e: RLEntity, o: OldPosition) {
+  drawTileAt(o.x, o.y);
+  e.remove(o);
+  drawEntity(e);
 }
 const system_drawAfterMove = new RLSystem("drawAfterMove", drawAfterMove, [
   { type: "param", name: "e", typeName: "entity" },
-  { type: "param", name: "a", typeName: "Appearance" },
   { type: "param", name: "o", typeName: "OldPosition" },
-  { type: "param", name: "p", typeName: "Position" },
 ]);
 
 const impl: RLEnv = new Map<string, RLObject>([
+  ["drawTileAt", fn_drawTileAt],
   ["drawEntity", fn_drawEntity],
   ["randomRoom", fn_randomRoom],
   ["randomCorridor", fn_randomCorridor],
@@ -250,10 +275,10 @@ const impl: RLEnv = new Map<string, RLObject>([
   ["main", fn_main],
   ["onKey", system_onKey],
   ["movement", system_movement],
-  ["screenRefresh", system_screenRefresh],
+  ["fov", system_fov],
   ["drawAfterMove", system_drawAfterMove],
   ["IsPlayer", IsPlayer],
-  ["DrawTiles", DrawTiles],
+  ["RecalculateFOV", RecalculateFOV],
   ["Player", tmPlayer],
   ["NPC", tmNPC],
 ]);

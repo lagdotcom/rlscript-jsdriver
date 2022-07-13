@@ -1,7 +1,7 @@
 //#IMPLTYPES
 import Stack from "./Stack";
-import { nanoid } from "nanoid";
 import bresenham from "bresenham";
+import { nanoid } from "nanoid";
 
 export type RLFnParam = {
   type: "param";

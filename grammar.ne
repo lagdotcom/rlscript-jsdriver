@@ -9,7 +9,7 @@ const lexer = moo.compile({
     number:     /[0-9]+/,
     sqstring:   /'.'/,
     dqstring:   /".*?"/,
-    keywords:   ["else", "end", "if", "not", "return"],
+    keywords:   ["else", "end", "false", "if", "not", "return", "true"],
 
     word: {
         match: /[a-zA-Z][a-zA-Z0-9_]*/,
@@ -148,6 +148,8 @@ value -> number {% id %}
 
 nonnumber -> %sqstring {% ([tok]) => ({ _: 'char', value: tok.value[1] }) %}
            | %dqstring {% ([tok]) => ({ _: 'str', value: tok.value.slice(1, -1) }) %}
+           | "true" {% () => ({ _: 'bool', value: true }) %}
+           | "false" {% () => ({ _: 'bool', value: false }) %}
 
 number -> %number {% ([tok]) => ({ _: 'int', value: Number(tok.value) }) %}
 

@@ -119,7 +119,8 @@ export type ASTBinary = {
 };
 export type ASTBinaryOp = "+" | "-" | "*" | "/" | "^" | "and";
 
-export type ASTValue = ASTChar | ASTStr | ASTInt;
+export type ASTValue = ASTBool | ASTChar | ASTStr | ASTInt;
 export type ASTChar = { _: "char"; value: string };
 export type ASTStr = { _: "str"; value: string };
 export type ASTInt = { _: "int"; value: number };
+export type ASTBool = { _: "bool"; value: boolean };

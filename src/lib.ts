@@ -1,3 +1,4 @@
+import { ComputeVisibility, ShadowCastingGrid } from "./RecursiveShadowCasting";
 import {
   RLChar,
   RLEntity,
@@ -14,6 +15,8 @@ import {
 import Game from "./Game";
 import { RLComponent } from "./implTypes";
 import { TinyColor } from "tinycolor-ts";
+
+type RLGridArg<T> = { type: "grid"; value: RLGrid<T> };
 
 function setSize({ value: width }: RLInt, { value: height }: RLInt) {
   Game.instance.width = width;
@@ -49,7 +52,7 @@ function draw(
   Game.instance.terminal.drawChar(x, y, ch, f, b);
 }
 
-function drawGrid(g: RLGrid<RLTile>) {
+function drawGrid({ value: g }: RLGridArg<RLTile>) {
   for (let y = 0; y < g.height; y++) {
     for (let x = 0; x < g.width; x++) {
       const t = g.at(x, y);
@@ -66,6 +69,29 @@ function drawGrid(g: RLGrid<RLTile>) {
 
 function randInt({ value: min }: RLInt, { value: max }: RLInt) {
   return Math.floor(Math.random() * (max + 1 - min) + min);
+}
+
+function getFOV(
+  { value: tiles }: RLGridArg<RLTile>,
+  { value: x }: RLInt,
+  { value: y }: RLInt,
+  { value: radius }: RLInt,
+  { value: visible }: RLGridArg<boolean>,
+  { value: explored }: RLGridArg<boolean>
+) {
+  visible.fill(visible.empty);
+
+  const grid = new ShadowCastingGrid(
+    tiles.width,
+    tiles.height,
+    (x, y) => !tiles.at(x, y)?.transparent
+  );
+  ComputeVisibility(grid, { x, y }, radius);
+
+  for (const pos of grid.values.keys()) {
+    visible.put(pos.x, pos.y, true);
+    explored.put(pos.x, pos.y, true);
+  }
 }
 
 const lib: RLEnv = new Map([
@@ -93,6 +119,17 @@ const lib: RLEnv = new Map([
     "drawGrid",
     new RLFn("drawGrid", drawGrid, [
       { type: "param", typeName: "grid", name: "g" },
+    ]),
+  ],
+  [
+    "getFOV",
+    new RLFn("getFOV", getFOV, [
+      { type: "param", typeName: "grid", name: "tiles" },
+      { type: "param", typeName: "int", name: "x" },
+      { type: "param", typeName: "int", name: "y" },
+      { type: "param", typeName: "int", name: "radius" },
+      { type: "param", typeName: "grid", name: "visible" },
+      { type: "param", typeName: "grid", name: "explored" },
     ]),
   ],
   [
