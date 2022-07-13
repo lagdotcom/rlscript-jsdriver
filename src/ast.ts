@@ -117,7 +117,10 @@ export type ASTBinary = {
   left: ASTExpr;
   right: ASTExpr;
 };
-export type ASTBinaryOp = "+" | "-" | "*" | "/" | "^" | "and";
+export type ASTArithOp = "+" | "-" | "*" | "/" | "^";
+export type ASTLogicOp = "and";
+export type ASTCondOp = ">" | ">=" | "<" | "<=" | "==" | "!=";
+export type ASTBinaryOp = ASTArithOp | ASTLogicOp | ASTCondOp;
 
 export type ASTValue = ASTBool | ASTChar | ASTStr | ASTInt;
 export type ASTChar = { _: "char"; value: string };

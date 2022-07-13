@@ -13,6 +13,7 @@ import RL, {
   RLTile,
 } from "./RL";
 
+const IsBlocker = new RLTag("IsBlocker");
 const IsPlayer = new RLTag("IsPlayer");
 const RecalculateFOV = new RLTag("RecalculateFOV");
 const Redraw = new RLTag("Redraw");
@@ -46,12 +47,22 @@ const mkMoveAction = (x: number, y: number): MoveAction => ({
 const tmPlayer: RLTemplate = {
   type: "template",
   name: "Player",
-  get: () => [IsPlayer, mkAppearance("@", "white", "black"), RecalculateFOV],
+  get: () => [
+    IsBlocker,
+    IsPlayer,
+    mkAppearance("@", "white", "black"),
+    RecalculateFOV,
+  ],
 };
-const tmNPC: RLTemplate = {
+const tmOrc: RLTemplate = {
   type: "template",
-  name: "NPC",
-  get: () => [mkAppearance("@", "yellow", "black")],
+  name: "Orc",
+  get: () => [IsBlocker, mkAppearance("o", "green", "black")],
+};
+const tmTroll: RLTemplate = {
+  type: "template",
+  name: "Troll",
+  get: () => [IsBlocker, mkAppearance("T", "lime", "black")],
 };
 
 const Floor = new RLTile(".", true, true);
@@ -158,12 +169,14 @@ function generateDungeon() {
   visible = new RLGrid(80, 50, false);
   let prev: RLRect | undefined;
   let room: RLRect;
+  const taken: RLGrid = new RLGrid(80, 50, false);
   for (let r = 1; r <= 30; r++) {
     room = randomRoom();
     if (!map.findInRegion(room, Floor)) {
       map.rect(room.x + 1, room.y + 1, room.x2 - 1, room.y2 - 1, Floor);
       if (prev) {
         randomCorridor(prev.cx, prev.cy, room.cx, room.cy);
+        addEnemies(room, taken);
       } else {
         RL.instance.callNamedFunction(
           "spawn",
@@ -174,13 +187,58 @@ function generateDungeon() {
       prev = room;
     }
   }
-  RL.instance.callNamedFunction(
-    "spawn",
-    { type: "positional", value: tmNPC },
-    { type: "positional", value: mkPosition(prev.cx, prev.cy) }
-  );
 }
 const fn_generateDungeon = new RLFn("generateDungeon", generateDungeon, []);
+
+function addEnemies(r: RLRect, taken: RLGrid) {
+  for (
+    let z = 1;
+    z <=
+    RL.instance.callNamedFunction(
+      "randInt",
+      { type: "positional", value: { type: "int", value: 0 } },
+      { type: "positional", value: { type: "int", value: 2 } }
+    );
+    z++
+  ) {
+    const x: number = RL.instance.callNamedFunction(
+      "randInt",
+      { type: "positional", value: { type: "int", value: r.x + 1 } },
+      { type: "positional", value: { type: "int", value: r.x2 - 1 } }
+    );
+    const y: number = RL.instance.callNamedFunction(
+      "randInt",
+      { type: "positional", value: { type: "int", value: r.y + 1 } },
+      { type: "positional", value: { type: "int", value: r.y2 - 1 } }
+    );
+    if (!taken.at(x, y)) {
+      taken.put(x, y, true);
+      if (
+        RL.instance.callNamedFunction(
+          "randInt",
+          { type: "positional", value: { type: "int", value: 1 } },
+          { type: "positional", value: { type: "int", value: 100 } }
+        ) < 80
+      ) {
+        RL.instance.callNamedFunction(
+          "spawn",
+          { type: "positional", value: tmOrc },
+          { type: "positional", value: mkPosition(x, y) }
+        );
+      } else {
+        RL.instance.callNamedFunction(
+          "spawn",
+          { type: "positional", value: tmTroll },
+          { type: "positional", value: mkPosition(x, y) }
+        );
+      }
+    }
+  }
+}
+const fn_addEnemies = new RLFn("addEnemies", addEnemies, [
+  { type: "param", name: "r", typeName: "rect" },
+  { type: "param", name: "taken", typeName: "grid" },
+]);
 
 function main() {
   RL.instance.callNamedFunction(
@@ -243,8 +301,8 @@ function fov(e: RLEntity, p: Position) {
     { type: "positional", value: { type: "grid", value: explored } }
   );
   e.remove(RecalculateFOV);
-  for (let x = 0; x <= 80; x++) {
-    for (let y = 0; y <= 50; y++) {
+  for (let x = 0; x <= 79; x++) {
+    for (let y = 0; y <= 49; y++) {
       drawTileAt(x, y);
     }
   }
@@ -285,16 +343,19 @@ const impl: RLEnv = new Map<string, RLObject>([
   ["randomRoom", fn_randomRoom],
   ["randomCorridor", fn_randomCorridor],
   ["generateDungeon", fn_generateDungeon],
+  ["addEnemies", fn_addEnemies],
   ["main", fn_main],
   ["onKey", system_onKey],
   ["movement", system_movement],
   ["fov", system_fov],
   ["drawUnderTile", system_drawUnderTile],
   ["drawKnownEntities", system_drawKnownEntities],
+  ["IsBlocker", IsBlocker],
   ["IsPlayer", IsPlayer],
   ["RecalculateFOV", RecalculateFOV],
   ["Redraw", Redraw],
   ["Player", tmPlayer],
-  ["NPC", tmNPC],
+  ["Orc", tmOrc],
+  ["Troll", tmTroll],
 ]);
 export default impl;

@@ -19,18 +19,26 @@ component MoveAction
   y: int
 end
 
+tag IsBlocker
 tag IsPlayer
 tag RecalculateFOV
 tag Redraw
 
 template Player
+  IsBlocker
   IsPlayer
   Appearance('@', "white", "black")
   RecalculateFOV
 end
 
-template NPC
-  Appearance('@', "yellow", "black")
+template Orc
+  IsBlocker
+  Appearance('o', "green", "black")
+end
+
+template Troll
+  IsBlocker
+  Appearance('T', "lime", "black")
 end
 
 tiletype Floor '.' walkable transparent end
@@ -63,6 +71,8 @@ system movement(e: entity, p: Position, m: MoveAction)
     end
   end
 
+  ;; TODO check IsBlocker entities
+
   e.remove(m)
 end
 
@@ -71,8 +81,8 @@ system fov(e: entity, p: Position, RecalculateFOV)
   e.remove(RecalculateFOV)
 
   ;; TODO this is kinda inefficient
-  for x = 0 to 80
-    for y = 0 to 50
+  for x = 0 to 79
+    for y = 0 to 49
       drawTileAt(x, y)
     end
   end
@@ -143,6 +153,7 @@ fn generateDungeon()
 
   local prev: rect?
   local room: rect
+  local taken: grid = grid(80, 50, false)
 
   for r = 1 to 30
     room = randomRoom()
@@ -150,6 +161,7 @@ fn generateDungeon()
       map.rect(room.x + 1, room.y + 1, room.x2 - 1, room.y2 - 1, Floor)
       if prev
         randomCorridor(prev.cx, prev.cy, room.cx, room.cy)
+        addEnemies(room, taken)
       else
         spawn(Player, Position(room.cx, room.cy))
       end
@@ -157,8 +169,22 @@ fn generateDungeon()
       prev = room
     end
   end
+end
 
-  spawn(NPC, Position(prev.cx, prev.cy))
+fn addEnemies(r: rect, taken: grid)
+  for z = 1 to randInt(0, 2)
+    local x: int = randInt(r.x + 1, r.x2 - 1)
+    local y: int = randInt(r.y + 1, r.y2 - 1)
+
+    if not taken.at(x, y)
+      taken.put(x, y, true)
+      if randInt(1, 100) < 80
+        spawn(Orc, Position(x, y))
+      else
+        spawn(Troll, Position(x, y))
+      end
+    end
+  end
 end
 
 fn main()

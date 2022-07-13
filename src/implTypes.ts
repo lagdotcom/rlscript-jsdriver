@@ -25,4 +25,4 @@ export type MoveAction = {
 };
 export type RLComponent = Appearance | OldPosition | Position | MoveAction;
 export type RLComponentName = RLComponent["typeName"];
-export type RLTagName = "IsPlayer" | "RecalculateFOV" | "Redraw";
+export type RLTagName = "IsBlocker" | "IsPlayer" | "RecalculateFOV" | "Redraw";

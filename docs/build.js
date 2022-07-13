@@ -931,6 +931,7 @@
       "OldPosition",
       "Position",
       "MoveAction",
+      "IsBlocker",
       "IsPlayer",
       "RecalculateFOV",
       "Redraw"
@@ -1124,6 +1125,7 @@
       this.type = "entity";
       this.id = nanoid();
       this.components = /* @__PURE__ */ new Set();
+      this.IsBlocker = false;
       this.IsPlayer = false;
       this.RecalculateFOV = false;
       this.Redraw = false;
@@ -1275,6 +1277,7 @@
   };
 
   // src/impl.ts
+  var IsBlocker = new RLTag("IsBlocker");
   var IsPlayer = new RLTag("IsPlayer");
   var RecalculateFOV = new RLTag("RecalculateFOV");
   var Redraw = new RLTag("Redraw");
@@ -1306,12 +1309,22 @@
   var tmPlayer = {
     type: "template",
     name: "Player",
-    get: () => [IsPlayer, mkAppearance("@", "white", "black"), RecalculateFOV]
+    get: () => [
+      IsBlocker,
+      IsPlayer,
+      mkAppearance("@", "white", "black"),
+      RecalculateFOV
+    ]
   };
-  var tmNPC = {
+  var tmOrc = {
     type: "template",
-    name: "NPC",
-    get: () => [mkAppearance("@", "yellow", "black")]
+    name: "Orc",
+    get: () => [IsBlocker, mkAppearance("o", "green", "black")]
+  };
+  var tmTroll = {
+    type: "template",
+    name: "Troll",
+    get: () => [IsBlocker, mkAppearance("T", "lime", "black")]
   };
   var Floor = new RLTile(".", true, true);
   var Wall = new RLTile("#", false, false);
@@ -1376,21 +1389,40 @@
     visible = new RLGrid(80, 50, false);
     let prev;
     let room;
+    const taken = new RLGrid(80, 50, false);
     for (let r = 1; r <= 30; r++) {
       room = randomRoom();
       if (!map.findInRegion(room, Floor)) {
         map.rect(room.x + 1, room.y + 1, room.x2 - 1, room.y2 - 1, Floor);
         if (prev) {
           randomCorridor(prev.cx, prev.cy, room.cx, room.cy);
+          addEnemies(room, taken);
         } else {
           RL.instance.callNamedFunction("spawn", { type: "positional", value: tmPlayer }, { type: "positional", value: mkPosition(room.cx, room.cy) });
         }
         prev = room;
       }
     }
-    RL.instance.callNamedFunction("spawn", { type: "positional", value: tmNPC }, { type: "positional", value: mkPosition(prev.cx, prev.cy) });
   }
   var fn_generateDungeon = new RLFn("generateDungeon", generateDungeon, []);
+  function addEnemies(r, taken) {
+    for (let z = 1; z <= RL.instance.callNamedFunction("randInt", { type: "positional", value: { type: "int", value: 0 } }, { type: "positional", value: { type: "int", value: 2 } }); z++) {
+      const x = RL.instance.callNamedFunction("randInt", { type: "positional", value: { type: "int", value: r.x + 1 } }, { type: "positional", value: { type: "int", value: r.x2 - 1 } });
+      const y = RL.instance.callNamedFunction("randInt", { type: "positional", value: { type: "int", value: r.y + 1 } }, { type: "positional", value: { type: "int", value: r.y2 - 1 } });
+      if (!taken.at(x, y)) {
+        taken.put(x, y, true);
+        if (RL.instance.callNamedFunction("randInt", { type: "positional", value: { type: "int", value: 1 } }, { type: "positional", value: { type: "int", value: 100 } }) < 80) {
+          RL.instance.callNamedFunction("spawn", { type: "positional", value: tmOrc }, { type: "positional", value: mkPosition(x, y) });
+        } else {
+          RL.instance.callNamedFunction("spawn", { type: "positional", value: tmTroll }, { type: "positional", value: mkPosition(x, y) });
+        }
+      }
+    }
+  }
+  var fn_addEnemies = new RLFn("addEnemies", addEnemies, [
+    { type: "param", name: "r", typeName: "rect" },
+    { type: "param", name: "taken", typeName: "grid" }
+  ]);
   function main() {
     RL.instance.callNamedFunction("setSize", { type: "positional", value: { type: "int", value: 80 } }, { type: "positional", value: { type: "int", value: 50 } });
     generateDungeon();
@@ -1439,8 +1471,8 @@
   function fov(e, p) {
     RL.instance.callNamedFunction("getFOV", { type: "positional", value: { type: "grid", value: map } }, { type: "positional", value: { type: "int", value: p.x } }, { type: "positional", value: { type: "int", value: p.y } }, { type: "positional", value: { type: "int", value: 5 } }, { type: "positional", value: { type: "grid", value: visible } }, { type: "positional", value: { type: "grid", value: explored } });
     e.remove(RecalculateFOV);
-    for (let x = 0; x <= 80; x++) {
-      for (let y = 0; y <= 50; y++) {
+    for (let x = 0; x <= 79; x++) {
+      for (let y = 0; y <= 49; y++) {
         drawTileAt(x, y);
       }
     }
@@ -1474,17 +1506,20 @@
     ["randomRoom", fn_randomRoom],
     ["randomCorridor", fn_randomCorridor],
     ["generateDungeon", fn_generateDungeon],
+    ["addEnemies", fn_addEnemies],
     ["main", fn_main],
     ["onKey", system_onKey],
     ["movement", system_movement],
     ["fov", system_fov],
     ["drawUnderTile", system_drawUnderTile],
     ["drawKnownEntities", system_drawKnownEntities],
+    ["IsBlocker", IsBlocker],
     ["IsPlayer", IsPlayer],
     ["RecalculateFOV", RecalculateFOV],
     ["Redraw", Redraw],
     ["Player", tmPlayer],
-    ["NPC", tmNPC]
+    ["Orc", tmOrc],
+    ["Troll", tmTroll]
   ]);
   var impl_default = impl;
 

@@ -20,6 +20,12 @@ const lexer = moo.compile({
     lp: "(",
     rp: ")",
     dot: ".",
+    le: "<=",
+    lt: "<",
+    ge: ">=",
+    gt: ">",
+    eq: "==",
+    ne: "!=",
     plusequals: "+=",
     minusequals: "-=",
     timesequals: "*=",
@@ -31,10 +37,6 @@ const lexer = moo.compile({
     times: "*",
     divide: "/",
     exp: "^",
-    le: "<=",
-    lt: "<",
-    ge: ">=",
-    gt: ">",
     qm: "?",
 });
 %}
@@ -104,8 +106,8 @@ assignop -> "=" {% val %}
 local -> "local" __ field {% ([,,field]) => ({ _: 'local', name: field.name, type: field.type }) %}
        | "local" __ field _ "=" _ expr {% ([,,field,,,,expr]) => ({ _: 'local', name: field.name, type: field.type, expr }) %}
 
-if -> "if" __ expr _ code "end" {% ([,,expr,,code]) => ({ _: 'if', expr, code }) %}
-    | "if" __ expr _ code _ "else" _ code "end" {% ([,,expr,,code,,,,code2]) => ({ _: 'if', expr, code, code2 }) %}
+if -> "if" __ boolean _ code "end" {% ([,,expr,,code]) => ({ _: 'if', expr, code }) %}
+    | "if" __ boolean _ code _ "else" _ code "end" {% ([,,expr,,code,,,,code2]) => ({ _: 'if', expr, code, code2 }) %}
 
 return -> "exit" {% () => ({ _: 'return' }) %}
         | "return" __ expr {% ([,,expr]) => ({ _: 'return', expr }) %}
@@ -117,6 +119,15 @@ args -> null {% () => [] %}
       | arg
       | args _ "," _ arg {% ([args,,,,arg]) => args.concat(arg) %}
 arg -> expr {% id %}
+
+boolean -> expr {% id %}
+         | boolean _ boolop _ expr {% ([left,,op,,right]) => ({ _: 'binary', left, op, right }) %}
+boolop -> ">" {% id %}
+        | ">=" {% id %}
+        | "<" {% id %}
+        | "<=" {% id %}
+        | "==" {% id %}
+        | "!=" {% id %}
 
 expr -> maths {% id %}
 

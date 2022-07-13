@@ -252,6 +252,7 @@ class GridScope implements TSScope {
       ["fill", builtinType],
       ["findInRegion", builtinType],
       ["line", builtinType],
+      ["put", builtinType],
       ["rect", builtinType],
     ]);
   }

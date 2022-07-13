@@ -68,6 +68,7 @@ function isConstraint(p: RLSystemParam) {
     "OldPosition",
     "Position",
     "MoveAction",
+    "IsBlocker",
     "IsPlayer",
     "RecalculateFOV",
     "Redraw",
@@ -335,6 +336,7 @@ export class RLEntity {
   OldPosition?: OldPosition;
   Position?: Position;
   MoveAction?: MoveAction;
+  IsBlocker: boolean;
   IsPlayer: boolean;
   RecalculateFOV: boolean;
   Redraw: boolean;
@@ -343,6 +345,7 @@ export class RLEntity {
     this.type = "entity";
     this.id = nanoid();
     this.components = new Set();
+    this.IsBlocker = false;
     this.IsPlayer = false;
     this.RecalculateFOV = false;
     this.Redraw = false;
