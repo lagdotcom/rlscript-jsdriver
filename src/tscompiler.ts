@@ -322,6 +322,7 @@ export default class TSCompiler implements TSScope {
     this.members = new Map<string, ASTType>([
       ["add", globalType],
       ["draw", globalType],
+      ["find", globalType],
       ["getFOV", globalType],
       ["grid", globalType],
       ["pushKeyHandler", globalType],

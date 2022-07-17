@@ -19,6 +19,10 @@ component MoveAction
   y: int
 end
 
+component MeleeAction
+  target: entity
+end
+
 tag IsBlocker
 tag IsPlayer
 tag RecalculateFOV
@@ -60,8 +64,16 @@ system movement(e: entity, p: Position, m: MoveAction)
   local x: int = p.x + m.x
   local y: int = p.y + m.y
 
+  e.remove(m)
+
   local t: tile? = map.at(x, y)
   if t and t.walkable
+    local b: entity? = find(IsBlocker, Position(x, y))
+    if b
+      e.add(MeleeAction(b))
+      exit
+    end
+
     e.add(OldPosition(p.x, p.y))
     p.x = x
     p.y = y
@@ -70,10 +82,13 @@ system movement(e: entity, p: Position, m: MoveAction)
       e.add(RecalculateFOV)
     end
   end
+end
 
-  ;; TODO check IsBlocker entities
-
+system combat(e: entity, m: MeleeAction)
+  local target: entity = m.target
   e.remove(m)
+
+  ;; TODO
 end
 
 system fov(e: entity, p: Position, RecalculateFOV)

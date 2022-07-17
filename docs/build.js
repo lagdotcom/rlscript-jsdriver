@@ -931,6 +931,7 @@
       "OldPosition",
       "Position",
       "MoveAction",
+      "MeleeAction",
       "IsBlocker",
       "IsPlayer",
       "RecalculateFOV",
@@ -1306,6 +1307,11 @@
     x,
     y
   });
+  var mkMeleeAction = (target) => ({
+    type: "component",
+    typeName: "MeleeAction",
+    target
+  });
   var tmPlayer = {
     type: "template",
     name: "Player",
@@ -1452,8 +1458,14 @@
   function movement(e, p, m) {
     const x = p.x + m.x;
     const y = p.y + m.y;
+    e.remove(m);
     const t = map.at(x, y);
     if (t && t.walkable) {
+      const b = RL.instance.callNamedFunction("find", { type: "positional", value: IsBlocker }, { type: "positional", value: mkPosition(x, y) });
+      if (b) {
+        e.add(mkMeleeAction(b));
+        return;
+      }
       e.add(mkOldPosition(p.x, p.y));
       p.x = x;
       p.y = y;
@@ -1461,12 +1473,19 @@
         e.add(RecalculateFOV);
       }
     }
-    e.remove(m);
   }
   var system_movement = new RLSystem("movement", movement, [
     { type: "param", name: "e", typeName: "entity" },
     { type: "param", name: "p", typeName: "Position" },
     { type: "param", name: "m", typeName: "MoveAction" }
+  ]);
+  function combat(e, m) {
+    const target = m.target;
+    e.remove(m);
+  }
+  var system_combat = new RLSystem("combat", combat, [
+    { type: "param", name: "e", typeName: "entity" },
+    { type: "param", name: "m", typeName: "MeleeAction" }
   ]);
   function fov(e, p) {
     RL.instance.callNamedFunction("getFOV", { type: "positional", value: { type: "grid", value: map } }, { type: "positional", value: { type: "int", value: p.x } }, { type: "positional", value: { type: "int", value: p.y } }, { type: "positional", value: { type: "int", value: 5 } }, { type: "positional", value: { type: "grid", value: visible } }, { type: "positional", value: { type: "grid", value: explored } });
@@ -1510,6 +1529,7 @@
     ["main", fn_main],
     ["onKey", system_onKey],
     ["movement", system_movement],
+    ["combat", system_combat],
     ["fov", system_fov],
     ["drawUnderTile", system_drawUnderTile],
     ["drawKnownEntities", system_drawKnownEntities],
@@ -2545,6 +2565,28 @@
         e.add(a);
     }
   }
+  function find(...args) {
+    for (const e of RL.instance.entities.values()) {
+      let success = true;
+      for (const a of args) {
+        if (!e.has(a.typeName)) {
+          success = false;
+          break;
+        }
+        if (a.type === "component") {
+          const check = e.get(a.typeName);
+          for (const [key, val] of Object.entries(a)) {
+            if (val !== check[key]) {
+              success = false;
+              break;
+            }
+          }
+        }
+      }
+      if (success)
+        return e;
+    }
+  }
   var lib = /* @__PURE__ */ new Map([
     ["add", new RLFn("add", add, [], ["component", "tag"])],
     [
@@ -2573,6 +2615,7 @@
         { type: "param", typeName: "grid", name: "g" }
       ])
     ],
+    ["find", new RLFn("find", find, [], ["component", "tag"])],
     [
       "getFOV",
       new RLFn("getFOV", getFOV, [

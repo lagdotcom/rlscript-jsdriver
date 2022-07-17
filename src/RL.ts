@@ -1,5 +1,6 @@
 import {
   Appearance,
+  MeleeAction,
   MoveAction,
   OldPosition,
   Position,
@@ -68,6 +69,7 @@ function isConstraint(p: RLSystemParam) {
     "OldPosition",
     "Position",
     "MoveAction",
+    "MeleeAction",
     "IsBlocker",
     "IsPlayer",
     "RecalculateFOV",
@@ -336,6 +338,7 @@ export class RLEntity {
   OldPosition?: OldPosition;
   Position?: Position;
   MoveAction?: MoveAction;
+  MeleeAction?: MeleeAction;
   IsBlocker: boolean;
   IsPlayer: boolean;
   RecalculateFOV: boolean;

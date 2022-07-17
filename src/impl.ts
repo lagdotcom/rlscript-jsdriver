@@ -1,4 +1,10 @@
-import { Appearance, MoveAction, OldPosition, Position } from "./implTypes";
+import {
+  Appearance,
+  MeleeAction,
+  MoveAction,
+  OldPosition,
+  Position,
+} from "./implTypes";
 import RL, {
   RLEntity,
   RLEnv,
@@ -42,6 +48,11 @@ const mkMoveAction = (x: number, y: number): MoveAction => ({
   typeName: "MoveAction",
   x,
   y,
+});
+const mkMeleeAction = (target: RLEntity): MeleeAction => ({
+  type: "component",
+  typeName: "MeleeAction",
+  target,
 });
 
 const tmPlayer: RLTemplate = {
@@ -273,8 +284,18 @@ const system_onKey = new RLSystem("onKey", onKey, [
 function movement(e: RLEntity, p: Position, m: MoveAction) {
   const x: number = p.x + m.x;
   const y: number = p.y + m.y;
+  e.remove(m);
   const t: RLTile | undefined = map.at(x, y);
   if (t && t.walkable) {
+    const b: RLEntity | undefined = RL.instance.callNamedFunction(
+      "find",
+      { type: "positional", value: IsBlocker },
+      { type: "positional", value: mkPosition(x, y) }
+    );
+    if (b) {
+      e.add(mkMeleeAction(b));
+      return;
+    }
     e.add(mkOldPosition(p.x, p.y));
     p.x = x;
     p.y = y;
@@ -282,12 +303,20 @@ function movement(e: RLEntity, p: Position, m: MoveAction) {
       e.add(RecalculateFOV);
     }
   }
-  e.remove(m);
 }
 const system_movement = new RLSystem("movement", movement, [
   { type: "param", name: "e", typeName: "entity" },
   { type: "param", name: "p", typeName: "Position" },
   { type: "param", name: "m", typeName: "MoveAction" },
+]);
+
+function combat(e: RLEntity, m: MeleeAction) {
+  const target: RLEntity = m.target;
+  e.remove(m);
+}
+const system_combat = new RLSystem("combat", combat, [
+  { type: "param", name: "e", typeName: "entity" },
+  { type: "param", name: "m", typeName: "MeleeAction" },
 ]);
 
 function fov(e: RLEntity, p: Position) {
@@ -347,6 +376,7 @@ const impl: RLEnv = new Map<string, RLObject>([
   ["main", fn_main],
   ["onKey", system_onKey],
   ["movement", system_movement],
+  ["combat", system_combat],
   ["fov", system_fov],
   ["drawUnderTile", system_drawUnderTile],
   ["drawKnownEntities", system_drawKnownEntities],

@@ -100,6 +100,36 @@ function add(...args: (RLComponent | RLTag)[]) {
   }
 }
 
+// TODO support "having a component" as a query part
+function find(...args: (RLComponent | RLTag)[]) {
+  for (const e of RL.instance.entities.values()) {
+    let success = true;
+
+    for (const a of args) {
+      if (!e.has(a.typeName)) {
+        success = false;
+        break;
+      }
+
+      if (a.type === "component") {
+        const check = e.get(a.typeName) as RLComponent;
+
+        for (const [key, val] of Object.entries(a)) {
+          // TODO figure this out
+          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+          // @ts-ignore
+          if (val !== check[key]) {
+            success = false;
+            break;
+          }
+        }
+      }
+    }
+
+    if (success) return e;
+  }
+}
+
 const lib: RLEnv = new Map([
   ["add", new RLFn("add", add, [], ["component", "tag"])],
   [
@@ -128,6 +158,7 @@ const lib: RLEnv = new Map([
       { type: "param", typeName: "grid", name: "g" },
     ]),
   ],
+  ["find", new RLFn("find", find, [], ["component", "tag"])],
   [
     "getFOV",
     new RLFn("getFOV", getFOV, [

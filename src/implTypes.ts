@@ -23,6 +23,16 @@ export type MoveAction = {
   x: number;
   y: number;
 };
-export type RLComponent = Appearance | OldPosition | Position | MoveAction;
+export type MeleeAction = {
+  type: "component";
+  typeName: "MeleeAction";
+  target: RLEntity;
+};
+export type RLComponent =
+  | Appearance
+  | OldPosition
+  | Position
+  | MoveAction
+  | MeleeAction;
 export type RLComponentName = RLComponent["typeName"];
 export type RLTagName = "IsBlocker" | "IsPlayer" | "RecalculateFOV" | "Redraw";
