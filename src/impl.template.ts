@@ -6,6 +6,7 @@ import RL, {
   RLGrid,
   RLKeyEvent,
   RLObject,
+  RLQuery,
   RLRect,
   RLSystem,
   RLTag,

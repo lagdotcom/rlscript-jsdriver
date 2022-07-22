@@ -28,11 +28,34 @@ export type MeleeAction = {
   typeName: "MeleeAction";
   target: RLEntity;
 };
+export type Actor = {
+  type: "component";
+  typeName: "Actor";
+  energy: number;
+};
+export type Fighter = {
+  type: "component";
+  typeName: "Fighter";
+  maxHp: number;
+  hp: number;
+  defense: number;
+  power: number;
+};
 export type RLComponent =
   | Appearance
   | OldPosition
   | Position
   | MoveAction
-  | MeleeAction;
+  | MeleeAction
+  | Actor
+  | Fighter;
 export type RLComponentName = RLComponent["typeName"];
-export type RLTagName = "IsBlocker" | "IsPlayer" | "RecalculateFOV" | "Redraw";
+export type RLTagName =
+  | "IsBlocker"
+  | "IsPlayer"
+  | "RecalculateFOV"
+  | "Redraw"
+  | "MyTurn"
+  | "BaseAI"
+  | "HostileEnemy"
+  | "WaitAction";

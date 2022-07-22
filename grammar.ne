@@ -9,7 +9,7 @@ const lexer = moo.compile({
     number:     /[0-9]+/,
     sqstring:   /'.'/,
     dqstring:   /".*?"/,
-    keywords:   ["else", "end", "false", "if", "not", "return", "true"],
+    keywords:   ["else", "end", "false", "if", "not", "query", "return", "true"],
 
     word: {
         match: /[a-zA-Z][a-zA-Z0-9_]*/,
@@ -92,6 +92,7 @@ stmt -> call {% id %}
       | if {% id %}
       | return {% id %}
       | for {% id %}
+      | query {% id %}
 
 call -> qname arglist {% ([name,args]) => ({ _: 'call', name, args }) %}
 
@@ -113,6 +114,8 @@ return -> "exit" {% () => ({ _: 'return' }) %}
         | "return" __ expr {% ([,,expr]) => ({ _: 'return', expr }) %}
 
 for -> "for" __ name _ "=" _ expr __ "to" __ expr _ code "end" {% ([,,name,,,,start,,,,end,,code]) => ({ _: 'for', name, start, end, code }) %}
+
+query -> "query" _ paramlist _ code "end" {% ([,,params,,code]) => ({ _: 'query', params, code }) %}
 
 arglist -> "(" _ args _ ")" {% ([,,args,,]) => args %}
 args -> null {% () => [] %}

@@ -1,0 +1,271 @@
+component Appearance
+  ch: char
+  fg: str
+  bg: str
+end
+
+component OldPosition
+  x: int
+  y: int
+end
+
+component Position
+  x: int
+  y: int
+end
+
+component MoveAction
+  x: int
+  y: int
+end
+
+component MeleeAction
+  target: entity
+end
+
+component Actor
+  energy: int
+end
+
+component Fighter
+  maxHp: int
+  hp: int
+  defense: int
+  power: int
+end
+
+tag IsBlocker
+tag IsPlayer
+tag RecalculateFOV
+tag Redraw
+tag MyTurn
+tag BaseAI
+tag HostileEnemy
+tag WaitAction
+
+template Player
+  IsBlocker
+  IsPlayer
+  Appearance('@', "white", "black")
+  Fighter(30, 30, 2, 5)
+  Actor(100)
+  MyTurn
+  RecalculateFOV
+end
+
+template Enemy
+  IsBlocker
+  HostileEnemy
+  Actor(1)
+end
+
+template Orc
+  Enemy
+  Appearance('o', "green", "black")
+  Fighter(10, 10, 0, 3)
+end
+
+template Troll
+  Enemy
+  Appearance('T', "lime", "black")
+  Fighter(16, 16, 1, 4)
+end
+
+tiletype Floor '.' walkable transparent end
+tiletype Wall '#' end
+global map: grid
+global explored: grid
+global visible: grid
+
+system onKey(e: entity, IsPlayer, k: KeyEvent)
+  e.add(match k.key
+    "up"    = MoveAction( 0, -1)
+    "right" = MoveAction( 1,  0)
+    "down"  = MoveAction( 0,  1)
+    "left"  = MoveAction(-1,  0)
+  end)
+end
+
+system hostileAI(e: entity, HostileEnemy, MyTurn)
+  e.add(WaitAction)
+end
+
+system doMove(e: entity, p: Position, m: MoveAction, a: Actor, MyTurn)
+  local x: int = p.x + m.x
+  local y: int = p.y + m.y
+
+  e.remove(m)
+
+  local t: tile? = map.at(x, y)
+  if t and t.walkable
+    local b: entity? = find(IsBlocker, Position(x, y))
+    if b
+      e.add(MeleeAction(b))
+      exit
+    end
+
+    a.energy -= 100
+    e.remove(MyTurn)
+    e.add(OldPosition(p.x, p.y))
+    p.x = x
+    p.y = y
+
+    if e.IsPlayer
+      e.add(RecalculateFOV)
+    end
+  end
+end
+
+system doMelee(e: entity, m: MeleeAction, f: Fighter, a: Actor, MyTurn)
+  local target: entity = m.target
+  e.remove(m)
+
+  a.energy -= 100
+  e.remove(MyTurn)
+
+  ;; TODO
+end
+
+system doWait(e: entity, WaitAction, a: Actor, MyTurn)
+  e.remove(WaitAction)
+  
+  a.energy -= 100
+  e.remove(MyTurn)
+end
+
+system fov(e: entity, p: Position, RecalculateFOV)
+  getFOV(map, p.x, p.y, 5, visible, explored)
+  e.remove(RecalculateFOV)
+
+  ;; TODO this is kinda inefficient
+  for x = 0 to 79
+    for y = 0 to 49
+      drawTileAt(x, y)
+    end
+  end
+
+  add(Redraw)
+end
+
+fn drawTileAt(x: int, y: int)
+  local ch: char = ' '
+  local fg: str = "white"
+
+  if explored.at(x, y)
+    local t: tile? = map.at(x, y)
+    if t
+      ch = t.ch
+      if visible.at(x, y)
+        fg = "silver"
+      else
+        fg = "#444"
+      end
+    end
+  end
+  draw(x, y, ch, fg)
+end
+
+fn drawEntity(e: entity)
+  if e.Position and e.Appearance and visible.at(e.Position.x, e.Position.y)
+    draw(e.Position.x, e.Position.y, e.Appearance.ch, e.Appearance.fg, e.Appearance.bg)
+  end
+end
+
+system drawUnderTile(e: entity, o: OldPosition)
+  drawTileAt(o.x, o.y)
+  e.remove(o)
+  e.add(Redraw)
+end
+
+system drawKnownEntities(e: entity, Redraw)
+  e.remove(Redraw)
+  drawEntity(e)
+end
+
+system nextTurn()
+  local highest: int = -99999
+  query (a: Actor)
+    if a.energy > highest
+      highest = a.energy
+    end
+  end
+
+  if highest >= 100
+    return false
+  end
+  local elapse: int = 100 - highest
+  query (e: entity, a: Actor)
+    a.energy += elapse
+    if a.energy >= 100
+      e.add(MyTurn)
+    end
+  end
+end
+
+fn randomRoom()
+  local w: int = randInt(6, 14)
+  local h: int = randInt(6, 14)
+  local x: int = randInt(1, map.width - w - 1)
+  local y: int = randInt(1, map.height - h - 1)
+  return rect(x, y, w, h)
+end
+
+fn randomCorridor(x1: int, y1: int, x2: int, y2: int)
+  local cx: int = x2
+  local cy: int = y1
+
+  if randInt(0, 1)
+    cx = x1
+    cy = y2
+  end
+
+  map.line(x1, y1, cx, cy, Floor)
+  map.line(cx, cy, x2, y2, Floor)
+end
+
+fn generateDungeon()
+  map = grid(80, 50, Wall)
+  explored = grid(80, 50, false)
+  visible = grid(80, 50, false)
+
+  local prev: rect?
+  local room: rect
+  local taken: grid = grid(80, 50, false)
+
+  for r = 1 to 30
+    room = randomRoom()
+    if not map.findInRegion(room, Floor)
+      map.rect(room.x + 1, room.y + 1, room.x2 - 1, room.y2 - 1, Floor)
+      if prev
+        randomCorridor(prev.cx, prev.cy, room.cx, room.cy)
+        addEnemies(room, taken)
+      else
+        spawn(Player, Position(room.cx, room.cy))
+      end
+
+      prev = room
+    end
+  end
+end
+
+fn addEnemies(r: rect, taken: grid)
+  for z = 1 to randInt(0, 2)
+    local x: int = randInt(r.x + 1, r.x2 - 1)
+    local y: int = randInt(r.y + 1, r.y2 - 1)
+
+    if not taken.at(x, y)
+      taken.put(x, y, true)
+      if randInt(1, 100) < 80
+        spawn(Orc, Position(x, y))
+      else
+        spawn(Troll, Position(x, y))
+      end
+    end
+  end
+end
+
+fn main()
+  setSize(80, 50)
+  generateDungeon()
+  pushKeyHandler(onKey)
+end

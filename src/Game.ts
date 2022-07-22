@@ -59,6 +59,12 @@ export default class Game {
       if (!a) return;
     }
 
+    if (sys.params.length === 0) {
+      // a system that can fail to execute
+      const result = this.rl.runSystem(sys, ...args);
+      return result !== false;
+    }
+
     const matches = sys.query.get();
     if (matches.length) {
       for (const e of matches)
@@ -66,7 +72,8 @@ export default class Game {
           sys,
           { type: "typed", typeName: "entity", value: e },
           ...args
-        );
+        ) === false;
+
       return true;
     }
 

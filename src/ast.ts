@@ -62,7 +62,8 @@ export type ASTStatement =
   | ASTLocal
   | ASTIf
   | ASTReturn
-  | ASTFor;
+  | ASTFor
+  | ASTQuery;
 
 export type ASTAssignment = {
   _: "assignment";
@@ -90,6 +91,8 @@ export type ASTFor = {
   end: ASTExpr;
   code: ASTCode;
 };
+
+export type ASTQuery = { _: "query"; params: ASTParam[]; code: ASTCode };
 
 export type ASTType = { _: "type"; value: string; optional?: boolean };
 

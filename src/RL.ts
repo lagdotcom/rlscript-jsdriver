@@ -1,5 +1,7 @@
 import {
+  Actor,
   Appearance,
+  Fighter,
   MeleeAction,
   MoveAction,
   OldPosition,
@@ -70,10 +72,16 @@ function isConstraint(p: RLSystemParam) {
     "Position",
     "MoveAction",
     "MeleeAction",
+    "Actor",
+    "Fighter",
     "IsBlocker",
     "IsPlayer",
     "RecalculateFOV",
     "Redraw",
+    "MyTurn",
+    "BaseAI",
+    "HostileEnemy",
+    "WaitAction",
   ].includes(p.typeName);
 }
 function isExternal(p: RLSystemParam): p is RLFnParam {
@@ -100,7 +108,7 @@ export class RLSystem {
 
   apply(args: RLArg[]) {
     const resolved = resolveArgs(args, this.params, []);
-    this.code(...resolved);
+    return this.code(...resolved);
   }
 }
 
@@ -119,7 +127,7 @@ export type RLStr = { type: "str"; value: string };
 export type RLTemplate = {
   type: "template";
   name: string;
-  get: () => (RLTag | RLComponent)[];
+  get: () => (RLTag | RLComponent | RLTemplate)[];
 };
 
 type ParamPredicate = (p: RLFnParam) => boolean;
@@ -339,10 +347,16 @@ export class RLEntity {
   Position?: Position;
   MoveAction?: MoveAction;
   MeleeAction?: MeleeAction;
+  Actor?: Actor;
+  Fighter?: Fighter;
   IsBlocker: boolean;
   IsPlayer: boolean;
   RecalculateFOV: boolean;
   Redraw: boolean;
+  MyTurn: boolean;
+  BaseAI: boolean;
+  HostileEnemy: boolean;
+  WaitAction: boolean;
 
   constructor() {
     this.type = "entity";
@@ -352,14 +366,23 @@ export class RLEntity {
     this.IsPlayer = false;
     this.RecalculateFOV = false;
     this.Redraw = false;
+    this.MyTurn = false;
+    this.BaseAI = false;
+    this.HostileEnemy = false;
+    this.WaitAction = false;
   }
 
   has(name: RLObjectType) {
     return this.components.has(name);
   }
 
-  add(thing?: RLTag | RLComponent) {
+  add(thing?: RLTag | RLComponent | RLTemplate) {
     if (!thing) return;
+
+    if (thing.type === "template") {
+      for (const part of thing.get()) this.add(part);
+      return;
+    }
 
     if (thing.type === "component") {
       // TODO what is going on here
@@ -404,8 +427,8 @@ export type RLObject =
 export type RLObjectType = RLObject["type"] | RLComponentName | RLTagName;
 export type RLEnv = Map<string, RLObject>;
 
-class RLQuery {
-  constructor(public parent: RL, public system: RLSystem) {}
+export class RLQuery {
+  constructor(public parent: RL, public types: RLObjectType[]) {}
 
   get() {
     return Array.from(this.parent.entities.values()).filter((e) =>
@@ -414,8 +437,8 @@ class RLQuery {
   }
 
   match(e: RLEntity) {
-    for (const c of this.system.componentTypes) {
-      if (!e.has(c)) return false;
+    for (const type of this.types) {
+      if (!e.has(type)) return false;
     }
 
     return true;
@@ -446,7 +469,7 @@ export default class RL {
   }
 
   makeQuery(sys: RLSystem) {
-    return new RLQuery(this, sys);
+    return new RLQuery(this, sys.componentTypes);
   }
 
   callNamedFunction(name: string, ...args: RLArg[]) {
@@ -457,6 +480,6 @@ export default class RL {
   }
 
   runSystem(sys: RLSystem, ...args: RLArg[]) {
-    sys.apply(args);
+    return sys.apply(args);
   }
 }

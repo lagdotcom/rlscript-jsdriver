@@ -9,6 +9,7 @@ import {
   ASTIdent,
   ASTProgram,
   ASTQName,
+  ASTQuery,
   ASTSystemDecl,
   ASTTagDecl,
   ASTTemplateDecl,
@@ -190,6 +191,20 @@ class ForScope implements TSScope {
     this.name = `for[${loopvar}]`;
 
     this.members = new Map<string, ASTType>([[loopvar, intType]]);
+  }
+}
+
+class QueryScope implements TSScope {
+  name: string;
+  members: Map<string, ASTType>;
+
+  constructor(public parent: TSScope, public query: ASTQuery) {
+    this.name = `query[${query.params.map((p) => p.type).join("+")}]`;
+
+    this.members = new Map<string, ASTType>();
+    for (const p of query.params) {
+      if (p._ === "field") this.members.set(p.name, p.type);
+    }
   }
 }
 
@@ -532,7 +547,13 @@ export default class TSCompiler implements TSScope {
   name: "${t.name}",
   get: () => [${t.fields
     .map((f) => {
-      if (f._ === "tag") return `${fixName(f.name.value)}`;
+      if (f._ === "tag") {
+        const thing = this.resolveType(f.name.value);
+        if (thing.value === "tag") return `${fixName(f.name.value)}`;
+        else if (thing.value === "template") return `tm${f.name.value}`;
+
+        throw new Error(`Cannot add ${thing.value} to template`);
+      }
       const name = f.name._ === "id" ? f.name.value : this.getQName(f.name);
       return `mk${name}(${f.args.map((a) => this.getExpr(a)).join(", ")})`;
     })
@@ -612,8 +633,19 @@ export default class TSCompiler implements TSScope {
               new ForScope(scope || this.scopes.top, s.name.value)
             )}}`;
 
+          case "query":
+            return `for (const ${this.getQueryEntityVar(
+              s
+            )} of new RLQuery(RL.instance, ${this.getQueryTypes(s)}).get()) {
+              ${this.getQueryDestructure(s)}
+              ${this.getCode(
+                s.code,
+                new QueryScope(scope || this.scopes.top, s)
+              )}
+            }`;
+
           default:
-            return `// invalid? ${JSON.stringify(s)}`;
+            throw new Error(`Unknown statement: ${JSON.stringify(s)}`);
         }
       })
       .join("\n");
@@ -700,7 +732,7 @@ export default class TSCompiler implements TSScope {
           }
 
           default:
-            return `/* TODO: ${JSON.stringify(a)} */`;
+            throw new Error(`Cannot unwrap: ${JSON.stringify(a)}`);
         }
       })
       .map((v) => `{ type: "positional", value: ${v} }`)
@@ -755,6 +787,31 @@ export default class TSCompiler implements TSScope {
             .join(", ")});`
       )
       .join("\n");
+  }
+
+  getQueryEntityVar(q: ASTQuery) {
+    for (const p of q.params) {
+      if (p._ === "field" && p.type.value === "entity") return p.name;
+    }
+
+    return "_entity";
+  }
+
+  getQueryDestructure(q: ASTQuery) {
+    const vars: string[] = [];
+    for (const p of q.params) {
+      if (p._ === "field" && p.type.value !== "entity")
+        vars.push(`${p.type.value}: ${p.name}`);
+    }
+
+    return `const { ${vars.join(", ")} } = ${this.getQueryEntityVar(q)};`;
+  }
+
+  getQueryTypes(q: ASTQuery) {
+    return `[${q.params
+      .map((p) => `"${p._ === "field" ? p.type.value : p.type}"`)
+      .filter((p) => p !== '"entity"')
+      .join(", ")}]`;
   }
 
   getGlobals() {
@@ -855,7 +912,7 @@ export default class TSCompiler implements TSScope {
           })(${this.getExpr(e.expr)})`;
 
       default:
-        return `/* invalid? ${JSON.stringify(e)} */`;
+        throw new Error(`Unknown expression: ${JSON.stringify(e)}`);
     }
   }
 

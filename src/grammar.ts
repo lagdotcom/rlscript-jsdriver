@@ -20,7 +20,7 @@ const lexer = moo.compile({
     number:     /[0-9]+/,
     sqstring:   /'.'/,
     dqstring:   /".*?"/,
-    keywords:   ["else", "end", "false", "if", "not", "return", "true"],
+    keywords:   ["else", "end", "false", "if", "not", "query", "return", "true"],
 
     word: {
         match: /[a-zA-Z][a-zA-Z0-9_]*/,
@@ -133,6 +133,7 @@ const grammar: Grammar = {
     {"name": "stmt", "symbols": ["if"], "postprocess": id},
     {"name": "stmt", "symbols": ["return"], "postprocess": id},
     {"name": "stmt", "symbols": ["for"], "postprocess": id},
+    {"name": "stmt", "symbols": ["query"], "postprocess": id},
     {"name": "call", "symbols": ["qname", "arglist"], "postprocess": ([name,args]) => ({ _: 'call', name, args })},
     {"name": "assignment", "symbols": ["qname", "_", "assignop", "_", "expr"], "postprocess": ([name,,op,,expr]) => ({ _: 'assignment', name, op, expr })},
     {"name": "assignop", "symbols": [{"literal":"="}], "postprocess": val},
@@ -148,6 +149,7 @@ const grammar: Grammar = {
     {"name": "return", "symbols": [{"literal":"exit"}], "postprocess": () => ({ _: 'return' })},
     {"name": "return", "symbols": [{"literal":"return"}, "__", "expr"], "postprocess": ([,,expr]) => ({ _: 'return', expr })},
     {"name": "for", "symbols": [{"literal":"for"}, "__", "name", "_", {"literal":"="}, "_", "expr", "__", {"literal":"to"}, "__", "expr", "_", "code", {"literal":"end"}], "postprocess": ([,,name,,,,start,,,,end,,code]) => ({ _: 'for', name, start, end, code })},
+    {"name": "query", "symbols": [{"literal":"query"}, "_", "paramlist", "_", "code", {"literal":"end"}], "postprocess": ([,,params,,code]) => ({ _: 'query', params, code })},
     {"name": "arglist", "symbols": [{"literal":"("}, "_", "args", "_", {"literal":")"}], "postprocess": ([,,args,,]) => args},
     {"name": "args", "symbols": [], "postprocess": () => []},
     {"name": "args", "symbols": ["arg"]},

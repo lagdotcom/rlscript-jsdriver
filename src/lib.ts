@@ -25,11 +25,7 @@ function setSize({ value: width }: RLInt, { value: height }: RLInt) {
 
 function spawn(...args: (RLComponent | RLTag | RLTemplate)[]) {
   const e = new RLEntity();
-  for (const a of args) {
-    if (a.type === "template") {
-      for (const part of a.get()) e.add(part);
-    } else e.add(a);
-  }
+  for (const a of args) e.add(a);
 
   Game.instance.rl.entities.set(e.id, e);
   return e;
