@@ -36,6 +36,7 @@ export type Actor = {
 export type Fighter = {
   type: "component";
   typeName: "Fighter";
+  name: string;
   maxHp: number;
   hp: number;
   defense: number;

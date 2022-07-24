@@ -1002,9 +1002,9 @@
         if (variadic.length === 0)
           throw new Error(`Function only has ${results.length} params`);
         if (!isAssignableToAny(value, variadic))
-          throw new Error(`Function variadic type is '${variadic.join("|")}', got ${value.type}`);
+          throw new Error(`Function variadic type is "${variadic.join("|")}", got ${value.type}`);
       } else if (!isAssignableTo(value, params[i].typeName))
-        throw new Error(`Param #${i} expects type '${params[i].typeName}, got ${value.type}`);
+        throw new Error(`Param #${i} expects type "${params[i].typeName}, got ${value.type}`);
       results[i] = value;
       filled.add(i);
     };
@@ -1060,17 +1060,24 @@
       this.empty = empty;
       this.type = "grid";
       this.contents = /* @__PURE__ */ new Map();
-      this.fill(empty);
     }
     tag(x, y) {
       return `${x},${y}`;
     }
     at(x, y) {
+      return this.atOr(x, y, this.empty);
+    }
+    atOr(x, y, empty) {
       const tag = this.tag(x, y);
-      return this.contents.get(tag);
+      const item = this.contents.get(tag);
+      return typeof item === "undefined" ? empty : item;
     }
     put(x, y, item) {
-      this.contents.set(this.tag(x, y), item);
+      const tag = this.tag(x, y);
+      if (item === this.empty)
+        this.contents.delete(tag);
+      else
+        this.contents.set(this.tag(x, y), item);
     }
     fill(item) {
       this.rect(0, 0, this.width - 1, this.height - 1, item);
@@ -1127,6 +1134,21 @@
     }
   };
   RLRect.type = "rect";
+  var _RLXY = class {
+    constructor(x, y) {
+      this.x = x;
+      this.y = y;
+      this.type = "xy";
+    }
+    equals(o) {
+      return this.x === o.x && this.y === o.y;
+    }
+    plus(o) {
+      return new _RLXY(this.x + o.x, this.y + o.y);
+    }
+  };
+  var RLXY = _RLXY;
+  RLXY.type = "xy";
   var RLEntity = class {
     constructor() {
       this.type = "entity";
@@ -1340,9 +1362,10 @@
     typeName: "Actor",
     energy
   });
-  var mkFighter = (maxHp, hp, defense, power) => ({
+  var mkFighter = (name, maxHp, hp, defense, power) => ({
     type: "component",
     typeName: "Fighter",
+    name,
     maxHp,
     hp,
     defense,
@@ -1355,7 +1378,7 @@
       IsBlocker,
       IsPlayer,
       mkAppearance("@", "white", "black"),
-      mkFighter(30, 30, 2, 5),
+      mkFighter("you", 30, 30, 2, 5),
       mkActor(100),
       MyTurn,
       RecalculateFOV
@@ -1372,7 +1395,7 @@
     get: () => [
       tmEnemy,
       mkAppearance("o", "green", "black"),
-      mkFighter(10, 10, 0, 3)
+      mkFighter("orc", 10, 10, 0, 3)
     ]
   };
   var tmTroll = {
@@ -1381,7 +1404,7 @@
     get: () => [
       tmEnemy,
       mkAppearance("T", "lime", "black"),
-      mkFighter(16, 16, 1, 4)
+      mkFighter("troll", 16, 16, 1, 4)
     ]
   };
   var Floor = new RLTile(".", true, true);
@@ -1389,6 +1412,22 @@
   var map;
   var explored;
   var visible;
+  function getBlockingMap() {
+    const blocked = new RLGrid(map.width, map.height);
+    for (const e of new RLQuery(RL.instance, ["Position", "IsBlocker"]).get()) {
+      const { Position: p } = e;
+      blocked.put(p.x, p.y, e);
+    }
+    return blocked;
+  }
+  var fn_getBlockingMap = new RLFn("getBlockingMap", getBlockingMap, []);
+  function useTurn(e) {
+    e.Actor.energy -= 100;
+    e.remove(MyTurn);
+  }
+  var fn_useTurn = new RLFn("useTurn", useTurn, [
+    { type: "param", name: "e", typeName: "entity" }
+  ]);
   function drawTileAt(x, y) {
     let ch = " ";
     let fg = "white";
@@ -1507,11 +1546,38 @@
     { type: "constraint", typeName: "IsPlayer" },
     { type: "param", name: "k", typeName: "KeyEvent" }
   ]);
-  function hostileAI(e) {
+  function hostileAI(e, p) {
+    if (visible.at(p.x, p.y)) {
+      for (const target of new RLQuery(RL.instance, [
+        "Position",
+        "IsPlayer"
+      ]).get()) {
+        const { Position: tp } = target;
+        const dx = tp.x - p.x;
+        const dy = tp.y - p.y;
+        const distance = RL.instance.callNamedFunction("abs", {
+          type: "positional",
+          value: { type: "int", value: dx }
+        }) + RL.instance.callNamedFunction("abs", {
+          type: "positional",
+          value: { type: "int", value: dy }
+        });
+        if (distance < 2) {
+          e.add(mkMeleeAction(target));
+          return;
+        }
+        const step = RL.instance.callNamedFunction("getNextMove", { type: "positional", value: map }, { type: "positional", value: getBlockingMap() }, { type: "positional", value: new RLXY(p.x, p.y) }, { type: "positional", value: new RLXY(tp.x, tp.y) });
+        if (step) {
+          e.add(mkMoveAction(step.x - p.x, step.y - p.y));
+          return;
+        }
+      }
+    }
     e.add(WaitAction);
   }
   var system_hostileAI = new RLSystem("hostileAI", hostileAI, [
     { type: "param", name: "e", typeName: "entity" },
+    { type: "param", name: "p", typeName: "Position" },
     { type: "constraint", typeName: "HostileEnemy" },
     { type: "constraint", typeName: "MyTurn" }
   ]);
@@ -1522,12 +1588,11 @@
     const t = map.at(x, y);
     if (t && t.walkable) {
       const b = RL.instance.callNamedFunction("find", { type: "positional", value: IsBlocker }, { type: "positional", value: mkPosition(x, y) });
-      if (b) {
+      if (b && b.has("Fighter")) {
         e.add(mkMeleeAction(b));
         return;
       }
-      a.energy -= 100;
-      e.remove(MyTurn);
+      useTurn(e);
       e.add(mkOldPosition(p.x, p.y));
       p.x = x;
       p.y = y;
@@ -1546,8 +1611,7 @@
   function doMelee(e, m, f, a) {
     const target = m.target;
     e.remove(m);
-    a.energy -= 100;
-    e.remove(MyTurn);
+    useTurn(e);
   }
   var system_doMelee = new RLSystem("doMelee", doMelee, [
     { type: "param", name: "e", typeName: "entity" },
@@ -1558,8 +1622,7 @@
   ]);
   function doWait(e, a) {
     e.remove(WaitAction);
-    a.energy -= 100;
-    e.remove(MyTurn);
+    useTurn(e);
   }
   var system_doWait = new RLSystem("doWait", doWait, [
     { type: "param", name: "e", typeName: "entity" },
@@ -1568,7 +1631,7 @@
     { type: "constraint", typeName: "MyTurn" }
   ]);
   function fov(e, p) {
-    RL.instance.callNamedFunction("getFOV", { type: "positional", value: { type: "grid", value: map } }, { type: "positional", value: { type: "int", value: p.x } }, { type: "positional", value: { type: "int", value: p.y } }, { type: "positional", value: { type: "int", value: 5 } }, { type: "positional", value: { type: "grid", value: visible } }, { type: "positional", value: { type: "grid", value: explored } });
+    RL.instance.callNamedFunction("getFOV", { type: "positional", value: map }, { type: "positional", value: { type: "int", value: p.x } }, { type: "positional", value: { type: "int", value: p.y } }, { type: "positional", value: { type: "int", value: 5 } }, { type: "positional", value: visible }, { type: "positional", value: explored });
     e.remove(RecalculateFOV);
     for (let x = 0; x <= 79; x++) {
       for (let y = 0; y <= 49; y++) {
@@ -1621,6 +1684,8 @@
   }
   var system_nextTurn = new RLSystem("nextTurn", nextTurn, []);
   var impl = /* @__PURE__ */ new Map([
+    ["getBlockingMap", fn_getBlockingMap],
+    ["useTurn", fn_useTurn],
     ["drawTileAt", fn_drawTileAt],
     ["drawEntity", fn_drawEntity],
     ["randomRoom", fn_randomRoom],
@@ -2639,7 +2704,7 @@
     const b = bg ? new TinyColor(bg.value).toNumber() << 8 : void 0;
     Game.instance.terminal.drawChar(x, y, ch, f, b);
   }
-  function drawGrid({ value: g }) {
+  function drawGrid(g) {
     for (let y = 0; y < g.height; y++) {
       for (let x = 0; x < g.width; x++) {
         const t = g.at(x, y);
@@ -2651,7 +2716,7 @@
   function randInt({ value: min }, { value: max }) {
     return Math.floor(Math.random() * (max + 1 - min) + min);
   }
-  function getFOV({ value: tiles }, { value: x }, { value: y }, { value: radius }, { value: visible2 }, { value: explored2 }) {
+  function getFOV(tiles, { value: x }, { value: y }, { value: radius }, visible2, explored2) {
     visible2.fill(visible2.empty);
     const grid = new ShadowCastingGrid(tiles.width, tiles.height, (x2, y2) => {
       var _a;
@@ -2691,7 +2756,63 @@
         return e;
     }
   }
+  function abs(n) {
+    return Math.abs(n.value);
+  }
+  var offsets = [
+    new RLXY(1, 0),
+    new RLXY(0, 1),
+    new RLXY(-1, 0),
+    new RLXY(0, -1)
+  ];
+  function getNextMove(map2, blockedMap, src, dst) {
+    const cost = new RLGrid(map2.width, map2.height, Infinity);
+    const from = new RLGrid(map2.width, map2.height, void 0);
+    cost.put(src.x, src.y, 0);
+    const queue = [src];
+    let best = Infinity;
+    while (queue.length) {
+      const centre = queue.shift();
+      const newCost = cost.at(centre.x, centre.y) + 1;
+      if (best < newCost)
+        continue;
+      for (const o of offsets) {
+        const pos = centre.plus(o);
+        if (pos.equals(dst)) {
+          best = newCost;
+          cost.put(pos.x, pos.y, newCost);
+          from.put(pos.x, pos.y, centre);
+          break;
+        }
+        const tile = map2.at(pos.x, pos.y);
+        const canWalk = tile == null ? void 0 : tile.walkable;
+        const blocker = blockedMap.at(pos.x, pos.y);
+        const oldCost = cost.at(pos.x, pos.y);
+        if (canWalk && !blocker && oldCost > newCost) {
+          cost.put(pos.x, pos.y, newCost);
+          from.put(pos.x, pos.y, centre);
+          queue.push(pos);
+        }
+      }
+    }
+    if (cost.atOr(dst.x, dst.y, Infinity) === Infinity)
+      return;
+    const path = [];
+    let at = dst;
+    while (!at.equals(src)) {
+      path.unshift(at);
+      const next = from.at(at.x, at.y);
+      if (!next)
+        break;
+      at = next;
+    }
+    return path[0];
+  }
   var lib = /* @__PURE__ */ new Map([
+    [
+      "abs",
+      new RLFn("abs", abs, [{ type: "param", typeName: "int", name: "value" }])
+    ],
     ["add", new RLFn("add", add, [], ["component", "tag"])],
     [
       "draw",
@@ -2729,6 +2850,15 @@
         { type: "param", typeName: "int", name: "radius" },
         { type: "param", typeName: "grid", name: "visible" },
         { type: "param", typeName: "grid", name: "explored" }
+      ])
+    ],
+    [
+      "getNextMove",
+      new RLFn("getNextMove", getNextMove, [
+        { type: "param", typeName: "grid", name: "map" },
+        { type: "param", typeName: "grid", name: "blockedMap" },
+        { type: "param", typeName: "xy", name: "from" },
+        { type: "param", typeName: "xy", name: "to" }
       ])
     ],
     [

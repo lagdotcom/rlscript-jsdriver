@@ -28,6 +28,7 @@ component Actor
 end
 
 component Fighter
+  name: str
   maxHp: int
   hp: int
   defense: int
@@ -47,7 +48,7 @@ template Player
   IsBlocker
   IsPlayer
   Appearance('@', "white", "black")
-  Fighter(30, 30, 2, 5)
+  Fighter("you", 30, 30, 2, 5)
   Actor(100)
   MyTurn
   RecalculateFOV
@@ -62,13 +63,13 @@ end
 template Orc
   Enemy
   Appearance('o', "green", "black")
-  Fighter(10, 10, 0, 3)
+  Fighter("orc", 10, 10, 0, 3)
 end
 
 template Troll
   Enemy
   Appearance('T', "lime", "black")
-  Fighter(16, 16, 1, 4)
+  Fighter("troll", 16, 16, 1, 4)
 end
 
 tiletype Floor '.' walkable transparent end
@@ -86,7 +87,35 @@ system onKey(e: entity, IsPlayer, k: KeyEvent)
   end)
 end
 
-system hostileAI(e: entity, HostileEnemy, MyTurn)
+fn getBlockingMap()
+  local blocked: grid = grid(map.width, map.height)
+  query (e: entity, p: Position, IsBlocker)
+    blocked.put(p.x, p.y, e)
+  end
+
+  return blocked
+end
+
+system hostileAI(e: entity, p: Position, HostileEnemy, MyTurn)
+  if visible.at(p.x, p.y)
+    query (target: entity, tp: Position, IsPlayer)
+      local dx: int = tp.x - p.x
+      local dy: int = tp.y - p.y
+      local distance: int = abs(dx) + abs(dy)
+
+      if distance < 2
+        e.add(MeleeAction(target))
+        exit
+      end
+
+      local step: xy? = getNextMove(map, getBlockingMap(), xy(p.x, p.y), xy(tp.x, tp.y))
+      if step
+        e.add(MoveAction(step.x - p.x, step.y - p.y))
+        exit
+      end
+    end
+  end
+
   e.add(WaitAction)
 end
 
@@ -99,13 +128,12 @@ system doMove(e: entity, p: Position, m: MoveAction, a: Actor, MyTurn)
   local t: tile? = map.at(x, y)
   if t and t.walkable
     local b: entity? = find(IsBlocker, Position(x, y))
-    if b
+    if b and b.has(Fighter)
       e.add(MeleeAction(b))
       exit
     end
 
-    a.energy -= 100
-    e.remove(MyTurn)
+    useTurn(e)
     e.add(OldPosition(p.x, p.y))
     p.x = x
     p.y = y
@@ -119,18 +147,14 @@ end
 system doMelee(e: entity, m: MeleeAction, f: Fighter, a: Actor, MyTurn)
   local target: entity = m.target
   e.remove(m)
-
-  a.energy -= 100
-  e.remove(MyTurn)
+  useTurn(e)
 
   ;; TODO
 end
 
 system doWait(e: entity, WaitAction, a: Actor, MyTurn)
   e.remove(WaitAction)
-  
-  a.energy -= 100
-  e.remove(MyTurn)
+  useTurn(e)
 end
 
 system fov(e: entity, p: Position, RecalculateFOV)
@@ -145,6 +169,11 @@ system fov(e: entity, p: Position, RecalculateFOV)
   end
 
   add(Redraw)
+end
+
+fn useTurn(e: entity)
+  e.Actor.energy -= 100
+  e.remove(MyTurn)
 end
 
 fn drawTileAt(x: int, y: int)

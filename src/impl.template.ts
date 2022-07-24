@@ -12,6 +12,7 @@ import RL, {
   RLTag,
   RLTemplate,
   RLTile,
+  RLXY,
 } from "./RL";
 
 //#TAGTYPES

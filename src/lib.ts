@@ -12,11 +12,10 @@ import RL, {
   RLTag,
   RLTemplate,
   RLTile,
+  RLXY,
 } from "./RL";
 import { RLComponent } from "./implTypes";
 import { TinyColor } from "tinycolor-ts";
-
-type RLGridArg<T> = { type: "grid"; value: RLGrid<T> };
 
 function setSize({ value: width }: RLInt, { value: height }: RLInt) {
   Game.instance.width = width;
@@ -48,7 +47,7 @@ function draw(
   Game.instance.terminal.drawChar(x, y, ch, f, b);
 }
 
-function drawGrid({ value: g }: RLGridArg<RLTile>) {
+function drawGrid(g: RLGrid<RLTile>) {
   for (let y = 0; y < g.height; y++) {
     for (let x = 0; x < g.width; x++) {
       const t = g.at(x, y);
@@ -68,12 +67,12 @@ function randInt({ value: min }: RLInt, { value: max }: RLInt) {
 }
 
 function getFOV(
-  { value: tiles }: RLGridArg<RLTile>,
+  tiles: RLGrid<RLTile>,
   { value: x }: RLInt,
   { value: y }: RLInt,
   { value: radius }: RLInt,
-  { value: visible }: RLGridArg<boolean>,
-  { value: explored }: RLGridArg<boolean>
+  visible: RLGrid<boolean>,
+  explored: RLGrid<boolean>
 ) {
   visible.fill(visible.empty);
 
@@ -126,7 +125,74 @@ function find(...args: (RLComponent | RLTag)[]) {
   }
 }
 
+function abs(n: RLInt) {
+  return Math.abs(n.value);
+}
+
+const offsets: RLXY[] = [
+  new RLXY(1, 0),
+  new RLXY(0, 1),
+  new RLXY(-1, 0),
+  new RLXY(0, -1),
+];
+function getNextMove(
+  map: RLGrid<RLTile>,
+  blockedMap: RLGrid<RLEntity | undefined>,
+  src: RLXY,
+  dst: RLXY
+): RLXY | undefined {
+  const cost = new RLGrid(map.width, map.height, Infinity);
+  const from = new RLGrid<RLXY | undefined>(map.width, map.height, undefined);
+  cost.put(src.x, src.y, 0);
+  const queue: RLXY[] = [src];
+  let best = Infinity;
+
+  while (queue.length) {
+    const centre = queue.shift() as RLXY;
+    const newCost = cost.at(centre.x, centre.y) + 1;
+    if (best < newCost) continue;
+
+    for (const o of offsets) {
+      const pos = centre.plus(o);
+      if (pos.equals(dst)) {
+        best = newCost;
+        cost.put(pos.x, pos.y, newCost);
+        from.put(pos.x, pos.y, centre);
+        break;
+      }
+
+      const tile = map.at(pos.x, pos.y);
+      const canWalk = tile?.walkable;
+      const blocker = blockedMap.at(pos.x, pos.y);
+      const oldCost = cost.at(pos.x, pos.y);
+
+      if (canWalk && !blocker && oldCost > newCost) {
+        cost.put(pos.x, pos.y, newCost);
+        from.put(pos.x, pos.y, centre);
+        queue.push(pos);
+      }
+    }
+  }
+
+  if (cost.atOr(dst.x, dst.y, Infinity) === Infinity) return;
+  const path: RLXY[] = [];
+  let at = dst;
+  while (!at.equals(src)) {
+    path.unshift(at);
+    const next = from.at(at.x, at.y);
+    if (!next) break;
+
+    at = next;
+  }
+
+  return path[0];
+}
+
 const lib: RLEnv = new Map([
+  [
+    "abs",
+    new RLFn("abs", abs, [{ type: "param", typeName: "int", name: "value" }]),
+  ],
   ["add", new RLFn("add", add, [], ["component", "tag"])],
   [
     "draw",
@@ -164,6 +230,15 @@ const lib: RLEnv = new Map([
       { type: "param", typeName: "int", name: "radius" },
       { type: "param", typeName: "grid", name: "visible" },
       { type: "param", typeName: "grid", name: "explored" },
+    ]),
+  ],
+  [
+    "getNextMove",
+    new RLFn("getNextMove", getNextMove, [
+      { type: "param", typeName: "grid", name: "map" },
+      { type: "param", typeName: "grid", name: "blockedMap" },
+      { type: "param", typeName: "xy", name: "from" },
+      { type: "param", typeName: "xy", name: "to" },
     ]),
   ],
   [

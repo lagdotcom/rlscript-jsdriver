@@ -181,7 +181,7 @@ function resolveArgs(
         );
     } else if (!isAssignableTo(value, params[i].typeName))
       throw new Error(
-        `Param #${i} expects type '${params[i].typeName}, got ${value.type}`
+        `Param #${i} expects type '${params[i].typeName}', got ${value.type}`
       );
 
     results[i] = value;
@@ -252,7 +252,6 @@ export class RLGrid<T> {
   constructor(public width: number, public height: number, public empty: T) {
     this.type = "grid";
     this.contents = new Map<string, T>();
-    this.fill(empty);
   }
 
   tag(x: number, y: number) {
@@ -260,12 +259,19 @@ export class RLGrid<T> {
   }
 
   at(x: number, y: number) {
+    return this.atOr(x, y, this.empty);
+  }
+
+  atOr<E>(x: number, y: number, empty: E) {
     const tag = this.tag(x, y);
-    return this.contents.get(tag);
+    const item = this.contents.get(tag);
+    return typeof item === "undefined" ? empty : item;
   }
 
   put(x: number, y: number, item: T) {
-    this.contents.set(this.tag(x, y), item);
+    const tag = this.tag(x, y);
+    if (item === this.empty) this.contents.delete(tag);
+    else this.contents.set(this.tag(x, y), item);
   }
 
   fill(item: T) {
@@ -333,6 +339,23 @@ export class RLRect {
 
   intersects(o: RLRect) {
     return this.x <= o.x2 && this.x2 >= o.x && this.y <= o.y2 && this.y2 >= o.y;
+  }
+}
+
+export class RLXY {
+  static type: RLObjectType = "xy";
+  type: "xy";
+
+  constructor(public x: number, public y: number) {
+    this.type = "xy";
+  }
+
+  equals(o: RLXY) {
+    return this.x === o.x && this.y === o.y;
+  }
+
+  plus(o: RLXY) {
+    return new RLXY(this.x + o.x, this.y + o.y);
   }
 }
 
@@ -423,7 +446,8 @@ export type RLObject =
   | RLSystem
   | RLTag
   | RLTemplate
-  | RLTile;
+  | RLTile
+  | RLXY;
 export type RLObjectType = RLObject["type"] | RLComponentName | RLTagName;
 export type RLEnv = Map<string, RLObject>;
 

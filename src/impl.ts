@@ -20,6 +20,7 @@ import RL, {
   RLTag,
   RLTemplate,
   RLTile,
+  RLXY,
 } from "./RL";
 
 const IsBlocker = new RLTag("IsBlocker");
@@ -67,6 +68,7 @@ const mkActor = (energy: number): Actor => ({
   energy,
 });
 const mkFighter = (
+  name: string,
   maxHp: number,
   hp: number,
   defense: number,
@@ -74,6 +76,7 @@ const mkFighter = (
 ): Fighter => ({
   type: "component",
   typeName: "Fighter",
+  name,
   maxHp,
   hp,
   defense,
@@ -87,7 +90,7 @@ const tmPlayer: RLTemplate = {
     IsBlocker,
     IsPlayer,
     mkAppearance("@", "white", "black"),
-    mkFighter(30, 30, 2, 5),
+    mkFighter("you", 30, 30, 2, 5),
     mkActor(100),
     MyTurn,
     RecalculateFOV,
@@ -104,7 +107,7 @@ const tmOrc: RLTemplate = {
   get: () => [
     tmEnemy,
     mkAppearance("o", "green", "black"),
-    mkFighter(10, 10, 0, 3),
+    mkFighter("orc", 10, 10, 0, 3),
   ],
 };
 const tmTroll: RLTemplate = {
@@ -113,7 +116,7 @@ const tmTroll: RLTemplate = {
   get: () => [
     tmEnemy,
     mkAppearance("T", "lime", "black"),
-    mkFighter(16, 16, 1, 4),
+    mkFighter("troll", 16, 16, 1, 4),
   ],
 };
 
@@ -123,6 +126,24 @@ const Wall = new RLTile("#", false, false);
 let map: RLGrid;
 let explored: RLGrid;
 let visible: RLGrid;
+
+function getBlockingMap() {
+  const blocked: RLGrid = new RLGrid(map.width, map.height);
+  for (const e of new RLQuery(RL.instance, ["Position", "IsBlocker"]).get()) {
+    const { Position: p } = e;
+    blocked.put(p.x, p.y, e);
+  }
+  return blocked;
+}
+const fn_getBlockingMap = new RLFn("getBlockingMap", getBlockingMap, []);
+
+function useTurn(e: RLEntity) {
+  e.Actor.energy -= 100;
+  e.remove(MyTurn);
+}
+const fn_useTurn = new RLFn("useTurn", useTurn, [
+  { type: "param", name: "e", typeName: "entity" },
+]);
 
 function drawTileAt(x: number, y: number) {
   let ch = " ";
@@ -322,11 +343,46 @@ const system_onKey = new RLSystem("onKey", onKey, [
   { type: "param", name: "k", typeName: "KeyEvent" },
 ]);
 
-function hostileAI(e: RLEntity) {
+function hostileAI(e: RLEntity, p: Position) {
+  if (visible.at(p.x, p.y)) {
+    for (const target of new RLQuery(RL.instance, [
+      "Position",
+      "IsPlayer",
+    ]).get()) {
+      const { Position: tp } = target;
+      const dx: number = tp.x - p.x;
+      const dy: number = tp.y - p.y;
+      const distance: number =
+        RL.instance.callNamedFunction("abs", {
+          type: "positional",
+          value: { type: "int", value: dx },
+        }) +
+        RL.instance.callNamedFunction("abs", {
+          type: "positional",
+          value: { type: "int", value: dy },
+        });
+      if (distance < 2) {
+        e.add(mkMeleeAction(target));
+        return;
+      }
+      const step: RLXY | undefined = RL.instance.callNamedFunction(
+        "getNextMove",
+        { type: "positional", value: map },
+        { type: "positional", value: getBlockingMap() },
+        { type: "positional", value: new RLXY(p.x, p.y) },
+        { type: "positional", value: new RLXY(tp.x, tp.y) }
+      );
+      if (step) {
+        e.add(mkMoveAction(step.x - p.x, step.y - p.y));
+        return;
+      }
+    }
+  }
   e.add(WaitAction);
 }
 const system_hostileAI = new RLSystem("hostileAI", hostileAI, [
   { type: "param", name: "e", typeName: "entity" },
+  { type: "param", name: "p", typeName: "Position" },
   { type: "constraint", typeName: "HostileEnemy" },
   { type: "constraint", typeName: "MyTurn" },
 ]);
@@ -342,12 +398,11 @@ function doMove(e: RLEntity, p: Position, m: MoveAction, a: Actor) {
       { type: "positional", value: IsBlocker },
       { type: "positional", value: mkPosition(x, y) }
     );
-    if (b) {
+    if (b && b.has("Fighter")) {
       e.add(mkMeleeAction(b));
       return;
     }
-    a.energy -= 100;
-    e.remove(MyTurn);
+    useTurn(e);
     e.add(mkOldPosition(p.x, p.y));
     p.x = x;
     p.y = y;
@@ -367,8 +422,7 @@ const system_doMove = new RLSystem("doMove", doMove, [
 function doMelee(e: RLEntity, m: MeleeAction, f: Fighter, a: Actor) {
   const target: RLEntity = m.target;
   e.remove(m);
-  a.energy -= 100;
-  e.remove(MyTurn);
+  useTurn(e);
 }
 const system_doMelee = new RLSystem("doMelee", doMelee, [
   { type: "param", name: "e", typeName: "entity" },
@@ -380,8 +434,7 @@ const system_doMelee = new RLSystem("doMelee", doMelee, [
 
 function doWait(e: RLEntity, a: Actor) {
   e.remove(WaitAction);
-  a.energy -= 100;
-  e.remove(MyTurn);
+  useTurn(e);
 }
 const system_doWait = new RLSystem("doWait", doWait, [
   { type: "param", name: "e", typeName: "entity" },
@@ -393,12 +446,12 @@ const system_doWait = new RLSystem("doWait", doWait, [
 function fov(e: RLEntity, p: Position) {
   RL.instance.callNamedFunction(
     "getFOV",
-    { type: "positional", value: { type: "grid", value: map } },
+    { type: "positional", value: map },
     { type: "positional", value: { type: "int", value: p.x } },
     { type: "positional", value: { type: "int", value: p.y } },
     { type: "positional", value: { type: "int", value: 5 } },
-    { type: "positional", value: { type: "grid", value: visible } },
-    { type: "positional", value: { type: "grid", value: explored } }
+    { type: "positional", value: visible },
+    { type: "positional", value: explored }
   );
   e.remove(RecalculateFOV);
   for (let x = 0; x <= 79; x++) {
@@ -460,6 +513,8 @@ function nextTurn() {
 const system_nextTurn = new RLSystem("nextTurn", nextTurn, []);
 
 const impl: RLEnv = new Map<string, RLObject>([
+  ["getBlockingMap", fn_getBlockingMap],
+  ["useTurn", fn_useTurn],
   ["drawTileAt", fn_drawTileAt],
   ["drawEntity", fn_drawEntity],
   ["randomRoom", fn_randomRoom],
