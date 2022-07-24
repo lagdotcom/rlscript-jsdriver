@@ -97,7 +97,7 @@ export default class Game {
           sys,
           { type: "typed", typeName: "entity", value: e },
           ...args
-        ) === false;
+        );
 
       return true;
     }

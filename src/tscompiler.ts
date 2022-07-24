@@ -20,6 +20,13 @@ import {
 import { readFileSync, writeFileSync } from "fs";
 import Stack from "./Stack";
 import { join } from "path";
+import library, { LibFunction, LibFunctionParam } from "./libdefs";
+
+export class BadCallError extends Error {
+  constructor(fn: ASTFnDecl | LibFunction, details: string) {
+    super(`Error calling ${fn.name}: ${details}`);
+  }
+}
 
 export class CannotResolveError extends Error {
   constructor(name: string, scope: TSScope) {
@@ -147,6 +154,7 @@ const builtinTypes = new Set<string>([
   "tag",
   "template",
   "tile",
+  "xy",
 
   "entity",
   "KeyEvent",
@@ -351,21 +359,9 @@ export default class TSCompiler implements TSScope {
     this.tileFields = new Map();
     this.tileTypes = [];
 
-    this.members = new Map<string, ASTType>([
-      ["abs", globalType],
-      ["add", globalType],
-      ["draw", globalType],
-      ["find", globalType],
-      ["getFOV", globalType],
-      ["getNextMove", globalType],
-      ["grid", globalType],
-      ["pushKeyHandler", globalType],
-      ["randInt", globalType],
-      ["rect", globalType],
-      ["setSize", globalType],
-      ["spawn", globalType],
-      ["xy", globalType],
-    ]);
+    this.members = new Map<string, ASTType>(
+      library.map((fn) => [fn.name, globalType])
+    );
   }
 
   feed(ast: ASTProgram) {
@@ -412,6 +408,66 @@ export default class TSCompiler implements TSScope {
     this.members.set(name, type);
   }
 
+  checkLibraryCall(fn: LibFunction, args: ASTExpr[]) {
+    const minArgs = fn.params.filter((p) => !p.optional).length;
+    const maxArgs = fn.params.length + (fn.variadic ? Infinity : 0);
+
+    if (args.length < minArgs)
+      throw new BadCallError(fn, "not enough arguments");
+    if (args.length > maxArgs) throw new BadCallError(fn, "too many arguments");
+
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i];
+      const param = (
+        i >= fn.params.length ? fn.variadic : fn.params[i]
+      ) as LibFunctionParam;
+
+      const type = this.getExprType(arg);
+
+      if (type.optional && param.optional)
+        throw new Error(`arg #${i} might be optional`);
+
+      let matched = false;
+      for (const accepted of param.types) {
+        if (accepted === type.value) matched = true;
+        else if (
+          accepted === "component" &&
+          this.componentNames.includes(type.value)
+        )
+          matched = true;
+        else if (accepted === "tag" && this.tagNames.includes(type.value))
+          matched = true;
+      }
+
+      if (!matched)
+        throw new Error(
+          `arg #${i} is ${type.value}${
+            type.optional ? "?" : ""
+          }, does not match ${param.types.join("|")}${
+            param.optional ? "?" : ""
+          }`
+        );
+    }
+  }
+
+  checkFnCall(fn: ASTFnDecl, args: ASTExpr[]) {
+    const minArgs = fn.params.length;
+    const maxArgs = fn.params.length;
+
+    if (args.length < minArgs)
+      throw new BadCallError(fn, "not enough arguments");
+    if (args.length > maxArgs) throw new BadCallError(fn, "too many arguments");
+
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i];
+      const match = fn.params[i];
+
+      const type = this.getExprType(arg);
+      console.log("fncheck", type, match);
+
+      throw new Error(`checkFnCall is not implemented`);
+    }
+  }
   get componentNames() {
     return this.components.map((c) => c.name);
   }
@@ -643,6 +699,7 @@ export default class TSCompiler implements TSScope {
           }
 
           case "return":
+            // TODO check expr type against containing function
             return `return ${s.expr ? this.getExpr(s.expr) : ""}`;
 
           case "for":
@@ -693,6 +750,10 @@ export default class TSCompiler implements TSScope {
     if (s.value === "builtin") return `${n}(${this.getArgs(args)})`;
 
     if (s.value === "global") {
+      const lib = library.find((fn) => fn.name === n);
+      if (!lib) throw new Error(`Invalid global entry for ${n}`);
+      this.checkLibraryCall(lib, args);
+
       if (n === "grid") return `new RLGrid(${this.getArgs(args)})`;
       else if (n === "rect") return `new RLRect(${this.getArgs(args)})`;
       else if (n === "xy") return `new RLXY(${this.getArgs(args)})`;
@@ -744,27 +805,17 @@ export default class TSCompiler implements TSScope {
           }
 
           case "call": {
-            const type =
-              a.name._ === "id"
-                ? this.resolveType(a.name.value)
-                : this.resolveTypeChain(a.name);
-            const name =
-              a.name._ === "id" ? a.name.value : this.getQName(a.name);
+            const type = this.getExprType(a);
+            const value = this.getCall(a.name, a.args);
 
-            if (this.componentNames.includes(type.value))
-              return this.getCall(a.name, a.args);
-            else if (type.value === "global") {
-              if (name === "grid") return `new RLGrid(${this.getArgs(a.args)})`;
-              else if (name === "rect")
-                return `new RLRect(${this.getArgs(a.args)})`;
-              else if (name === "xy")
-                return `new RLXY(${this.getArgs(a.args)})`;
-            }
+            if (
+              this.componentNames.includes(type.value) ||
+              this.tagNames.includes(type.value) ||
+              ["grid", "xy"].includes(type.value)
+            )
+              return value;
 
-            if (type.value === "fn")
-              return `${fixName(name)}(${this.getArgs(a.args)})`;
-
-            throw new CoerceCallError(a);
+            return `{ type: "${type.value}", value: ${value} }`;
           }
 
           case "binary": {
@@ -963,8 +1014,12 @@ export default class TSCompiler implements TSScope {
     }
   }
 
-  getExprType(e: ASTExpr): ASTType {
+  getExprType(
+    e: ASTExpr,
+    scope: TSScope | undefined = this.scopes.top
+  ): ASTType {
     switch (e._) {
+      case "bool":
       case "char":
       case "int":
       case "str":
@@ -974,8 +1029,8 @@ export default class TSCompiler implements TSScope {
         return this.resolveTypeChain(e);
 
       case "binary": {
-        const left = this.getExprType(e.left);
-        const right = this.getExprType(e.right);
+        const left = this.getExprType(e.left, scope);
+        const right = this.getExprType(e.right, scope);
 
         if (left.value !== right.value || left.optional !== right.optional)
           throw new Error(
@@ -984,6 +1039,33 @@ export default class TSCompiler implements TSScope {
             }" and "${right.value}${right.optional ? "?" : ""}"`
           );
         return left;
+      }
+
+      case "call": {
+        const name = e.name._ === "id" ? e.name.value : this.getQName(e.name);
+        const type =
+          e.name._ === "id"
+            ? this.resolveType(e.name.value, scope)
+            : this.resolveTypeChain(e.name);
+
+        if (type.value === "global") {
+          const lib = library.find((fn) => fn.name === name);
+          if (!lib) throw new Error(`Invalid global entry for ${name}`);
+          this.checkLibraryCall(lib, e.args);
+          if (!lib.returns) throw new Error(`${name} does not return a value`);
+
+          // TODO
+          return asType(lib.returns.types[0]);
+        } else if (type.value === "fn") {
+          const fn = this.functions.find((fn) => fn.name === name);
+          if (!fn) throw new Error(`Invalid fn entry for ${name}`);
+          this.checkFnCall(fn, e.args);
+          if (!fn.type) throw new Error(`${name} does not return a value`);
+
+          return fn.type;
+        } else if (this.componentNames.includes(name)) return type;
+
+        throw new Error(`Cannot determine type: ${JSON.stringify(e)}`);
       }
 
       default:

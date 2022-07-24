@@ -90,7 +90,7 @@ const tmPlayer: RLTemplate = {
     IsBlocker,
     IsPlayer,
     mkAppearance("@", "white", "black"),
-    mkFighter("you", 30, 30, 2, 5),
+    mkFighter("player", 30, 30, 2, 5),
     mkActor(100),
     MyTurn,
     RecalculateFOV,
@@ -119,6 +119,11 @@ const tmTroll: RLTemplate = {
     mkFighter("troll", 16, 16, 1, 4),
   ],
 };
+const tmCorpse: RLTemplate = {
+  type: "template",
+  name: "Corpse",
+  get: () => [Redraw, mkAppearance("%", "red", "black")],
+};
 
 const Floor = new RLTile(".", true, true);
 const Wall = new RLTile("#", false, false);
@@ -128,14 +133,55 @@ let explored: RLGrid;
 let visible: RLGrid;
 
 function getBlockingMap() {
-  const blocked: RLGrid = new RLGrid(map.width, map.height);
-  for (const e of new RLQuery(RL.instance, ["Position", "IsBlocker"]).get()) {
-    const { Position: p } = e;
-    blocked.put(p.x, p.y, e);
+  const blocked: RLGrid = new RLGrid(map.width, map.height, false);
+  for (const _entity of new RLQuery(RL.instance, [
+    "Position",
+    "IsBlocker",
+  ]).get()) {
+    const { Position: p } = _entity;
+    blocked.put(p.x, p.y, true);
   }
   return blocked;
 }
 const fn_getBlockingMap = new RLFn("getBlockingMap", getBlockingMap, []);
+
+function hurt(e: RLEntity, damage: number) {
+  e.Fighter.hp -= damage;
+  if (e.Fighter.hp < 0) {
+    if (e.IsPlayer) {
+      RL.instance.callNamedFunction("log", {
+        type: "positional",
+        value: { type: "str", value: "You died!" },
+      });
+    } else {
+      RL.instance.callNamedFunction("log", {
+        type: "positional",
+        value: {
+          type: "str",
+          value: RL.instance.callNamedFunction(
+            "join",
+            { type: "positional", value: { type: "char", value: " " } },
+            {
+              type: "positional",
+              value: { type: "str", value: e.Fighter.name },
+            },
+            { type: "positional", value: { type: "str", value: "is dead!" } }
+          ),
+        },
+      });
+    }
+    RL.instance.callNamedFunction("remove", { type: "positional", value: e });
+    const corpse: RLEntity = RL.instance.callNamedFunction(
+      "spawn",
+      { type: "positional", value: tmCorpse },
+      { type: "positional", value: mkPosition(e.Position.x, e.Position.y) }
+    );
+  }
+}
+const fn_hurt = new RLFn("hurt", hurt, [
+  { type: "param", name: "e", typeName: "entity" },
+  { type: "param", name: "damage", typeName: "int" },
+]);
 
 function useTurn(e: RLEntity) {
   e.Actor.energy -= 100;
@@ -423,6 +469,47 @@ function doMelee(e: RLEntity, m: MeleeAction, f: Fighter) {
   const target: RLEntity = m.target;
   e.remove(m);
   useTurn(e);
+  const attack: string = RL.instance.callNamedFunction(
+    "join",
+    { type: "positional", value: { type: "char", value: " " } },
+    { type: "positional", value: { type: "str", value: f.name } },
+    { type: "positional", value: { type: "str", value: "attacks" } },
+    { type: "positional", value: { type: "str", value: target.Fighter.name } }
+  );
+  const damage: number = f.power - target.Fighter.defense;
+  if (damage > 0) {
+    RL.instance.callNamedFunction("log", {
+      type: "positional",
+      value: {
+        type: "str",
+        value: RL.instance.callNamedFunction(
+          "join",
+          { type: "positional", value: { type: "char", value: " " } },
+          { type: "positional", value: { type: "str", value: attack } },
+          { type: "positional", value: { type: "str", value: "for" } },
+          { type: "positional", value: { type: "int", value: damage } },
+          { type: "positional", value: { type: "str", value: "hit points" } }
+        ),
+      },
+    });
+    hurt(target, damage);
+  } else {
+    RL.instance.callNamedFunction("log", {
+      type: "positional",
+      value: {
+        type: "str",
+        value: RL.instance.callNamedFunction(
+          "join",
+          { type: "positional", value: { type: "char", value: " " } },
+          { type: "positional", value: { type: "str", value: attack } },
+          {
+            type: "positional",
+            value: { type: "str", value: "but does no damage" },
+          }
+        ),
+      },
+    });
+  }
 }
 const system_doMelee = new RLSystem("doMelee", doMelee, [
   { type: "param", name: "e", typeName: "entity" },
@@ -512,6 +599,7 @@ const system_nextTurn = new RLSystem("nextTurn", nextTurn, []);
 
 const impl: RLEnv = new Map<string, RLObject>([
   ["getBlockingMap", fn_getBlockingMap],
+  ["hurt", fn_hurt],
   ["useTurn", fn_useTurn],
   ["drawTileAt", fn_drawTileAt],
   ["drawEntity", fn_drawEntity],
@@ -541,5 +629,6 @@ const impl: RLEnv = new Map<string, RLObject>([
   ["Enemy", tmEnemy],
   ["Orc", tmOrc],
   ["Troll", tmTroll],
+  ["Corpse", tmCorpse],
 ]);
 export default impl;

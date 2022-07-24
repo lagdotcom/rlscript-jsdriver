@@ -1320,7 +1320,7 @@
       const matches = sys.query.get();
       if (matches.length) {
         for (const e of matches)
-          this.rl.runSystem(sys, { type: "typed", typeName: "entity", value: e }, ...args) === false;
+          this.rl.runSystem(sys, { type: "typed", typeName: "entity", value: e }, ...args);
         return true;
       }
       return false;
@@ -1401,7 +1401,7 @@
       IsBlocker,
       IsPlayer,
       mkAppearance("@", "white", "black"),
-      mkFighter("you", 30, 30, 2, 5),
+      mkFighter("player", 30, 30, 2, 5),
       mkActor(100),
       MyTurn,
       RecalculateFOV
@@ -1430,20 +1430,56 @@
       mkFighter("troll", 16, 16, 1, 4)
     ]
   };
+  var tmCorpse = {
+    type: "template",
+    name: "Corpse",
+    get: () => [Redraw, mkAppearance("%", "red", "black")]
+  };
   var Floor = new RLTile(".", true, true);
   var Wall = new RLTile("#", false, false);
   var map;
   var explored;
   var visible;
   function getBlockingMap() {
-    const blocked = new RLGrid(map.width, map.height);
-    for (const e of new RLQuery(RL.instance, ["Position", "IsBlocker"]).get()) {
-      const { Position: p } = e;
-      blocked.put(p.x, p.y, e);
+    const blocked = new RLGrid(map.width, map.height, false);
+    for (const _entity of new RLQuery(RL.instance, [
+      "Position",
+      "IsBlocker"
+    ]).get()) {
+      const { Position: p } = _entity;
+      blocked.put(p.x, p.y, true);
     }
     return blocked;
   }
   var fn_getBlockingMap = new RLFn("getBlockingMap", getBlockingMap, []);
+  function hurt(e, damage) {
+    e.Fighter.hp -= damage;
+    if (e.Fighter.hp < 0) {
+      if (e.IsPlayer) {
+        RL.instance.callNamedFunction("log", {
+          type: "positional",
+          value: { type: "str", value: "You died!" }
+        });
+      } else {
+        RL.instance.callNamedFunction("log", {
+          type: "positional",
+          value: {
+            type: "str",
+            value: RL.instance.callNamedFunction("join", { type: "positional", value: { type: "char", value: " " } }, {
+              type: "positional",
+              value: { type: "str", value: e.Fighter.name }
+            }, { type: "positional", value: { type: "str", value: "is dead!" } })
+          }
+        });
+      }
+      RL.instance.callNamedFunction("remove", { type: "positional", value: e });
+      const corpse = RL.instance.callNamedFunction("spawn", { type: "positional", value: tmCorpse }, { type: "positional", value: mkPosition(e.Position.x, e.Position.y) });
+    }
+  }
+  var fn_hurt = new RLFn("hurt", hurt, [
+    { type: "param", name: "e", typeName: "entity" },
+    { type: "param", name: "damage", typeName: "int" }
+  ]);
   function useTurn(e) {
     e.Actor.energy -= 100;
     e.remove(MyTurn);
@@ -1636,6 +1672,29 @@
     const target = m.target;
     e.remove(m);
     useTurn(e);
+    const attack = RL.instance.callNamedFunction("join", { type: "positional", value: { type: "char", value: " " } }, { type: "positional", value: { type: "str", value: f.name } }, { type: "positional", value: { type: "str", value: "attacks" } }, { type: "positional", value: { type: "str", value: target.Fighter.name } });
+    const damage = f.power - target.Fighter.defense;
+    if (damage > 0) {
+      RL.instance.callNamedFunction("log", {
+        type: "positional",
+        value: {
+          type: "str",
+          value: RL.instance.callNamedFunction("join", { type: "positional", value: { type: "char", value: " " } }, { type: "positional", value: { type: "str", value: attack } }, { type: "positional", value: { type: "str", value: "for" } }, { type: "positional", value: { type: "int", value: damage } }, { type: "positional", value: { type: "str", value: "hit points" } })
+        }
+      });
+      hurt(target, damage);
+    } else {
+      RL.instance.callNamedFunction("log", {
+        type: "positional",
+        value: {
+          type: "str",
+          value: RL.instance.callNamedFunction("join", { type: "positional", value: { type: "char", value: " " } }, { type: "positional", value: { type: "str", value: attack } }, {
+            type: "positional",
+            value: { type: "str", value: "but does no damage" }
+          })
+        }
+      });
+    }
   }
   var system_doMelee = new RLSystem("doMelee", doMelee, [
     { type: "param", name: "e", typeName: "entity" },
@@ -1707,6 +1766,7 @@
   var system_nextTurn = new RLSystem("nextTurn", nextTurn, []);
   var impl = /* @__PURE__ */ new Map([
     ["getBlockingMap", fn_getBlockingMap],
+    ["hurt", fn_hurt],
     ["useTurn", fn_useTurn],
     ["drawTileAt", fn_drawTileAt],
     ["drawEntity", fn_drawEntity],
@@ -1735,7 +1795,8 @@
     ["Player", tmPlayer],
     ["Enemy", tmEnemy],
     ["Orc", tmOrc],
-    ["Troll", tmTroll]
+    ["Troll", tmTroll],
+    ["Corpse", tmCorpse]
   ]);
   var impl_default = impl;
 
@@ -2808,9 +2869,9 @@
         }
         const tile = map2.at(pos.x, pos.y);
         const canWalk = tile == null ? void 0 : tile.walkable;
-        const blocker = blockedMap.at(pos.x, pos.y);
+        const blocked = blockedMap.at(pos.x, pos.y);
         const oldCost = cost.at(pos.x, pos.y);
-        if (canWalk && !blocker && oldCost > newCost) {
+        if (canWalk && !blocked && oldCost > newCost) {
           cost.put(pos.x, pos.y, newCost);
           from.put(pos.x, pos.y, centre);
           queue.push(pos);
@@ -2829,6 +2890,23 @@
       at = next;
     }
     return path[0];
+  }
+  function join(glue, ...parts) {
+    return parts.map((p) => {
+      switch (p.type) {
+        case "char":
+        case "str":
+          return p.value;
+        case "int":
+          return p.value.toString();
+      }
+    }).join(glue.value);
+  }
+  function log(message) {
+    console.log(message.value);
+  }
+  function remove(e) {
+    RL.instance.entities.delete(e.id);
   }
   var lib = /* @__PURE__ */ new Map([
     [
@@ -2884,6 +2962,14 @@
       ])
     ],
     [
+      "join",
+      new RLFn("join", join, [{ type: "param", typeName: "str", name: "glue" }], ["char", "str", "int"])
+    ],
+    [
+      "log",
+      new RLFn("log", log, [{ type: "param", typeName: "str", name: "message" }])
+    ],
+    [
       "pushKeyHandler",
       new RLFn("pushKeyHandler", pushKeyHandler, [
         { type: "param", typeName: "system", name: "handler" }
@@ -2894,6 +2980,12 @@
       new RLFn("randInt", randInt, [
         { type: "param", typeName: "int", name: "min" },
         { type: "param", typeName: "int", name: "max" }
+      ])
+    ],
+    [
+      "remove",
+      new RLFn("remove", remove, [
+        { type: "param", typeName: "entity", name: "e" }
       ])
     ],
     [

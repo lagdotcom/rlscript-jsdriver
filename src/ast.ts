@@ -16,6 +16,7 @@ export type ASTFnDecl = {
   _: "fn";
   name: string;
   params: ASTField[];
+  type?: ASTType;
   code: ASTCode;
 };
 export type ASTTemplateDecl = {

@@ -48,7 +48,7 @@ template Player
   IsBlocker
   IsPlayer
   Appearance('@', "white", "black")
-  Fighter("you", 30, 30, 2, 5)
+  Fighter("player", 30, 30, 2, 5)
   Actor(100)
   MyTurn
   RecalculateFOV
@@ -72,6 +72,11 @@ template Troll
   Fighter("troll", 16, 16, 1, 4)
 end
 
+template Corpse
+  Redraw
+  Appearance('%', "red", "black")
+end
+
 tiletype Floor '.' walkable transparent end
 tiletype Wall '#' end
 global map: grid
@@ -88,10 +93,10 @@ system onKey(e: entity, IsPlayer, k: KeyEvent)
   end)
 end
 
-fn getBlockingMap()
-  local blocked: grid = grid(map.width, map.height)
-  query (e: entity, p: Position, IsBlocker)
-    blocked.put(p.x, p.y, e)
+fn getBlockingMap(): grid
+  local blocked: grid = grid(map.width, map.height, false)
+  query (p: Position, IsBlocker)
+    blocked.put(p.x, p.y, true)
   end
 
   return blocked
@@ -145,12 +150,34 @@ system doMove(e: entity, p: Position, m: MoveAction, MyTurn)
   end
 end
 
+fn hurt(e: entity, damage: int)
+  e.Fighter.hp -= damage
+  if e.Fighter.hp < 0
+    if e.IsPlayer
+      log("You died!")
+    else
+      log(join(' ', e.Fighter.name, "is dead!"))
+    end
+
+    remove(e)
+    local corpse: entity = spawn(Corpse, Position(e.Position.x, e.Position.y))
+    ;; TODO set name of corpse
+  end
+end
+
 system doMelee(e: entity, m: MeleeAction, f: Fighter, MyTurn)
   local target: entity = m.target
   e.remove(m)
   useTurn(e)
 
-  ;; TODO
+  local attack: str = join(' ', f.name, "attacks", target.Fighter.name)
+  local damage: int = f.power - target.Fighter.defense
+  if damage > 0
+    log(join(' ', attack, "for", damage, "hit points"))
+    hurt(target, damage)
+  else
+    log(join(' ', attack, "but does no damage"))
+  end
 end
 
 system doWait(e: entity, WaitAction, MyTurn)
@@ -232,7 +259,7 @@ system nextTurn()
   end
 end
 
-fn randomRoom()
+fn randomRoom(): rect
   local w: int = randInt(6, 14)
   local h: int = randInt(6, 14)
   local x: int = randInt(1, map.width - w - 1)

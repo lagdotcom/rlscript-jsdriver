@@ -58,7 +58,7 @@ decl -> componentdecl {% id %}
 componentdecl -> "component" __ name _ fieldlist "end" {% ([,,name,,fields]) => ({ _: 'component', name: name.value, fields }) %}
 tagdecl -> "tag" __ name {% ([,,name]) => ({ _: 'tag', name: name.value }) %}
 systemdecl -> "system" __ name _ paramlist _ code "end" {% ([,,name,,params,,code]) => ({ _: 'system', name: name.value, params, code }) %}
-fndecl -> "fn" __ name _ paramlist _ code "end" {% ([,,name,,params,,code]) => ({ _: 'fn', name: name.value, params, code }) %}
+fndecl -> "fn" __ name _ paramlist maybentype _ code "end" {% ([,,name,,params,type,,code]) => ({ _: 'fn', name: name.value, params, type, code }) %}
 templatedecl -> "template" __ name _ templatelist "end" {% ([,,name,,fields]) => ({ _: 'template', name: name.value, fields }) %}
 tiletypedecl -> "tiletype" __ name _ %sqstring _ tiletypefieldlist "end" {% ([,,name,,char,,fields]) => ({ _: 'tiletype', name: name.value, char: char.value.slice(1, -1), fields }) %}
 globaldecl -> "global" __ field {% ([,,field]) => ({ _: 'global', name: field.name, type: field.type }) %}
@@ -73,6 +73,9 @@ params -> null {% () => [] %}
         | params _ "," _ param {% ([params,,,,param]) => params.concat(param) %}
 param -> field {% id %}
        | type {% ([type]) => ({ _: 'constraint', type: type.value }) %}
+
+maybentype -> null {% () => undefined %}
+            | ":" _ ntype {% ([,,type]) => type %}
 
 templatelist -> templatefieldp:* {% id %}
 templatefieldp -> templatefield _ {% id %}

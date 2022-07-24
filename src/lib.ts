@@ -137,7 +137,7 @@ const offsets: RLXY[] = [
 ];
 function getNextMove(
   map: RLGrid<RLTile>,
-  blockedMap: RLGrid<RLEntity | undefined>,
+  blockedMap: RLGrid<unknown>,
   src: RLXY,
   dst: RLXY
 ): RLXY | undefined {
@@ -163,10 +163,10 @@ function getNextMove(
 
       const tile = map.at(pos.x, pos.y);
       const canWalk = tile?.walkable;
-      const blocker = blockedMap.at(pos.x, pos.y);
+      const blocked = blockedMap.at(pos.x, pos.y);
       const oldCost = cost.at(pos.x, pos.y);
 
-      if (canWalk && !blocker && oldCost > newCost) {
+      if (canWalk && !blocked && oldCost > newCost) {
         cost.put(pos.x, pos.y, newCost);
         from.put(pos.x, pos.y, centre);
         queue.push(pos);
@@ -186,6 +186,32 @@ function getNextMove(
   }
 
   return path[0];
+}
+
+function join(
+  glue: RLChar | RLStr,
+  ...parts: (RLChar | RLStr | RLInt)[]
+): string {
+  return parts
+    .map((p) => {
+      switch (p.type) {
+        case "char":
+        case "str":
+          return p.value;
+
+        case "int":
+          return p.value.toString();
+      }
+    })
+    .join(glue.value);
+}
+
+function log(message: RLStr) {
+  console.log(message.value);
+}
+
+function remove(e: RLEntity) {
+  RL.instance.entities.delete(e.id);
 }
 
 const lib: RLEnv = new Map([
@@ -242,6 +268,19 @@ const lib: RLEnv = new Map([
     ]),
   ],
   [
+    "join",
+    new RLFn(
+      "join",
+      join,
+      [{ type: "param", typeName: "str", name: "glue" }],
+      ["char", "str", "int"]
+    ),
+  ],
+  [
+    "log",
+    new RLFn("log", log, [{ type: "param", typeName: "str", name: "message" }]),
+  ],
+  [
     "pushKeyHandler",
     new RLFn("pushKeyHandler", pushKeyHandler, [
       { type: "param", typeName: "system", name: "handler" },
@@ -252,6 +291,12 @@ const lib: RLEnv = new Map([
     new RLFn("randInt", randInt, [
       { type: "param", typeName: "int", name: "min" },
       { type: "param", typeName: "int", name: "max" },
+    ]),
+  ],
+  [
+    "remove",
+    new RLFn("remove", remove, [
+      { type: "param", typeName: "entity", name: "e" },
     ]),
   ],
   [
