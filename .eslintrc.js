@@ -20,8 +20,8 @@ module.exports = {
         "plugin:prettier/recommended"
     ],
     rules: {
-        "prettier/prettier": "error",
-        "sort-imports-requires/sort-imports": "error",
-        "sort-imports-requires/sort-requires": "error"
+        "prettier/prettier": "warn",
+        "sort-imports-requires/sort-imports": "warn",
+        "sort-imports-requires/sort-requires": "warn"
     }
 }

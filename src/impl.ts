@@ -387,7 +387,7 @@ const system_hostileAI = new RLSystem("hostileAI", hostileAI, [
   { type: "constraint", typeName: "MyTurn" },
 ]);
 
-function doMove(e: RLEntity, p: Position, m: MoveAction, a: Actor) {
+function doMove(e: RLEntity, p: Position, m: MoveAction) {
   const x: number = p.x + m.x;
   const y: number = p.y + m.y;
   e.remove(m);
@@ -415,11 +415,10 @@ const system_doMove = new RLSystem("doMove", doMove, [
   { type: "param", name: "e", typeName: "entity" },
   { type: "param", name: "p", typeName: "Position" },
   { type: "param", name: "m", typeName: "MoveAction" },
-  { type: "param", name: "a", typeName: "Actor" },
   { type: "constraint", typeName: "MyTurn" },
 ]);
 
-function doMelee(e: RLEntity, m: MeleeAction, f: Fighter, a: Actor) {
+function doMelee(e: RLEntity, m: MeleeAction, f: Fighter) {
   const target: RLEntity = m.target;
   e.remove(m);
   useTurn(e);
@@ -428,18 +427,16 @@ const system_doMelee = new RLSystem("doMelee", doMelee, [
   { type: "param", name: "e", typeName: "entity" },
   { type: "param", name: "m", typeName: "MeleeAction" },
   { type: "param", name: "f", typeName: "Fighter" },
-  { type: "param", name: "a", typeName: "Actor" },
   { type: "constraint", typeName: "MyTurn" },
 ]);
 
-function doWait(e: RLEntity, a: Actor) {
+function doWait(e: RLEntity) {
   e.remove(WaitAction);
   useTurn(e);
 }
 const system_doWait = new RLSystem("doWait", doWait, [
   { type: "param", name: "e", typeName: "entity" },
   { type: "constraint", typeName: "WaitAction" },
-  { type: "param", name: "a", typeName: "Actor" },
   { type: "constraint", typeName: "MyTurn" },
 ]);
 

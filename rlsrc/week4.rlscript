@@ -119,7 +119,7 @@ system hostileAI(e: entity, p: Position, HostileEnemy, MyTurn)
   e.add(WaitAction)
 end
 
-system doMove(e: entity, p: Position, m: MoveAction, a: Actor, MyTurn)
+system doMove(e: entity, p: Position, m: MoveAction, MyTurn)
   local x: int = p.x + m.x
   local y: int = p.y + m.y
 
@@ -144,7 +144,7 @@ system doMove(e: entity, p: Position, m: MoveAction, a: Actor, MyTurn)
   end
 end
 
-system doMelee(e: entity, m: MeleeAction, f: Fighter, a: Actor, MyTurn)
+system doMelee(e: entity, m: MeleeAction, f: Fighter, MyTurn)
   local target: entity = m.target
   e.remove(m)
   useTurn(e)
@@ -152,7 +152,7 @@ system doMelee(e: entity, m: MeleeAction, f: Fighter, a: Actor, MyTurn)
   ;; TODO
 end
 
-system doWait(e: entity, WaitAction, a: Actor, MyTurn)
+system doWait(e: entity, WaitAction, MyTurn)
   e.remove(WaitAction)
   useTurn(e)
 end

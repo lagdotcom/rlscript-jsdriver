@@ -174,7 +174,7 @@ function getNextMove(
     }
   }
 
-  if (cost.atOr(dst.x, dst.y, Infinity) === Infinity) return;
+  if (cost.at(dst.x, dst.y) === Infinity) return;
   const path: RLXY[] = [];
   let at = dst;
   while (!at.equals(src)) {

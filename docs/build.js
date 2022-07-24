@@ -1002,9 +1002,9 @@
         if (variadic.length === 0)
           throw new Error(`Function only has ${results.length} params`);
         if (!isAssignableToAny(value, variadic))
-          throw new Error(`Function variadic type is "${variadic.join("|")}", got ${value.type}`);
+          throw new Error(`Function variadic type is '${variadic.join("|")}', got ${value.type}`);
       } else if (!isAssignableTo(value, params[i].typeName))
-        throw new Error(`Param #${i} expects type "${params[i].typeName}, got ${value.type}`);
+        throw new Error(`Param #${i} expects type '${params[i].typeName}', got ${value.type}`);
       results[i] = value;
       filled.add(i);
     };
@@ -1581,7 +1581,7 @@
     { type: "constraint", typeName: "HostileEnemy" },
     { type: "constraint", typeName: "MyTurn" }
   ]);
-  function doMove(e, p, m, a) {
+  function doMove(e, p, m) {
     const x = p.x + m.x;
     const y = p.y + m.y;
     e.remove(m);
@@ -1605,10 +1605,9 @@
     { type: "param", name: "e", typeName: "entity" },
     { type: "param", name: "p", typeName: "Position" },
     { type: "param", name: "m", typeName: "MoveAction" },
-    { type: "param", name: "a", typeName: "Actor" },
     { type: "constraint", typeName: "MyTurn" }
   ]);
-  function doMelee(e, m, f, a) {
+  function doMelee(e, m, f) {
     const target = m.target;
     e.remove(m);
     useTurn(e);
@@ -1617,17 +1616,15 @@
     { type: "param", name: "e", typeName: "entity" },
     { type: "param", name: "m", typeName: "MeleeAction" },
     { type: "param", name: "f", typeName: "Fighter" },
-    { type: "param", name: "a", typeName: "Actor" },
     { type: "constraint", typeName: "MyTurn" }
   ]);
-  function doWait(e, a) {
+  function doWait(e) {
     e.remove(WaitAction);
     useTurn(e);
   }
   var system_doWait = new RLSystem("doWait", doWait, [
     { type: "param", name: "e", typeName: "entity" },
     { type: "constraint", typeName: "WaitAction" },
-    { type: "param", name: "a", typeName: "Actor" },
     { type: "constraint", typeName: "MyTurn" }
   ]);
   function fov(e, p) {
@@ -2795,7 +2792,7 @@
         }
       }
     }
-    if (cost.atOr(dst.x, dst.y, Infinity) === Infinity)
+    if (cost.at(dst.x, dst.y) === Infinity)
       return;
     const path = [];
     let at = dst;
