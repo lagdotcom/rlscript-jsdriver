@@ -6,6 +6,31 @@ const keyEvents = new Map([
   [Keys.VK_RIGHT, "right"],
   [Keys.VK_DOWN, "down"],
   [Keys.VK_LEFT, "left"],
+  [Keys.VK_HOME, "up-left"],
+  [Keys.VK_END, "down-left"],
+  [Keys.VK_PAGE_UP, "up-right"],
+  [Keys.VK_PAGE_DOWN, "down-right"],
+  [Keys.VK_CLEAR, "wait"],
+
+  [Keys.VK_NUMPAD8, "up"],
+  [Keys.VK_NUMPAD6, "right"],
+  [Keys.VK_NUMPAD2, "down"],
+  [Keys.VK_NUMPAD4, "left"],
+  [Keys.VK_NUMPAD7, "up-left"],
+  [Keys.VK_NUMPAD1, "down-left"],
+  [Keys.VK_NUMPAD9, "up-right"],
+  [Keys.VK_NUMPAD3, "down-right"],
+  [Keys.VK_NUMPAD5, "wait"],
+
+  [Keys.VK_K, "up"],
+  [Keys.VK_L, "right"],
+  [Keys.VK_J, "down"],
+  [Keys.VK_H, "left"],
+  [Keys.VK_Y, "up-left"],
+  [Keys.VK_B, "down-left"],
+  [Keys.VK_U, "up-right"],
+  [Keys.VK_N, "down-right"],
+  [Keys.VK_PERIOD, "wait"],
 ]);
 
 export default class Game {

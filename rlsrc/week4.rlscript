@@ -84,6 +84,7 @@ system onKey(e: entity, IsPlayer, k: KeyEvent)
     "right" = MoveAction( 1,  0)
     "down"  = MoveAction( 0,  1)
     "left"  = MoveAction(-1,  0)
+    "wait"  = WaitAction
   end)
 end
 

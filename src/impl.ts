@@ -334,6 +334,7 @@ function onKey(e: RLEntity, k: RLKeyEvent) {
       else if (matchvar === "right") return mkMoveAction(1, 0);
       else if (matchvar === "down") return mkMoveAction(0, 1);
       else if (matchvar === "left") return mkMoveAction(-1, 0);
+      else if (matchvar === "wait") return WaitAction;
     })(k.key)
   );
 }

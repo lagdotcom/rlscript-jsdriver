@@ -1247,7 +1247,30 @@
     [import_wglt.Keys.VK_UP, "up"],
     [import_wglt.Keys.VK_RIGHT, "right"],
     [import_wglt.Keys.VK_DOWN, "down"],
-    [import_wglt.Keys.VK_LEFT, "left"]
+    [import_wglt.Keys.VK_LEFT, "left"],
+    [import_wglt.Keys.VK_HOME, "up-left"],
+    [import_wglt.Keys.VK_END, "down-left"],
+    [import_wglt.Keys.VK_PAGE_UP, "up-right"],
+    [import_wglt.Keys.VK_PAGE_DOWN, "down-right"],
+    [import_wglt.Keys.VK_CLEAR, "wait"],
+    [import_wglt.Keys.VK_NUMPAD8, "up"],
+    [import_wglt.Keys.VK_NUMPAD6, "right"],
+    [import_wglt.Keys.VK_NUMPAD2, "down"],
+    [import_wglt.Keys.VK_NUMPAD4, "left"],
+    [import_wglt.Keys.VK_NUMPAD7, "up-left"],
+    [import_wglt.Keys.VK_NUMPAD1, "down-left"],
+    [import_wglt.Keys.VK_NUMPAD9, "up-right"],
+    [import_wglt.Keys.VK_NUMPAD3, "down-right"],
+    [import_wglt.Keys.VK_NUMPAD5, "wait"],
+    [import_wglt.Keys.VK_K, "up"],
+    [import_wglt.Keys.VK_L, "right"],
+    [import_wglt.Keys.VK_J, "down"],
+    [import_wglt.Keys.VK_H, "left"],
+    [import_wglt.Keys.VK_Y, "up-left"],
+    [import_wglt.Keys.VK_B, "down-left"],
+    [import_wglt.Keys.VK_U, "up-right"],
+    [import_wglt.Keys.VK_N, "down-right"],
+    [import_wglt.Keys.VK_PERIOD, "wait"]
   ]);
   var Game = class {
     constructor(rl, canvas) {
@@ -1539,6 +1562,8 @@
         return mkMoveAction(0, 1);
       else if (matchvar === "left")
         return mkMoveAction(-1, 0);
+      else if (matchvar === "wait")
+        return WaitAction;
     })(k.key));
   }
   var system_onKey = new RLSystem("onKey", onKey, [
