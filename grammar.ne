@@ -63,6 +63,7 @@ fndecl -> "fn" __ name _ paramlist maybentype _ code "end" {% ([,,name,,params,t
 templatedecl -> "template" __ name _ templatelist "end" {% ([,,name,,fields]) => ({ _: 'template', name: name.value, fields }) %}
 tiletypedecl -> "tiletype" __ name _ %sqstring _ tiletypefieldlist "end" {% ([,,name,,char,,fields]) => ({ _: 'tiletype', name: name.value, char: char.value.slice(1, -1), fields }) %}
 globaldecl -> "global" __ field {% ([,,field]) => ({ _: 'global', name: field.name, type: field.type }) %}
+            | "global" __ field _ "=" _ expr {% ([,,field,,,,expr]) => ({ _: 'global', name: field.name, type: field.type, expr }) %}
 enumdecl -> "enum" __ name _ enumvals _ "end" {% ([,,name,,values]) => ({ _: 'enum', name: name.value, values }) %}
 
 fieldlist -> fieldp:* {% id %}

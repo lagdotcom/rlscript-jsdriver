@@ -101,6 +101,7 @@ const grammar: Grammar = {
     {"name": "templatedecl", "symbols": [{"literal":"template"}, "__", "name", "_", "templatelist", {"literal":"end"}], "postprocess": ([,,name,,fields]) => ({ _: 'template', name: name.value, fields })},
     {"name": "tiletypedecl", "symbols": [{"literal":"tiletype"}, "__", "name", "_", (lexer.has("sqstring") ? {type: "sqstring"} : sqstring), "_", "tiletypefieldlist", {"literal":"end"}], "postprocess": ([,,name,,char,,fields]) => ({ _: 'tiletype', name: name.value, char: char.value.slice(1, -1), fields })},
     {"name": "globaldecl", "symbols": [{"literal":"global"}, "__", "field"], "postprocess": ([,,field]) => ({ _: 'global', name: field.name, type: field.type })},
+    {"name": "globaldecl", "symbols": [{"literal":"global"}, "__", "field", "_", {"literal":"="}, "_", "expr"], "postprocess": ([,,field,,,,expr]) => ({ _: 'global', name: field.name, type: field.type, expr })},
     {"name": "enumdecl", "symbols": [{"literal":"enum"}, "__", "name", "_", "enumvals", "_", {"literal":"end"}], "postprocess": ([,,name,,values]) => ({ _: 'enum', name: name.value, values })},
     {"name": "fieldlist$ebnf$1", "symbols": []},
     {"name": "fieldlist$ebnf$1", "symbols": ["fieldlist$ebnf$1", "fieldp"], "postprocess": (d) => d[0].concat([d[1]])},

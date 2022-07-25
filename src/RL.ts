@@ -78,7 +78,8 @@ function isConstraint(p: RLSystemParam) {
     "IsBlocker",
     "IsPlayer",
     "RecalculateFOV",
-    "Redraw",
+    "RedrawMe",
+    "RedrawUI",
     "MyTurn",
     "BaseAI",
     "HostileEnemy",
@@ -275,6 +276,10 @@ export class RLGrid<T> {
     else this.contents.set(this.tag(x, y), item);
   }
 
+  clear() {
+    this.contents.clear();
+  }
+
   fill(item: T) {
     this.rect(0, 0, this.width - 1, this.height - 1, item);
   }
@@ -373,7 +378,8 @@ export class RLEntity {
   IsBlocker: boolean;
   IsPlayer: boolean;
   RecalculateFOV: boolean;
-  Redraw: boolean;
+  RedrawMe: boolean;
+  RedrawUI: boolean;
   MyTurn: boolean;
   BaseAI: boolean;
   HostileEnemy: boolean;
@@ -386,7 +392,8 @@ export class RLEntity {
     this.IsBlocker = false;
     this.IsPlayer = false;
     this.RecalculateFOV = false;
-    this.Redraw = false;
+    this.RedrawMe = false;
+    this.RedrawUI = false;
     this.MyTurn = false;
     this.BaseAI = false;
     this.HostileEnemy = false;

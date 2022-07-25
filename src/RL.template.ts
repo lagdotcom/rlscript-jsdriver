@@ -246,6 +246,10 @@ export class RLGrid<T> {
     else this.contents.set(this.tag(x, y), item);
   }
 
+  clear() {
+    this.contents.clear();
+  }
+
   fill(item: T) {
     this.rect(0, 0, this.width - 1, this.height - 1, item);
   }

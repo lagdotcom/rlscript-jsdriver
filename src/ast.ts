@@ -34,6 +34,7 @@ export type ASTGlobalDecl = {
   _: "global";
   name: string;
   type: ASTType;
+  expr?: ASTExpr;
 };
 export type ASTEnumDecl = {
   _: "enum";

@@ -937,7 +937,8 @@
       "IsBlocker",
       "IsPlayer",
       "RecalculateFOV",
-      "Redraw",
+      "RedrawMe",
+      "RedrawUI",
       "MyTurn",
       "BaseAI",
       "HostileEnemy",
@@ -1079,6 +1080,9 @@
       else
         this.contents.set(this.tag(x, y), item);
     }
+    clear() {
+      this.contents.clear();
+    }
     fill(item) {
       this.rect(0, 0, this.width - 1, this.height - 1, item);
     }
@@ -1154,7 +1158,8 @@
       this.IsBlocker = false;
       this.IsPlayer = false;
       this.RecalculateFOV = false;
-      this.Redraw = false;
+      this.RedrawMe = false;
+      this.RedrawUI = false;
       this.MyTurn = false;
       this.BaseAI = false;
       this.HostileEnemy = false;
@@ -1351,7 +1356,8 @@
     const IsBlocker = new RLTag("IsBlocker");
     const IsPlayer = new RLTag("IsPlayer");
     const RecalculateFOV = new RLTag("RecalculateFOV");
-    const Redraw = new RLTag("Redraw");
+    const RedrawMe = new RLTag("RedrawMe");
+    const RedrawUI = new RLTag("RedrawUI");
     const MyTurn = new RLTag("MyTurn");
     const BaseAI = new RLTag("BaseAI");
     const HostileEnemy = new RLTag("HostileEnemy");
@@ -1411,7 +1417,8 @@
         mkFighter(30, 30, 2, 5),
         mkActor(100),
         MyTurn,
-        RecalculateFOV
+        RecalculateFOV,
+        RedrawUI
       ]
     };
     const tmEnemy = {
@@ -1441,17 +1448,22 @@
       type: "template",
       name: "Corpse",
       get: () => [
-        Redraw,
+        RedrawMe,
         mkAppearance("corpse", "%", "red", "black", 1 /* Corpse */)
       ]
     };
     const Floor = new RLTile(".", true, true);
     const Wall = new RLTile("#", false, false);
-    let map;
-    let explored;
-    let visible;
+    const gameWidth = 80;
+    const gameHeight = 50;
+    const mapWidth = gameWidth;
+    const mapHeight = gameHeight - 3;
+    const hpY = mapHeight;
+    const map = new RLGrid(mapWidth, mapHeight, Wall);
+    const explored = new RLGrid(mapWidth, mapHeight, false);
+    const visible = new RLGrid(mapWidth, mapHeight, false);
     function getBlockingMap() {
-      const blocked = new RLGrid(map.width, map.height, false);
+      const blocked = new RLGrid(mapWidth, mapHeight, false);
       for (const _entity of new RLQuery(RL.instance, [
         "Position",
         "IsBlocker"
@@ -1476,6 +1488,10 @@
         const corpse = __lib.spawn(tmCorpse, mkPosition(e.Position.x, e.Position.y));
         corpse.Appearance.name = __lib.join({ type: "char", value: " " }, { type: "str", value: "corpse of" }, { type: "str", value: e.Appearance.name });
         __lib.remove(e);
+      } else {
+        if (e.IsPlayer) {
+          e.add(RedrawUI);
+        }
       }
     }
     const fn_hurt = new RLFn("hurt", hurt, [
@@ -1536,8 +1552,8 @@
     function randomRoom() {
       const w = __lib.randInt({ type: "int", value: 6 }, { type: "int", value: 14 });
       const h = __lib.randInt({ type: "int", value: 6 }, { type: "int", value: 14 });
-      const x = __lib.randInt({ type: "int", value: 1 }, { type: "int", value: map.width - w - 1 });
-      const y = __lib.randInt({ type: "int", value: 1 }, { type: "int", value: map.height - h - 1 });
+      const x = __lib.randInt({ type: "int", value: 1 }, { type: "int", value: mapWidth - w - 1 });
+      const y = __lib.randInt({ type: "int", value: 1 }, { type: "int", value: mapHeight - h - 1 });
       return new RLRect(x, y, w, h);
     }
     const fn_randomRoom = new RLFn("randomRoom", randomRoom, []);
@@ -1558,12 +1574,12 @@
       { type: "param", name: "y2", typeName: "int" }
     ]);
     function generateDungeon() {
-      map = new RLGrid(80, 50, Wall);
-      explored = new RLGrid(80, 50, false);
-      visible = new RLGrid(80, 50, false);
+      map.clear();
+      explored.clear();
+      visible.clear();
       let prev;
       let room;
-      const taken = new RLGrid(80, 50, false);
+      const taken = new RLGrid(mapWidth, mapHeight, false);
       for (let r = 1; r <= 30; r++) {
         room = randomRoom();
         if (!map.findInRegion(room, Floor)) {
@@ -1598,7 +1614,7 @@
       { type: "param", name: "taken", typeName: "grid" }
     ]);
     function main() {
-      __lib.setSize({ type: "int", value: 80 }, { type: "int", value: 50 });
+      __lib.setSize({ type: "int", value: gameWidth }, { type: "int", value: gameHeight });
       generateDungeon();
       __lib.pushKeyHandler(system_onKey);
     }
@@ -1715,8 +1731,8 @@
     function fov(e, p) {
       __lib.getFOV(map, { type: "int", value: p.x }, { type: "int", value: p.y }, { type: "int", value: 5 }, visible, explored);
       e.remove(RecalculateFOV);
-      for (let x = 0; x <= 79; x++) {
-        for (let y = 0; y <= 49; y++) {
+      for (let x = 0; x <= mapWidth - 1; x++) {
+        for (let y = 0; y <= mapHeight - 1; y++) {
           drawTileAt(x, y);
         }
       }
@@ -1729,20 +1745,32 @@
     function drawUnderTile(e, o) {
       drawTileAt(o.x, o.y);
       e.remove(o);
-      e.add(Redraw);
+      e.add(RedrawMe);
     }
     const system_drawUnderTile = new RLSystem("drawUnderTile", drawUnderTile, [
       { type: "param", name: "e", typeName: "entity" },
       { type: "param", name: "o", typeName: "OldPosition" }
     ]);
-    function redrawEntity(e, p) {
+    function RedrawMeEntity(e, p) {
       drawTileAt(p.x, p.y);
-      e.remove(Redraw);
+      e.remove(RedrawMe);
     }
-    const system_redrawEntity = new RLSystem("redrawEntity", redrawEntity, [
+    const system_RedrawMeEntity = new RLSystem("RedrawMeEntity", RedrawMeEntity, [
       { type: "param", name: "e", typeName: "entity" },
       { type: "param", name: "p", typeName: "Position" },
-      { type: "constraint", typeName: "Redraw" }
+      { type: "constraint", typeName: "RedrawMe" }
+    ]);
+    function drawUI(e, f) {
+      e.remove(RedrawUI);
+      __lib.draw({ type: "int", value: 1 }, { type: "int", value: hpY }, {
+        type: "str",
+        value: __lib.join({ type: "str", value: "" }, { type: "str", value: "HP: " }, { type: "int", value: f.hp }, { type: "str", value: "/" }, { type: "int", value: f.maxHp })
+      });
+    }
+    const system_drawUI = new RLSystem("drawUI", drawUI, [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "param", name: "f", typeName: "Fighter" },
+      { type: "constraint", typeName: "RedrawUI" }
     ]);
     function nextTurn() {
       let highest = -99999;
@@ -1783,12 +1811,14 @@
       ["doWait", system_doWait],
       ["fov", system_fov],
       ["drawUnderTile", system_drawUnderTile],
-      ["redrawEntity", system_redrawEntity],
+      ["RedrawMeEntity", system_RedrawMeEntity],
+      ["drawUI", system_drawUI],
       ["nextTurn", system_nextTurn],
       ["IsBlocker", IsBlocker],
       ["IsPlayer", IsPlayer],
       ["RecalculateFOV", RecalculateFOV],
-      ["Redraw", Redraw],
+      ["RedrawMe", RedrawMe],
+      ["RedrawUI", RedrawUI],
       ["MyTurn", MyTurn],
       ["BaseAI", BaseAI],
       ["HostileEnemy", HostileEnemy],
@@ -2783,10 +2813,13 @@
   function pushKeyHandler(handler) {
     Game.instance.rl.keyHandlers.push(handler);
   }
-  function draw({ value: x }, { value: y }, { value: ch }, fg, bg) {
+  function draw({ value: x }, { value: y }, display, fg, bg) {
     const f = fg ? new TinyColor(fg.value).toNumber() << 8 : void 0;
     const b = bg ? new TinyColor(bg.value).toNumber() << 8 : void 0;
-    Game.instance.terminal.drawChar(x, y, ch, f, b);
+    if (display.type === "char")
+      Game.instance.terminal.drawChar(x, y, display.value, f, b);
+    else
+      Game.instance.terminal.drawString(x, y, display.value, f, b);
   }
   function drawGrid(g) {
     for (let y = 0; y < g.height; y++) {

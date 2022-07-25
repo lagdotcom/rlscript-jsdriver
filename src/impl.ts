@@ -35,7 +35,8 @@ export default function implementation(__lib: libtype): RLEnv {
   const IsBlocker = new RLTag("IsBlocker");
   const IsPlayer = new RLTag("IsPlayer");
   const RecalculateFOV = new RLTag("RecalculateFOV");
-  const Redraw = new RLTag("Redraw");
+  const RedrawMe = new RLTag("RedrawMe");
+  const RedrawUI = new RLTag("RedrawUI");
   const MyTurn = new RLTag("MyTurn");
   const BaseAI = new RLTag("BaseAI");
   const HostileEnemy = new RLTag("HostileEnemy");
@@ -109,6 +110,7 @@ export default function implementation(__lib: libtype): RLEnv {
       mkActor(100),
       MyTurn,
       RecalculateFOV,
+      RedrawUI,
     ],
   };
   const tmEnemy: RLTemplate = {
@@ -138,7 +140,7 @@ export default function implementation(__lib: libtype): RLEnv {
     type: "template",
     name: "Corpse",
     get: () => [
-      Redraw,
+      RedrawMe,
       mkAppearance("corpse", "%", "red", "black", Layer.Corpse),
     ],
   };
@@ -146,12 +148,17 @@ export default function implementation(__lib: libtype): RLEnv {
   const Floor = new RLTile(".", true, true);
   const Wall = new RLTile("#", false, false);
 
-  let map: RLGrid;
-  let explored: RLGrid;
-  let visible: RLGrid;
+  const gameWidth = 80;
+  const gameHeight = 50;
+  const mapWidth: number = gameWidth;
+  const mapHeight: number = gameHeight - 3;
+  const hpY: number = mapHeight;
+  const map: RLGrid = new RLGrid(mapWidth, mapHeight, Wall);
+  const explored: RLGrid = new RLGrid(mapWidth, mapHeight, false);
+  const visible: RLGrid = new RLGrid(mapWidth, mapHeight, false);
 
   function getBlockingMap() {
-    const blocked: RLGrid = new RLGrid(map.width, map.height, false);
+    const blocked: RLGrid = new RLGrid(mapWidth, mapHeight, false);
     for (const _entity of new RLQuery(RL.instance, [
       "Position",
       "IsBlocker",
@@ -188,6 +195,10 @@ export default function implementation(__lib: libtype): RLEnv {
         { type: "str", value: e.Appearance.name }
       );
       __lib.remove(e);
+    } else {
+      if (e.IsPlayer) {
+        e.add(RedrawUI);
+      }
     }
   }
   const fn_hurt = new RLFn("hurt", hurt, [
@@ -272,11 +283,11 @@ export default function implementation(__lib: libtype): RLEnv {
     );
     const x: number = __lib.randInt(
       { type: "int", value: 1 },
-      { type: "int", value: map.width - w - 1 }
+      { type: "int", value: mapWidth - w - 1 }
     );
     const y: number = __lib.randInt(
       { type: "int", value: 1 },
-      { type: "int", value: map.height - h - 1 }
+      { type: "int", value: mapHeight - h - 1 }
     );
     return new RLRect(x, y, w, h);
   }
@@ -300,12 +311,12 @@ export default function implementation(__lib: libtype): RLEnv {
   ]);
 
   function generateDungeon() {
-    map = new RLGrid(80, 50, Wall);
-    explored = new RLGrid(80, 50, false);
-    visible = new RLGrid(80, 50, false);
+    map.clear();
+    explored.clear();
+    visible.clear();
     let prev: RLRect | undefined;
     let room: RLRect;
-    const taken: RLGrid = new RLGrid(80, 50, false);
+    const taken: RLGrid = new RLGrid(mapWidth, mapHeight, false);
     for (let r = 1; r <= 30; r++) {
       room = randomRoom();
       if (!map.findInRegion(room, Floor)) {
@@ -357,7 +368,10 @@ export default function implementation(__lib: libtype): RLEnv {
   ]);
 
   function main() {
-    __lib.setSize({ type: "int", value: 80 }, { type: "int", value: 50 });
+    __lib.setSize(
+      { type: "int", value: gameWidth },
+      { type: "int", value: gameHeight }
+    );
     generateDungeon();
     __lib.pushKeyHandler(system_onKey);
   }
@@ -506,8 +520,8 @@ export default function implementation(__lib: libtype): RLEnv {
       explored
     );
     e.remove(RecalculateFOV);
-    for (let x = 0; x <= 79; x++) {
-      for (let y = 0; y <= 49; y++) {
+    for (let x = 0; x <= mapWidth - 1; x++) {
+      for (let y = 0; y <= mapHeight - 1; y++) {
         drawTileAt(x, y);
       }
     }
@@ -521,21 +535,44 @@ export default function implementation(__lib: libtype): RLEnv {
   function drawUnderTile(e: RLEntity, o: OldPosition) {
     drawTileAt(o.x, o.y);
     e.remove(o);
-    e.add(Redraw);
+    e.add(RedrawMe);
   }
   const system_drawUnderTile = new RLSystem("drawUnderTile", drawUnderTile, [
     { type: "param", name: "e", typeName: "entity" },
     { type: "param", name: "o", typeName: "OldPosition" },
   ]);
 
-  function redrawEntity(e: RLEntity, p: Position) {
+  function RedrawMeEntity(e: RLEntity, p: Position) {
     drawTileAt(p.x, p.y);
-    e.remove(Redraw);
+    e.remove(RedrawMe);
   }
-  const system_redrawEntity = new RLSystem("redrawEntity", redrawEntity, [
+  const system_RedrawMeEntity = new RLSystem("RedrawMeEntity", RedrawMeEntity, [
     { type: "param", name: "e", typeName: "entity" },
     { type: "param", name: "p", typeName: "Position" },
-    { type: "constraint", typeName: "Redraw" },
+    { type: "constraint", typeName: "RedrawMe" },
+  ]);
+
+  function drawUI(e: RLEntity, f: Fighter) {
+    e.remove(RedrawUI);
+    __lib.draw(
+      { type: "int", value: 1 },
+      { type: "int", value: hpY },
+      {
+        type: "str",
+        value: __lib.join(
+          { type: "str", value: "" },
+          { type: "str", value: "HP: " },
+          { type: "int", value: f.hp },
+          { type: "str", value: "/" },
+          { type: "int", value: f.maxHp }
+        ),
+      }
+    );
+  }
+  const system_drawUI = new RLSystem("drawUI", drawUI, [
+    { type: "param", name: "e", typeName: "entity" },
+    { type: "param", name: "f", typeName: "Fighter" },
+    { type: "constraint", typeName: "RedrawUI" },
   ]);
 
   function nextTurn() {
@@ -578,12 +615,14 @@ export default function implementation(__lib: libtype): RLEnv {
     ["doWait", system_doWait],
     ["fov", system_fov],
     ["drawUnderTile", system_drawUnderTile],
-    ["redrawEntity", system_redrawEntity],
+    ["RedrawMeEntity", system_RedrawMeEntity],
+    ["drawUI", system_drawUI],
     ["nextTurn", system_nextTurn],
     ["IsBlocker", IsBlocker],
     ["IsPlayer", IsPlayer],
     ["RecalculateFOV", RecalculateFOV],
-    ["Redraw", Redraw],
+    ["RedrawMe", RedrawMe],
+    ["RedrawUI", RedrawUI],
     ["MyTurn", MyTurn],
     ["BaseAI", BaseAI],
     ["HostileEnemy", HostileEnemy],

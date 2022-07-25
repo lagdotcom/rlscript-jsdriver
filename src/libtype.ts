@@ -15,7 +15,7 @@ import { RLComponent } from "./implTypes";
 type libtype = {
   abs(n: RLInt): number;
   add(...args: (RLComponent | RLTag)[]): void;
-  draw(x: RLInt, y: RLInt, ch: RLChar, fg?: RLStr, bg?: RLStr): void;
+  draw(x: RLInt, y: RLInt, s: RLChar | RLStr, fg?: RLStr, bg?: RLStr): void;
   drawGrid(g: RLGrid<RLTile>): void;
   find(...args: (RLComponent | RLTag)[]): RLEntity | undefined;
   getFOV(

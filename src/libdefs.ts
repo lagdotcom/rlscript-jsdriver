@@ -70,7 +70,7 @@ const library = [
   f("draw", [
     p("x", "int"),
     p("y", "int"),
-    p("ch", "char"),
+    p("s", "char", "str"),
     o("fg", "str"),
     o("bg", "str"),
   ]),

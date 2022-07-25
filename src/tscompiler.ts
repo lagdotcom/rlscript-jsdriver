@@ -275,6 +275,7 @@ class GridScope implements TSScope {
       ["height", intType],
       ["contains", builtinType],
       ["at", builtinType],
+      ["clear", builtinType],
       ["draw", builtinType],
       ["fill", builtinType],
       ["findInRegion", builtinType],
@@ -941,7 +942,12 @@ export default class TSCompiler implements TSScope {
 
   getGlobals() {
     return this.globals
-      .map((g) => `let ${g.name}: ${this.getTSType(g.type)};`)
+      .map(
+        (g) =>
+          `let ${g.name}: ${this.getTSType(g.type)}${
+            g.expr ? ` = ${this.getExpr(g.expr)}` : ""
+          };`
+      )
       .join("\n");
   }
 

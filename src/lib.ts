@@ -36,14 +36,16 @@ function pushKeyHandler(handler: RLSystem) {
 function draw(
   { value: x }: RLInt,
   { value: y }: RLInt,
-  { value: ch }: RLChar,
+  display: RLChar | RLStr,
   fg?: RLStr,
   bg?: RLStr
 ) {
   const f = fg ? new TinyColor(fg.value).toNumber() << 8 : undefined;
   const b = bg ? new TinyColor(bg.value).toNumber() << 8 : undefined;
 
-  Game.instance.terminal.drawChar(x, y, ch, f, b);
+  if (display.type === "char")
+    Game.instance.terminal.drawChar(x, y, display.value, f, b);
+  else Game.instance.terminal.drawString(x, y, display.value, f, b);
 }
 
 function drawGrid(g: RLGrid<RLTile>) {

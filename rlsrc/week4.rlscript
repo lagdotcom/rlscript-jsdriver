@@ -39,7 +39,8 @@ end
 tag IsBlocker
 tag IsPlayer
 tag RecalculateFOV
-tag Redraw
+tag RedrawMe
+tag RedrawUI
 tag MyTurn
 tag BaseAI
 tag HostileEnemy
@@ -60,6 +61,7 @@ template Player
   Actor(100)
   MyTurn
   RecalculateFOV
+  RedrawUI
 end
 
 template Enemy
@@ -81,15 +83,22 @@ template Troll
 end
 
 template Corpse
-  Redraw
+  RedrawMe
   Appearance("corpse", '%', "red", "black", Layer.Corpse)
 end
 
 tiletype Floor '.' walkable transparent end
 tiletype Wall '#' end
-global map: grid
-global explored: grid
-global visible: grid
+
+global gameWidth: int = 80
+global gameHeight: int = 50
+global mapWidth: int = gameWidth
+global mapHeight: int = gameHeight - 3
+global hpY: int = mapHeight
+
+global map: grid = grid(mapWidth, mapHeight, Wall)
+global explored: grid = grid(mapWidth, mapHeight, false)
+global visible: grid = grid(mapWidth, mapHeight, false)
 
 system onKey(e: entity, IsPlayer, k: KeyEvent)
   e.add(match k.key
@@ -102,7 +111,7 @@ system onKey(e: entity, IsPlayer, k: KeyEvent)
 end
 
 fn getBlockingMap(): grid
-  local blocked: grid = grid(map.width, map.height, false)
+  local blocked: grid = grid(mapWidth, mapHeight, false)
   query (p: Position, IsBlocker)
     blocked.put(p.x, p.y, true)
   end
@@ -170,6 +179,10 @@ fn hurt(e: entity, damage: int)
     local corpse: entity = spawn(Corpse, Position(e.Position.x, e.Position.y))
     corpse.Appearance.name = join(' ', "corpse of", e.Appearance.name)
     remove(e)
+  else
+    if e.IsPlayer
+      e.add(RedrawUI)
+    end
   end
 end
 
@@ -198,8 +211,8 @@ system fov(e: entity, p: Position, RecalculateFOV)
   e.remove(RecalculateFOV)
 
   ;; TODO this is kinda inefficient
-  for x = 0 to 79
-    for y = 0 to 49
+  for x = 0 to mapWidth-1
+    for y = 0 to mapHeight-1
       drawTileAt(x, y)
     end
   end
@@ -251,12 +264,18 @@ end
 system drawUnderTile(e: entity, o: OldPosition)
   drawTileAt(o.x, o.y)
   e.remove(o)
-  e.add(Redraw)
+  e.add(RedrawMe)
 end
 
-system redrawEntity(e: entity, p: Position, Redraw)
+system RedrawMeEntity(e: entity, p: Position, RedrawMe)
   drawTileAt(p.x, p.y)
-  e.remove(Redraw)
+  e.remove(RedrawMe)
+end
+
+system drawUI(e: entity, f: Fighter, RedrawUI)
+  e.remove(RedrawUI)
+
+  draw(1, hpY, join("", "HP: ", f.hp, "/", f.maxHp))
 end
 
 system nextTurn()
@@ -282,8 +301,8 @@ end
 fn randomRoom(): rect
   local w: int = randInt(6, 14)
   local h: int = randInt(6, 14)
-  local x: int = randInt(1, map.width - w - 1)
-  local y: int = randInt(1, map.height - h - 1)
+  local x: int = randInt(1, mapWidth - w - 1)
+  local y: int = randInt(1, mapHeight - h - 1)
   return rect(x, y, w, h)
 end
 
@@ -301,13 +320,13 @@ fn randomCorridor(x1: int, y1: int, x2: int, y2: int)
 end
 
 fn generateDungeon()
-  map = grid(80, 50, Wall)
-  explored = grid(80, 50, false)
-  visible = grid(80, 50, false)
+  map.clear()
+  explored.clear()
+  visible.clear()
 
   local prev: rect?
   local room: rect
-  local taken: grid = grid(80, 50, false)
+  local taken: grid = grid(mapWidth, mapHeight, false)
 
   for r = 1 to 30
     room = randomRoom()
@@ -342,7 +361,7 @@ fn addEnemies(r: rect, taken: grid)
 end
 
 fn main()
-  setSize(80, 50)
+  setSize(gameWidth, gameHeight)
   generateDungeon()
   pushKeyHandler(onKey)
 end
