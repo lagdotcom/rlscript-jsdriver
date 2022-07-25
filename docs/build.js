@@ -1102,10 +1102,7 @@
       (0, import_bresenham.default)(x1, y1, x2, y2, (x, y) => this.put(x, y, item));
     }
     draw() {
-      RL.instance.callNamedFunction("drawGrid", {
-        type: "positional",
-        value: this
-      });
+      RL.instance.lib.drawGrid(this);
     }
   };
   RLGrid.type = "grid";
@@ -1213,7 +1210,8 @@
     }
   };
   var RL = class {
-    constructor(...envs) {
+    constructor(lib2, ...envs) {
+      this.lib = lib2;
       RL.instance = this;
       this.env = /* @__PURE__ */ new Map();
       for (const env of envs) {
@@ -1342,488 +1340,466 @@
   };
 
   // src/impl.ts
-  var IsBlocker = new RLTag("IsBlocker");
-  var IsPlayer = new RLTag("IsPlayer");
-  var RecalculateFOV = new RLTag("RecalculateFOV");
-  var Redraw = new RLTag("Redraw");
-  var MyTurn = new RLTag("MyTurn");
-  var BaseAI = new RLTag("BaseAI");
-  var HostileEnemy = new RLTag("HostileEnemy");
-  var WaitAction = new RLTag("WaitAction");
-  var mkAppearance = (name, ch, fg, bg, layer) => ({
-    type: "component",
-    typeName: "Appearance",
-    name,
-    ch,
-    fg,
-    bg,
-    layer
-  });
-  var mkOldPosition = (x, y) => ({
-    type: "component",
-    typeName: "OldPosition",
-    x,
-    y
-  });
-  var mkPosition = (x, y) => ({
-    type: "component",
-    typeName: "Position",
-    x,
-    y
-  });
-  var mkMoveAction = (x, y) => ({
-    type: "component",
-    typeName: "MoveAction",
-    x,
-    y
-  });
-  var mkMeleeAction = (target) => ({
-    type: "component",
-    typeName: "MeleeAction",
-    target
-  });
-  var mkActor = (energy) => ({
-    type: "component",
-    typeName: "Actor",
-    energy
-  });
-  var mkFighter = (maxHp, hp, defense, power) => ({
-    type: "component",
-    typeName: "Fighter",
-    maxHp,
-    hp,
-    defense,
-    power
-  });
-  var tmPlayer = {
-    type: "template",
-    name: "Player",
-    get: () => [
-      IsBlocker,
-      IsPlayer,
-      mkAppearance("player", "@", "white", "black", 3 /* Player */),
-      mkFighter(30, 30, 2, 5),
-      mkActor(100),
-      MyTurn,
-      RecalculateFOV
-    ]
-  };
-  var tmEnemy = {
-    type: "template",
-    name: "Enemy",
-    get: () => [IsBlocker, HostileEnemy, mkActor(1)]
-  };
-  var tmOrc = {
-    type: "template",
-    name: "Orc",
-    get: () => [
-      tmEnemy,
-      mkAppearance("orc", "o", "green", "black", 2 /* Enemy */),
-      mkFighter(10, 10, 0, 3)
-    ]
-  };
-  var tmTroll = {
-    type: "template",
-    name: "Troll",
-    get: () => [
-      tmEnemy,
-      mkAppearance("troll", "T", "lime", "black", 2 /* Enemy */),
-      mkFighter(16, 16, 1, 4)
-    ]
-  };
-  var tmCorpse = {
-    type: "template",
-    name: "Corpse",
-    get: () => [
-      Redraw,
-      mkAppearance("corpse", "%", "red", "black", 1 /* Corpse */)
-    ]
-  };
-  var Floor = new RLTile(".", true, true);
-  var Wall = new RLTile("#", false, false);
-  var map;
-  var explored;
-  var visible;
-  function getBlockingMap() {
-    const blocked = new RLGrid(map.width, map.height, false);
-    for (const _entity of new RLQuery(RL.instance, [
-      "Position",
-      "IsBlocker"
-    ]).get()) {
-      const { Position: p } = _entity;
-      blocked.put(p.x, p.y, true);
-    }
-    return blocked;
-  }
-  var fn_getBlockingMap = new RLFn("getBlockingMap", getBlockingMap, []);
-  function hurt(e, damage) {
-    e.Fighter.hp -= damage;
-    if (e.Fighter.hp < 0) {
-      if (e.IsPlayer) {
-        RL.instance.callNamedFunction("log", {
-          type: "positional",
-          value: { type: "str", value: "You died!" }
-        });
-      } else {
-        RL.instance.callNamedFunction("log", {
-          type: "positional",
-          value: {
-            type: "str",
-            value: RL.instance.callNamedFunction("join", { type: "positional", value: { type: "char", value: " " } }, {
-              type: "positional",
-              value: { type: "str", value: e.Appearance.name }
-            }, { type: "positional", value: { type: "str", value: "is dead!" } })
-          }
-        });
-      }
-      const corpse = RL.instance.callNamedFunction("spawn", { type: "positional", value: tmCorpse }, { type: "positional", value: mkPosition(e.Position.x, e.Position.y) });
-      corpse.Appearance.name = RL.instance.callNamedFunction("join", { type: "positional", value: { type: "char", value: " " } }, { type: "positional", value: { type: "str", value: "corpse of" } }, { type: "positional", value: { type: "str", value: e.Appearance.name } });
-      RL.instance.callNamedFunction("remove", { type: "positional", value: e });
-    }
-  }
-  var fn_hurt = new RLFn("hurt", hurt, [
-    { type: "param", name: "e", typeName: "entity" },
-    { type: "param", name: "damage", typeName: "int" }
-  ]);
-  function useTurn(e) {
-    e.Actor.energy -= 100;
-    e.remove(MyTurn);
-  }
-  var fn_useTurn = new RLFn("useTurn", useTurn, [
-    { type: "param", name: "e", typeName: "entity" }
-  ]);
-  function drawTileAt(x, y) {
-    let ch = " ";
-    let fg = "white";
-    let bg = "black";
-    let layer = 0 /* Nothing */;
-    if (visible.at(x, y)) {
+  function implementation(__lib) {
+    let Layer;
+    ((Layer2) => {
+      Layer2[Layer2["Nothing"] = 0] = "Nothing";
+      Layer2[Layer2["Corpse"] = 1] = "Corpse";
+      Layer2[Layer2["Enemy"] = 2] = "Enemy";
+      Layer2[Layer2["Player"] = 3] = "Player";
+    })(Layer || (Layer = {}));
+    const IsBlocker = new RLTag("IsBlocker");
+    const IsPlayer = new RLTag("IsPlayer");
+    const RecalculateFOV = new RLTag("RecalculateFOV");
+    const Redraw = new RLTag("Redraw");
+    const MyTurn = new RLTag("MyTurn");
+    const BaseAI = new RLTag("BaseAI");
+    const HostileEnemy = new RLTag("HostileEnemy");
+    const WaitAction = new RLTag("WaitAction");
+    const mkAppearance = (name, ch, fg, bg, layer) => ({
+      type: "component",
+      typeName: "Appearance",
+      name,
+      ch,
+      fg,
+      bg,
+      layer
+    });
+    const mkOldPosition = (x, y) => ({
+      type: "component",
+      typeName: "OldPosition",
+      x,
+      y
+    });
+    const mkPosition = (x, y) => ({
+      type: "component",
+      typeName: "Position",
+      x,
+      y
+    });
+    const mkMoveAction = (x, y) => ({
+      type: "component",
+      typeName: "MoveAction",
+      x,
+      y
+    });
+    const mkMeleeAction = (target) => ({
+      type: "component",
+      typeName: "MeleeAction",
+      target
+    });
+    const mkActor = (energy) => ({
+      type: "component",
+      typeName: "Actor",
+      energy
+    });
+    const mkFighter = (maxHp, hp, defense, power) => ({
+      type: "component",
+      typeName: "Fighter",
+      maxHp,
+      hp,
+      defense,
+      power
+    });
+    const tmPlayer = {
+      type: "template",
+      name: "Player",
+      get: () => [
+        IsBlocker,
+        IsPlayer,
+        mkAppearance("player", "@", "white", "black", 3 /* Player */),
+        mkFighter(30, 30, 2, 5),
+        mkActor(100),
+        MyTurn,
+        RecalculateFOV
+      ]
+    };
+    const tmEnemy = {
+      type: "template",
+      name: "Enemy",
+      get: () => [IsBlocker, HostileEnemy, mkActor(1)]
+    };
+    const tmOrc = {
+      type: "template",
+      name: "Orc",
+      get: () => [
+        tmEnemy,
+        mkAppearance("orc", "o", "green", "black", 2 /* Enemy */),
+        mkFighter(10, 10, 0, 3)
+      ]
+    };
+    const tmTroll = {
+      type: "template",
+      name: "Troll",
+      get: () => [
+        tmEnemy,
+        mkAppearance("troll", "T", "lime", "black", 2 /* Enemy */),
+        mkFighter(16, 16, 1, 4)
+      ]
+    };
+    const tmCorpse = {
+      type: "template",
+      name: "Corpse",
+      get: () => [
+        Redraw,
+        mkAppearance("corpse", "%", "red", "black", 1 /* Corpse */)
+      ]
+    };
+    const Floor = new RLTile(".", true, true);
+    const Wall = new RLTile("#", false, false);
+    let map;
+    let explored;
+    let visible;
+    function getBlockingMap() {
+      const blocked = new RLGrid(map.width, map.height, false);
       for (const _entity of new RLQuery(RL.instance, [
-        "Appearance",
-        "Position"
-      ]).get()) {
-        const { Appearance: a, Position: p } = _entity;
-        if (p.x == x && p.y == y && a.layer > layer) {
-          ch = a.ch;
-          fg = a.fg;
-          bg = a.bg;
-          layer = a.layer;
-        }
-      }
-    }
-    if (layer == 0 /* Nothing */ && explored.at(x, y)) {
-      const t = map.at(x, y);
-      if (t) {
-        ch = t.ch;
-        if (visible.at(x, y)) {
-          fg = "silver";
-        } else {
-          fg = "#444";
-        }
-      }
-    }
-    RL.instance.callNamedFunction("draw", { type: "positional", value: { type: "int", value: x } }, { type: "positional", value: { type: "int", value: y } }, { type: "positional", value: { type: "char", value: ch } }, { type: "positional", value: { type: "str", value: fg } }, { type: "positional", value: { type: "str", value: bg } });
-  }
-  var fn_drawTileAt = new RLFn("drawTileAt", drawTileAt, [
-    { type: "param", name: "x", typeName: "int" },
-    { type: "param", name: "y", typeName: "int" }
-  ]);
-  function drawEntity(e) {
-    if (e.Position && e.Appearance && visible.at(e.Position.x, e.Position.y)) {
-      RL.instance.callNamedFunction("draw", { type: "positional", value: { type: "int", value: e.Position.x } }, { type: "positional", value: { type: "int", value: e.Position.y } }, { type: "positional", value: { type: "char", value: e.Appearance.ch } }, { type: "positional", value: { type: "str", value: e.Appearance.fg } }, { type: "positional", value: { type: "str", value: e.Appearance.bg } });
-    }
-  }
-  var fn_drawEntity = new RLFn("drawEntity", drawEntity, [
-    { type: "param", name: "e", typeName: "entity" }
-  ]);
-  function randomRoom() {
-    const w = RL.instance.callNamedFunction("randInt", { type: "positional", value: { type: "int", value: 6 } }, { type: "positional", value: { type: "int", value: 14 } });
-    const h = RL.instance.callNamedFunction("randInt", { type: "positional", value: { type: "int", value: 6 } }, { type: "positional", value: { type: "int", value: 14 } });
-    const x = RL.instance.callNamedFunction("randInt", { type: "positional", value: { type: "int", value: 1 } }, { type: "positional", value: { type: "int", value: map.width - w - 1 } });
-    const y = RL.instance.callNamedFunction("randInt", { type: "positional", value: { type: "int", value: 1 } }, { type: "positional", value: { type: "int", value: map.height - h - 1 } });
-    return new RLRect(x, y, w, h);
-  }
-  var fn_randomRoom = new RLFn("randomRoom", randomRoom, []);
-  function randomCorridor(x1, y1, x2, y2) {
-    let cx = x2;
-    let cy = y1;
-    if (RL.instance.callNamedFunction("randInt", { type: "positional", value: { type: "int", value: 0 } }, { type: "positional", value: { type: "int", value: 1 } })) {
-      cx = x1;
-      cy = y2;
-    }
-    map.line(x1, y1, cx, cy, Floor);
-    map.line(cx, cy, x2, y2, Floor);
-  }
-  var fn_randomCorridor = new RLFn("randomCorridor", randomCorridor, [
-    { type: "param", name: "x1", typeName: "int" },
-    { type: "param", name: "y1", typeName: "int" },
-    { type: "param", name: "x2", typeName: "int" },
-    { type: "param", name: "y2", typeName: "int" }
-  ]);
-  function generateDungeon() {
-    map = new RLGrid(80, 50, Wall);
-    explored = new RLGrid(80, 50, false);
-    visible = new RLGrid(80, 50, false);
-    let prev;
-    let room;
-    const taken = new RLGrid(80, 50, false);
-    for (let r = 1; r <= 30; r++) {
-      room = randomRoom();
-      if (!map.findInRegion(room, Floor)) {
-        map.rect(room.x + 1, room.y + 1, room.x2 - 1, room.y2 - 1, Floor);
-        if (prev) {
-          randomCorridor(prev.cx, prev.cy, room.cx, room.cy);
-          addEnemies(room, taken);
-        } else {
-          RL.instance.callNamedFunction("spawn", { type: "positional", value: tmPlayer }, { type: "positional", value: mkPosition(room.cx, room.cy) });
-        }
-        prev = room;
-      }
-    }
-  }
-  var fn_generateDungeon = new RLFn("generateDungeon", generateDungeon, []);
-  function addEnemies(r, taken) {
-    for (let z = 1; z <= RL.instance.callNamedFunction("randInt", { type: "positional", value: { type: "int", value: 0 } }, { type: "positional", value: { type: "int", value: 2 } }); z++) {
-      const x = RL.instance.callNamedFunction("randInt", { type: "positional", value: { type: "int", value: r.x + 1 } }, { type: "positional", value: { type: "int", value: r.x2 - 1 } });
-      const y = RL.instance.callNamedFunction("randInt", { type: "positional", value: { type: "int", value: r.y + 1 } }, { type: "positional", value: { type: "int", value: r.y2 - 1 } });
-      if (!taken.at(x, y)) {
-        taken.put(x, y, true);
-        if (RL.instance.callNamedFunction("randInt", { type: "positional", value: { type: "int", value: 1 } }, { type: "positional", value: { type: "int", value: 100 } }) < 80) {
-          RL.instance.callNamedFunction("spawn", { type: "positional", value: tmOrc }, { type: "positional", value: mkPosition(x, y) });
-        } else {
-          RL.instance.callNamedFunction("spawn", { type: "positional", value: tmTroll }, { type: "positional", value: mkPosition(x, y) });
-        }
-      }
-    }
-  }
-  var fn_addEnemies = new RLFn("addEnemies", addEnemies, [
-    { type: "param", name: "r", typeName: "rect" },
-    { type: "param", name: "taken", typeName: "grid" }
-  ]);
-  function main() {
-    RL.instance.callNamedFunction("setSize", { type: "positional", value: { type: "int", value: 80 } }, { type: "positional", value: { type: "int", value: 50 } });
-    generateDungeon();
-    RL.instance.callNamedFunction("pushKeyHandler", {
-      type: "positional",
-      value: system_onKey
-    });
-  }
-  var fn_main = new RLFn("main", main, []);
-  function onKey(e, k) {
-    e.add(((matchvar) => {
-      if (matchvar === "up")
-        return mkMoveAction(0, -1);
-      else if (matchvar === "right")
-        return mkMoveAction(1, 0);
-      else if (matchvar === "down")
-        return mkMoveAction(0, 1);
-      else if (matchvar === "left")
-        return mkMoveAction(-1, 0);
-      else if (matchvar === "wait")
-        return WaitAction;
-    })(k.key));
-  }
-  var system_onKey = new RLSystem("onKey", onKey, [
-    { type: "param", name: "e", typeName: "entity" },
-    { type: "constraint", typeName: "IsPlayer" },
-    { type: "param", name: "k", typeName: "KeyEvent" }
-  ]);
-  function hostileAI(e, p) {
-    if (visible.at(p.x, p.y)) {
-      for (const target of new RLQuery(RL.instance, [
         "Position",
-        "IsPlayer"
+        "IsBlocker"
       ]).get()) {
-        const { Position: tp } = target;
-        const dx = tp.x - p.x;
-        const dy = tp.y - p.y;
-        const distance = RL.instance.callNamedFunction("abs", {
-          type: "positional",
-          value: { type: "int", value: dx }
-        }) + RL.instance.callNamedFunction("abs", {
-          type: "positional",
-          value: { type: "int", value: dy }
-        });
-        if (distance < 2) {
-          e.add(mkMeleeAction(target));
-          return;
+        const { Position: p } = _entity;
+        blocked.put(p.x, p.y, true);
+      }
+      return blocked;
+    }
+    const fn_getBlockingMap = new RLFn("getBlockingMap", getBlockingMap, []);
+    function hurt(e, damage) {
+      e.Fighter.hp -= damage;
+      if (e.Fighter.hp < 0) {
+        if (e.IsPlayer) {
+          __lib.log({ type: "str", value: "You died!" });
+        } else {
+          __lib.log({
+            type: "str",
+            value: __lib.join({ type: "char", value: " " }, { type: "str", value: e.Appearance.name }, { type: "str", value: "is dead!" })
+          });
         }
-        const step = RL.instance.callNamedFunction("getNextMove", { type: "positional", value: map }, { type: "positional", value: getBlockingMap() }, { type: "positional", value: new RLXY(p.x, p.y) }, { type: "positional", value: new RLXY(tp.x, tp.y) });
-        if (step) {
-          e.add(mkMoveAction(step.x - p.x, step.y - p.y));
-          return;
+        const corpse = __lib.spawn(tmCorpse, mkPosition(e.Position.x, e.Position.y));
+        corpse.Appearance.name = __lib.join({ type: "char", value: " " }, { type: "str", value: "corpse of" }, { type: "str", value: e.Appearance.name });
+        __lib.remove(e);
+      }
+    }
+    const fn_hurt = new RLFn("hurt", hurt, [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "param", name: "damage", typeName: "int" }
+    ]);
+    function useTurn(e) {
+      e.Actor.energy -= 100;
+      e.remove(MyTurn);
+    }
+    const fn_useTurn = new RLFn("useTurn", useTurn, [
+      { type: "param", name: "e", typeName: "entity" }
+    ]);
+    function drawTileAt(x, y) {
+      let ch = " ";
+      let fg = "white";
+      let bg = "black";
+      let layer = 0 /* Nothing */;
+      if (visible.at(x, y)) {
+        for (const _entity of new RLQuery(RL.instance, [
+          "Appearance",
+          "Position"
+        ]).get()) {
+          const { Appearance: a, Position: p } = _entity;
+          if (p.x == x && p.y == y && a.layer > layer) {
+            ch = a.ch;
+            fg = a.fg;
+            bg = a.bg;
+            layer = a.layer;
+          }
+        }
+      }
+      if (layer == 0 /* Nothing */ && explored.at(x, y)) {
+        const t = map.at(x, y);
+        if (t) {
+          ch = t.ch;
+          if (visible.at(x, y)) {
+            fg = "silver";
+          } else {
+            fg = "#444";
+          }
+        }
+      }
+      __lib.draw({ type: "int", value: x }, { type: "int", value: y }, { type: "char", value: ch }, { type: "str", value: fg }, { type: "str", value: bg });
+    }
+    const fn_drawTileAt = new RLFn("drawTileAt", drawTileAt, [
+      { type: "param", name: "x", typeName: "int" },
+      { type: "param", name: "y", typeName: "int" }
+    ]);
+    function drawEntity(e) {
+      if (e.Position && e.Appearance && visible.at(e.Position.x, e.Position.y)) {
+        __lib.draw({ type: "int", value: e.Position.x }, { type: "int", value: e.Position.y }, { type: "char", value: e.Appearance.ch }, { type: "str", value: e.Appearance.fg }, { type: "str", value: e.Appearance.bg });
+      }
+    }
+    const fn_drawEntity = new RLFn("drawEntity", drawEntity, [
+      { type: "param", name: "e", typeName: "entity" }
+    ]);
+    function randomRoom() {
+      const w = __lib.randInt({ type: "int", value: 6 }, { type: "int", value: 14 });
+      const h = __lib.randInt({ type: "int", value: 6 }, { type: "int", value: 14 });
+      const x = __lib.randInt({ type: "int", value: 1 }, { type: "int", value: map.width - w - 1 });
+      const y = __lib.randInt({ type: "int", value: 1 }, { type: "int", value: map.height - h - 1 });
+      return new RLRect(x, y, w, h);
+    }
+    const fn_randomRoom = new RLFn("randomRoom", randomRoom, []);
+    function randomCorridor(x1, y1, x2, y2) {
+      let cx = x2;
+      let cy = y1;
+      if (__lib.randInt({ type: "int", value: 0 }, { type: "int", value: 1 })) {
+        cx = x1;
+        cy = y2;
+      }
+      map.line(x1, y1, cx, cy, Floor);
+      map.line(cx, cy, x2, y2, Floor);
+    }
+    const fn_randomCorridor = new RLFn("randomCorridor", randomCorridor, [
+      { type: "param", name: "x1", typeName: "int" },
+      { type: "param", name: "y1", typeName: "int" },
+      { type: "param", name: "x2", typeName: "int" },
+      { type: "param", name: "y2", typeName: "int" }
+    ]);
+    function generateDungeon() {
+      map = new RLGrid(80, 50, Wall);
+      explored = new RLGrid(80, 50, false);
+      visible = new RLGrid(80, 50, false);
+      let prev;
+      let room;
+      const taken = new RLGrid(80, 50, false);
+      for (let r = 1; r <= 30; r++) {
+        room = randomRoom();
+        if (!map.findInRegion(room, Floor)) {
+          map.rect(room.x + 1, room.y + 1, room.x2 - 1, room.y2 - 1, Floor);
+          if (prev) {
+            randomCorridor(prev.cx, prev.cy, room.cx, room.cy);
+            addEnemies(room, taken);
+          } else {
+            __lib.spawn(tmPlayer, mkPosition(room.cx, room.cy));
+          }
+          prev = room;
         }
       }
     }
-    e.add(WaitAction);
-  }
-  var system_hostileAI = new RLSystem("hostileAI", hostileAI, [
-    { type: "param", name: "e", typeName: "entity" },
-    { type: "param", name: "p", typeName: "Position" },
-    { type: "constraint", typeName: "HostileEnemy" },
-    { type: "constraint", typeName: "MyTurn" }
-  ]);
-  function doMove(e, p, m) {
-    const x = p.x + m.x;
-    const y = p.y + m.y;
-    e.remove(m);
-    const t = map.at(x, y);
-    if (t && t.walkable) {
-      const b = RL.instance.callNamedFunction("find", { type: "positional", value: IsBlocker }, { type: "positional", value: mkPosition(x, y) });
-      if (b && b.has("Fighter")) {
-        e.add(mkMeleeAction(b));
-        return;
+    const fn_generateDungeon = new RLFn("generateDungeon", generateDungeon, []);
+    function addEnemies(r, taken) {
+      for (let z = 1; z <= __lib.randInt({ type: "int", value: 0 }, { type: "int", value: 2 }); z++) {
+        const x = __lib.randInt({ type: "int", value: r.x + 1 }, { type: "int", value: r.x2 - 1 });
+        const y = __lib.randInt({ type: "int", value: r.y + 1 }, { type: "int", value: r.y2 - 1 });
+        if (!taken.at(x, y)) {
+          taken.put(x, y, true);
+          if (__lib.randInt({ type: "int", value: 1 }, { type: "int", value: 100 }) < 80) {
+            __lib.spawn(tmOrc, mkPosition(x, y));
+          } else {
+            __lib.spawn(tmTroll, mkPosition(x, y));
+          }
+        }
       }
+    }
+    const fn_addEnemies = new RLFn("addEnemies", addEnemies, [
+      { type: "param", name: "r", typeName: "rect" },
+      { type: "param", name: "taken", typeName: "grid" }
+    ]);
+    function main() {
+      __lib.setSize({ type: "int", value: 80 }, { type: "int", value: 50 });
+      generateDungeon();
+      __lib.pushKeyHandler(system_onKey);
+    }
+    const fn_main = new RLFn("main", main, []);
+    function onKey(e, k) {
+      e.add(((matchvar) => {
+        if (matchvar === "up")
+          return mkMoveAction(0, -1);
+        else if (matchvar === "right")
+          return mkMoveAction(1, 0);
+        else if (matchvar === "down")
+          return mkMoveAction(0, 1);
+        else if (matchvar === "left")
+          return mkMoveAction(-1, 0);
+        else if (matchvar === "wait")
+          return WaitAction;
+      })(k.key));
+    }
+    const system_onKey = new RLSystem("onKey", onKey, [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "constraint", typeName: "IsPlayer" },
+      { type: "param", name: "k", typeName: "KeyEvent" }
+    ]);
+    function hostileAI(e, p) {
+      if (visible.at(p.x, p.y)) {
+        for (const target of new RLQuery(RL.instance, [
+          "Position",
+          "IsPlayer"
+        ]).get()) {
+          const { Position: tp } = target;
+          const dx = tp.x - p.x;
+          const dy = tp.y - p.y;
+          const distance = __lib.abs({ type: "int", value: dx }) + __lib.abs({ type: "int", value: dy });
+          if (distance < 2) {
+            e.add(mkMeleeAction(target));
+            return;
+          }
+          const step = __lib.getNextMove(map, getBlockingMap(), new RLXY(p.x, p.y), new RLXY(tp.x, tp.y));
+          if (step) {
+            e.add(mkMoveAction(step.x - p.x, step.y - p.y));
+            return;
+          }
+        }
+      }
+      e.add(WaitAction);
+    }
+    const system_hostileAI = new RLSystem("hostileAI", hostileAI, [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "param", name: "p", typeName: "Position" },
+      { type: "constraint", typeName: "HostileEnemy" },
+      { type: "constraint", typeName: "MyTurn" }
+    ]);
+    function doMove(e, p, m) {
+      const x = p.x + m.x;
+      const y = p.y + m.y;
+      e.remove(m);
+      const t = map.at(x, y);
+      if (t && t.walkable) {
+        const b = __lib.find(IsBlocker, mkPosition(x, y));
+        if (b && b.has("Fighter")) {
+          e.add(mkMeleeAction(b));
+          return;
+        }
+        useTurn(e);
+        e.add(mkOldPosition(p.x, p.y));
+        p.x = x;
+        p.y = y;
+        if (e.IsPlayer) {
+          e.add(RecalculateFOV);
+        }
+      }
+    }
+    const system_doMove = new RLSystem("doMove", doMove, [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "param", name: "p", typeName: "Position" },
+      { type: "param", name: "m", typeName: "MoveAction" },
+      { type: "constraint", typeName: "MyTurn" }
+    ]);
+    function doMelee(e, m, a, f) {
+      const target = m.target;
+      e.remove(m);
       useTurn(e);
-      e.add(mkOldPosition(p.x, p.y));
-      p.x = x;
-      p.y = y;
-      if (e.IsPlayer) {
-        e.add(RecalculateFOV);
-      }
-    }
-  }
-  var system_doMove = new RLSystem("doMove", doMove, [
-    { type: "param", name: "e", typeName: "entity" },
-    { type: "param", name: "p", typeName: "Position" },
-    { type: "param", name: "m", typeName: "MoveAction" },
-    { type: "constraint", typeName: "MyTurn" }
-  ]);
-  function doMelee(e, m, a, f) {
-    const target = m.target;
-    e.remove(m);
-    useTurn(e);
-    const attack = RL.instance.callNamedFunction("join", { type: "positional", value: { type: "char", value: " " } }, { type: "positional", value: { type: "str", value: a.name } }, { type: "positional", value: { type: "str", value: "attacks" } }, {
-      type: "positional",
-      value: { type: "str", value: target.Appearance.name }
-    });
-    const damage = f.power - target.Fighter.defense;
-    if (damage > 0) {
-      RL.instance.callNamedFunction("log", {
-        type: "positional",
-        value: {
+      const attack = __lib.join({ type: "char", value: " " }, { type: "str", value: a.name }, { type: "str", value: "attacks" }, { type: "str", value: target.Appearance.name });
+      const damage = f.power - target.Fighter.defense;
+      if (damage > 0) {
+        __lib.log({
           type: "str",
-          value: RL.instance.callNamedFunction("join", { type: "positional", value: { type: "char", value: " " } }, { type: "positional", value: { type: "str", value: attack } }, { type: "positional", value: { type: "str", value: "for" } }, { type: "positional", value: { type: "int", value: damage } }, { type: "positional", value: { type: "str", value: "hit points" } })
-        }
-      });
-      hurt(target, damage);
-    } else {
-      RL.instance.callNamedFunction("log", {
-        type: "positional",
-        value: {
+          value: __lib.join({ type: "char", value: " " }, { type: "str", value: attack }, { type: "str", value: "for" }, { type: "int", value: damage }, { type: "str", value: "hit points" })
+        });
+        hurt(target, damage);
+      } else {
+        __lib.log({
           type: "str",
-          value: RL.instance.callNamedFunction("join", { type: "positional", value: { type: "char", value: " " } }, { type: "positional", value: { type: "str", value: attack } }, {
-            type: "positional",
-            value: { type: "str", value: "but does no damage" }
-          })
+          value: __lib.join({ type: "char", value: " " }, { type: "str", value: attack }, { type: "str", value: "but does no damage" })
+        });
+      }
+    }
+    const system_doMelee = new RLSystem("doMelee", doMelee, [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "param", name: "m", typeName: "MeleeAction" },
+      { type: "param", name: "a", typeName: "Appearance" },
+      { type: "param", name: "f", typeName: "Fighter" },
+      { type: "constraint", typeName: "MyTurn" }
+    ]);
+    function doWait(e) {
+      e.remove(WaitAction);
+      useTurn(e);
+    }
+    const system_doWait = new RLSystem("doWait", doWait, [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "constraint", typeName: "WaitAction" },
+      { type: "constraint", typeName: "MyTurn" }
+    ]);
+    function fov(e, p) {
+      __lib.getFOV(map, { type: "int", value: p.x }, { type: "int", value: p.y }, { type: "int", value: 5 }, visible, explored);
+      e.remove(RecalculateFOV);
+      for (let x = 0; x <= 79; x++) {
+        for (let y = 0; y <= 49; y++) {
+          drawTileAt(x, y);
         }
-      });
-    }
-  }
-  var system_doMelee = new RLSystem("doMelee", doMelee, [
-    { type: "param", name: "e", typeName: "entity" },
-    { type: "param", name: "m", typeName: "MeleeAction" },
-    { type: "param", name: "a", typeName: "Appearance" },
-    { type: "param", name: "f", typeName: "Fighter" },
-    { type: "constraint", typeName: "MyTurn" }
-  ]);
-  function doWait(e) {
-    e.remove(WaitAction);
-    useTurn(e);
-  }
-  var system_doWait = new RLSystem("doWait", doWait, [
-    { type: "param", name: "e", typeName: "entity" },
-    { type: "constraint", typeName: "WaitAction" },
-    { type: "constraint", typeName: "MyTurn" }
-  ]);
-  function fov(e, p) {
-    RL.instance.callNamedFunction("getFOV", { type: "positional", value: map }, { type: "positional", value: { type: "int", value: p.x } }, { type: "positional", value: { type: "int", value: p.y } }, { type: "positional", value: { type: "int", value: 5 } }, { type: "positional", value: visible }, { type: "positional", value: explored });
-    e.remove(RecalculateFOV);
-    for (let x = 0; x <= 79; x++) {
-      for (let y = 0; y <= 49; y++) {
-        drawTileAt(x, y);
       }
     }
-  }
-  var system_fov = new RLSystem("fov", fov, [
-    { type: "param", name: "e", typeName: "entity" },
-    { type: "param", name: "p", typeName: "Position" },
-    { type: "constraint", typeName: "RecalculateFOV" }
-  ]);
-  function drawUnderTile(e, o) {
-    drawTileAt(o.x, o.y);
-    e.remove(o);
-    e.add(Redraw);
-  }
-  var system_drawUnderTile = new RLSystem("drawUnderTile", drawUnderTile, [
-    { type: "param", name: "e", typeName: "entity" },
-    { type: "param", name: "o", typeName: "OldPosition" }
-  ]);
-  function redrawEntity(e, p) {
-    drawTileAt(p.x, p.y);
-    e.remove(Redraw);
-  }
-  var system_redrawEntity = new RLSystem("redrawEntity", redrawEntity, [
-    { type: "param", name: "e", typeName: "entity" },
-    { type: "param", name: "p", typeName: "Position" },
-    { type: "constraint", typeName: "Redraw" }
-  ]);
-  function nextTurn() {
-    let highest = -99999;
-    for (const _entity of new RLQuery(RL.instance, ["Actor"]).get()) {
-      const { Actor: a } = _entity;
-      if (a.energy > highest) {
-        highest = a.energy;
+    const system_fov = new RLSystem("fov", fov, [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "param", name: "p", typeName: "Position" },
+      { type: "constraint", typeName: "RecalculateFOV" }
+    ]);
+    function drawUnderTile(e, o) {
+      drawTileAt(o.x, o.y);
+      e.remove(o);
+      e.add(Redraw);
+    }
+    const system_drawUnderTile = new RLSystem("drawUnderTile", drawUnderTile, [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "param", name: "o", typeName: "OldPosition" }
+    ]);
+    function redrawEntity(e, p) {
+      drawTileAt(p.x, p.y);
+      e.remove(Redraw);
+    }
+    const system_redrawEntity = new RLSystem("redrawEntity", redrawEntity, [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "param", name: "p", typeName: "Position" },
+      { type: "constraint", typeName: "Redraw" }
+    ]);
+    function nextTurn() {
+      let highest = -99999;
+      for (const _entity of new RLQuery(RL.instance, ["Actor"]).get()) {
+        const { Actor: a } = _entity;
+        if (a.energy > highest) {
+          highest = a.energy;
+        }
+      }
+      if (highest >= 100) {
+        return false;
+      }
+      const elapse = 100 - highest;
+      for (const e of new RLQuery(RL.instance, ["Actor"]).get()) {
+        const { Actor: a } = e;
+        a.energy += elapse;
+        if (a.energy >= 100) {
+          e.add(MyTurn);
+        }
       }
     }
-    if (highest >= 100) {
-      return false;
-    }
-    const elapse = 100 - highest;
-    for (const e of new RLQuery(RL.instance, ["Actor"]).get()) {
-      const { Actor: a } = e;
-      a.energy += elapse;
-      if (a.energy >= 100) {
-        e.add(MyTurn);
-      }
-    }
+    const system_nextTurn = new RLSystem("nextTurn", nextTurn, []);
+    return /* @__PURE__ */ new Map([
+      ["getBlockingMap", fn_getBlockingMap],
+      ["hurt", fn_hurt],
+      ["useTurn", fn_useTurn],
+      ["drawTileAt", fn_drawTileAt],
+      ["drawEntity", fn_drawEntity],
+      ["randomRoom", fn_randomRoom],
+      ["randomCorridor", fn_randomCorridor],
+      ["generateDungeon", fn_generateDungeon],
+      ["addEnemies", fn_addEnemies],
+      ["main", fn_main],
+      ["onKey", system_onKey],
+      ["hostileAI", system_hostileAI],
+      ["doMove", system_doMove],
+      ["doMelee", system_doMelee],
+      ["doWait", system_doWait],
+      ["fov", system_fov],
+      ["drawUnderTile", system_drawUnderTile],
+      ["redrawEntity", system_redrawEntity],
+      ["nextTurn", system_nextTurn],
+      ["IsBlocker", IsBlocker],
+      ["IsPlayer", IsPlayer],
+      ["RecalculateFOV", RecalculateFOV],
+      ["Redraw", Redraw],
+      ["MyTurn", MyTurn],
+      ["BaseAI", BaseAI],
+      ["HostileEnemy", HostileEnemy],
+      ["WaitAction", WaitAction],
+      ["Player", tmPlayer],
+      ["Enemy", tmEnemy],
+      ["Orc", tmOrc],
+      ["Troll", tmTroll],
+      ["Corpse", tmCorpse]
+    ]);
   }
-  var system_nextTurn = new RLSystem("nextTurn", nextTurn, []);
-  var impl = /* @__PURE__ */ new Map([
-    ["getBlockingMap", fn_getBlockingMap],
-    ["hurt", fn_hurt],
-    ["useTurn", fn_useTurn],
-    ["drawTileAt", fn_drawTileAt],
-    ["drawEntity", fn_drawEntity],
-    ["randomRoom", fn_randomRoom],
-    ["randomCorridor", fn_randomCorridor],
-    ["generateDungeon", fn_generateDungeon],
-    ["addEnemies", fn_addEnemies],
-    ["main", fn_main],
-    ["onKey", system_onKey],
-    ["hostileAI", system_hostileAI],
-    ["doMove", system_doMove],
-    ["doMelee", system_doMelee],
-    ["doWait", system_doWait],
-    ["fov", system_fov],
-    ["drawUnderTile", system_drawUnderTile],
-    ["redrawEntity", system_redrawEntity],
-    ["nextTurn", system_nextTurn],
-    ["IsBlocker", IsBlocker],
-    ["IsPlayer", IsPlayer],
-    ["RecalculateFOV", RecalculateFOV],
-    ["Redraw", Redraw],
-    ["MyTurn", MyTurn],
-    ["BaseAI", BaseAI],
-    ["HostileEnemy", HostileEnemy],
-    ["WaitAction", WaitAction],
-    ["Player", tmPlayer],
-    ["Enemy", tmEnemy],
-    ["Orc", tmOrc],
-    ["Troll", tmTroll],
-    ["Corpse", tmCorpse]
-  ]);
-  var impl_default = impl;
 
   // src/RecursiveShadowCasting.ts
   var OctantTransform = class {
@@ -2824,16 +2800,16 @@
   function randInt({ value: min }, { value: max }) {
     return Math.floor(Math.random() * (max + 1 - min) + min);
   }
-  function getFOV(tiles, { value: x }, { value: y }, { value: radius }, visible2, explored2) {
-    visible2.fill(visible2.empty);
+  function getFOV(tiles, { value: x }, { value: y }, { value: radius }, visible, explored) {
+    visible.fill(visible.empty);
     const grid = new ShadowCastingGrid(tiles.width, tiles.height, (x2, y2) => {
       var _a;
       return !((_a = tiles.at(x2, y2)) == null ? void 0 : _a.transparent);
     });
     ComputeVisibility(grid, { x, y }, radius);
     for (const pos of grid.values.keys()) {
-      visible2.put(pos.x, pos.y, true);
-      explored2.put(pos.x, pos.y, true);
+      visible.put(pos.x, pos.y, true);
+      explored.put(pos.x, pos.y, true);
     }
   }
   function add(...args) {
@@ -2873,9 +2849,9 @@
     new RLXY(-1, 0),
     new RLXY(0, -1)
   ];
-  function getNextMove(map2, blockedMap, src, dst) {
-    const cost = new RLGrid(map2.width, map2.height, Infinity);
-    const from = new RLGrid(map2.width, map2.height, void 0);
+  function getNextMove(map, blockedMap, src, dst) {
+    const cost = new RLGrid(map.width, map.height, Infinity);
+    const from = new RLGrid(map.width, map.height, void 0);
     cost.put(src.x, src.y, 0);
     const queue = [src];
     let best = Infinity;
@@ -2892,7 +2868,7 @@
           from.put(pos.x, pos.y, centre);
           break;
         }
-        const tile = map2.at(pos.x, pos.y);
+        const tile = map.at(pos.x, pos.y);
         const canWalk = tile == null ? void 0 : tile.walkable;
         const blocked = blockedMap.at(pos.x, pos.y);
         const oldCost = cost.at(pos.x, pos.y);
@@ -2933,103 +2909,30 @@
   function remove(e) {
     RL.instance.entities.delete(e.id);
   }
-  var lib = /* @__PURE__ */ new Map([
-    [
-      "abs",
-      new RLFn("abs", abs, [{ type: "param", typeName: "int", name: "value" }])
-    ],
-    ["add", new RLFn("add", add, [], ["component", "tag"])],
-    [
-      "draw",
-      new RLFn("draw", draw, [
-        { type: "param", typeName: "int", name: "x" },
-        { type: "param", typeName: "int", name: "y" },
-        { type: "param", typeName: "char", name: "ch" },
-        {
-          type: "param",
-          typeName: "str",
-          name: "fg",
-          default: { type: "str", value: "" }
-        },
-        {
-          type: "param",
-          typeName: "str",
-          name: "bg",
-          default: { type: "str", value: "" }
-        }
-      ])
-    ],
-    [
-      "drawGrid",
-      new RLFn("drawGrid", drawGrid, [
-        { type: "param", typeName: "grid", name: "g" }
-      ])
-    ],
-    ["find", new RLFn("find", find, [], ["component", "tag"])],
-    [
-      "getFOV",
-      new RLFn("getFOV", getFOV, [
-        { type: "param", typeName: "grid", name: "tiles" },
-        { type: "param", typeName: "int", name: "x" },
-        { type: "param", typeName: "int", name: "y" },
-        { type: "param", typeName: "int", name: "radius" },
-        { type: "param", typeName: "grid", name: "visible" },
-        { type: "param", typeName: "grid", name: "explored" }
-      ])
-    ],
-    [
-      "getNextMove",
-      new RLFn("getNextMove", getNextMove, [
-        { type: "param", typeName: "grid", name: "map" },
-        { type: "param", typeName: "grid", name: "blockedMap" },
-        { type: "param", typeName: "xy", name: "from" },
-        { type: "param", typeName: "xy", name: "to" }
-      ])
-    ],
-    [
-      "join",
-      new RLFn("join", join, [{ type: "param", typeName: "str", name: "glue" }], ["char", "str", "int"])
-    ],
-    [
-      "log",
-      new RLFn("log", log, [{ type: "param", typeName: "str", name: "message" }])
-    ],
-    [
-      "pushKeyHandler",
-      new RLFn("pushKeyHandler", pushKeyHandler, [
-        { type: "param", typeName: "system", name: "handler" }
-      ])
-    ],
-    [
-      "randInt",
-      new RLFn("randInt", randInt, [
-        { type: "param", typeName: "int", name: "min" },
-        { type: "param", typeName: "int", name: "max" }
-      ])
-    ],
-    [
-      "remove",
-      new RLFn("remove", remove, [
-        { type: "param", typeName: "entity", name: "e" }
-      ])
-    ],
-    [
-      "setSize",
-      new RLFn("setSize", setSize, [
-        { type: "param", typeName: "int", name: "width" },
-        { type: "param", typeName: "int", name: "height" }
-      ])
-    ],
-    ["spawn", new RLFn("spawn", spawn, [], ["component", "tag", "template"])]
-  ]);
+  var lib = {
+    abs,
+    add,
+    draw,
+    drawGrid,
+    find,
+    getFOV,
+    getNextMove,
+    join,
+    log,
+    pushKeyHandler,
+    randInt,
+    remove,
+    setSize,
+    spawn
+  };
   var lib_default = lib;
 
   // src/index.ts
   window.addEventListener("load", () => {
-    const main2 = document.getElementById("main");
-    if (!main2 || main2.tagName !== "CANVAS")
+    const main = document.getElementById("main");
+    if (!main || main.tagName !== "CANVAS")
       throw new Error("Canvas #main not found.");
-    const g = new Game(new RL(lib_default, impl_default), main2);
+    const g = new Game(new RL(lib_default, implementation(lib_default)), main);
     void g.init();
   });
 })();

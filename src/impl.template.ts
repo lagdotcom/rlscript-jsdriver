@@ -14,24 +14,27 @@ import RL, {
   RLTile,
   RLXY,
 } from "./RL";
+import libtype from "./libtype";
 
-//#ENUMS
+export default function implementation(__lib: libtype): RLEnv {
+  //#ENUMS
 
-//#TAGTYPES
+  //#TAGTYPES
 
-//#COMPONENTMAKERS
+  //#COMPONENTMAKERS
 
-//#TEMPLATES
+  //#TEMPLATES
 
-//#TILETYPES
+  //#TILETYPES
 
-//#GLOBALS
+  //#GLOBALS
 
-//#FUNCTIONS
+  //#FUNCTIONS
 
-//#SYSTEMS
+  //#SYSTEMS
 
-const impl: RLEnv = new Map<string, RLObject>([
-  //#ENV
-]);
-export default impl;
+  return new Map<string, RLObject>([
+    //#ENV
+  ]);
+}
+

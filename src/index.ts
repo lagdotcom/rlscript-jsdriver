@@ -8,6 +8,6 @@ window.addEventListener("load", () => {
   if (!main || main.tagName !== "CANVAS")
     throw new Error("Canvas #main not found.");
 
-  const g = new Game(new RL(lib, impl), main as HTMLCanvasElement);
+  const g = new Game(new RL(lib, impl(lib)), main as HTMLCanvasElement);
   void g.init();
 });

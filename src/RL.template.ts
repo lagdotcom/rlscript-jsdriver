@@ -1,6 +1,7 @@
 //#IMPLTYPES
 import Stack from "./Stack";
 import bresenham from "bresenham";
+import libtype from "./libtype";
 import { nanoid } from "nanoid";
 
 export type RLFnParam = {
@@ -272,7 +273,7 @@ export class RLGrid<T> {
   }
 
   draw() {
-    RL.instance.callNamedFunction("drawGrid", { type: "positional", value: this });
+    RL.instance.lib.drawGrid(this);
   }
 }
 
@@ -418,7 +419,7 @@ export default class RL {
   keyHandlers: Stack<RLSystem>;
   systems: RLSystem[];
 
-  constructor(...envs: RLEnv[]) {
+  constructor(public lib: libtype, ...envs: RLEnv[]) {
     RL.instance = this;
 
     this.env = new Map();

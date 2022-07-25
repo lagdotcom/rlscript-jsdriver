@@ -797,9 +797,7 @@ export default class TSCompiler implements TSScope {
 
     if (s.value === "fn") return `${fixName(n)}(${this.getArgs(args)})`;
 
-    return `RL.instance.callNamedFunction("${n}", ${this.getWrappedArgs(
-      args
-    )})`;
+    return `__lib.${n}(${this.getWrappedArgs(args)})`;
   }
 
   getArgs(args: ASTExpr[]) {
@@ -863,7 +861,6 @@ export default class TSCompiler implements TSScope {
             throw new Error(`Cannot unwrap: ${JSON.stringify(a)}`);
         }
       })
-      .map((v) => `{ type: "positional", value: ${v} }`)
       .join(",\n");
   }
 

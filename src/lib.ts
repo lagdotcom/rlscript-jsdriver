@@ -3,8 +3,6 @@ import Game from "./Game";
 import RL, {
   RLChar,
   RLEntity,
-  RLEnv,
-  RLFn,
   RLGrid,
   RLInt,
   RLStr,
@@ -16,6 +14,7 @@ import RL, {
 } from "./RL";
 import { RLComponent } from "./implTypes";
 import { TinyColor } from "tinycolor-ts";
+import libtype from "./libtype";
 
 function setSize({ value: width }: RLInt, { value: height }: RLInt) {
   Game.instance.width = width;
@@ -214,98 +213,20 @@ function remove(e: RLEntity) {
   RL.instance.entities.delete(e.id);
 }
 
-const lib: RLEnv = new Map([
-  [
-    "abs",
-    new RLFn("abs", abs, [{ type: "param", typeName: "int", name: "value" }]),
-  ],
-  ["add", new RLFn("add", add, [], ["component", "tag"])],
-  [
-    "draw",
-    new RLFn("draw", draw, [
-      { type: "param", typeName: "int", name: "x" },
-      { type: "param", typeName: "int", name: "y" },
-      { type: "param", typeName: "char", name: "ch" },
-      {
-        type: "param",
-        typeName: "str",
-        name: "fg",
-        default: { type: "str", value: "" },
-      },
-      {
-        type: "param",
-        typeName: "str",
-        name: "bg",
-        default: { type: "str", value: "" },
-      },
-    ]),
-  ],
-  [
-    "drawGrid",
-    new RLFn("drawGrid", drawGrid, [
-      { type: "param", typeName: "grid", name: "g" },
-    ]),
-  ],
-  ["find", new RLFn("find", find, [], ["component", "tag"])],
-  [
-    "getFOV",
-    new RLFn("getFOV", getFOV, [
-      { type: "param", typeName: "grid", name: "tiles" },
-      { type: "param", typeName: "int", name: "x" },
-      { type: "param", typeName: "int", name: "y" },
-      { type: "param", typeName: "int", name: "radius" },
-      { type: "param", typeName: "grid", name: "visible" },
-      { type: "param", typeName: "grid", name: "explored" },
-    ]),
-  ],
-  [
-    "getNextMove",
-    new RLFn("getNextMove", getNextMove, [
-      { type: "param", typeName: "grid", name: "map" },
-      { type: "param", typeName: "grid", name: "blockedMap" },
-      { type: "param", typeName: "xy", name: "from" },
-      { type: "param", typeName: "xy", name: "to" },
-    ]),
-  ],
-  [
-    "join",
-    new RLFn(
-      "join",
-      join,
-      [{ type: "param", typeName: "str", name: "glue" }],
-      ["char", "str", "int"]
-    ),
-  ],
-  [
-    "log",
-    new RLFn("log", log, [{ type: "param", typeName: "str", name: "message" }]),
-  ],
-  [
-    "pushKeyHandler",
-    new RLFn("pushKeyHandler", pushKeyHandler, [
-      { type: "param", typeName: "system", name: "handler" },
-    ]),
-  ],
-  [
-    "randInt",
-    new RLFn("randInt", randInt, [
-      { type: "param", typeName: "int", name: "min" },
-      { type: "param", typeName: "int", name: "max" },
-    ]),
-  ],
-  [
-    "remove",
-    new RLFn("remove", remove, [
-      { type: "param", typeName: "entity", name: "e" },
-    ]),
-  ],
-  [
-    "setSize",
-    new RLFn("setSize", setSize, [
-      { type: "param", typeName: "int", name: "width" },
-      { type: "param", typeName: "int", name: "height" },
-    ]),
-  ],
-  ["spawn", new RLFn("spawn", spawn, [], ["component", "tag", "template"])],
-]);
+const lib: libtype = {
+  abs,
+  add,
+  draw,
+  drawGrid,
+  find,
+  getFOV,
+  getNextMove,
+  join,
+  log,
+  pushKeyHandler,
+  randInt,
+  remove,
+  setSize,
+  spawn,
+};
 export default lib;
