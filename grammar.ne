@@ -9,7 +9,7 @@ const lexer = moo.compile({
     number:     /[0-9]+/,
     sqstring:   /'.'/,
     dqstring:   /".*?"/,
-    keywords:   ["else", "end", "false", "if", "not", "query", "return", "true"],
+    keywords:   ["else", "end", "enum", "false", "if", "not", "query", "return", "true"],
 
     word: {
         match: /[a-zA-Z][a-zA-Z0-9_]*/,
@@ -54,6 +54,7 @@ decl -> componentdecl {% id %}
       | templatedecl {% id %}
       | tiletypedecl {% id %}
       | globaldecl {% id %}
+      | enumdecl {% id %}
 
 componentdecl -> "component" __ name _ fieldlist "end" {% ([,,name,,fields]) => ({ _: 'component', name: name.value, fields }) %}
 tagdecl -> "tag" __ name {% ([,,name]) => ({ _: 'tag', name: name.value }) %}
@@ -62,6 +63,7 @@ fndecl -> "fn" __ name _ paramlist maybentype _ code "end" {% ([,,name,,params,t
 templatedecl -> "template" __ name _ templatelist "end" {% ([,,name,,fields]) => ({ _: 'template', name: name.value, fields }) %}
 tiletypedecl -> "tiletype" __ name _ %sqstring _ tiletypefieldlist "end" {% ([,,name,,char,,fields]) => ({ _: 'tiletype', name: name.value, char: char.value.slice(1, -1), fields }) %}
 globaldecl -> "global" __ field {% ([,,field]) => ({ _: 'global', name: field.name, type: field.type }) %}
+enumdecl -> "enum" __ name _ enumvals _ "end" {% ([,,name,,values]) => ({ _: 'enum', name: name.value, values }) %}
 
 fieldlist -> fieldp:* {% id %}
 fieldp -> field __ {% id %}
@@ -73,6 +75,11 @@ params -> null {% () => [] %}
         | params _ "," _ param {% ([params,,,,param]) => params.concat(param) %}
 param -> field {% id %}
        | type {% ([type]) => ({ _: 'constraint', type: type.value }) %}
+
+enumvals -> enumval
+          | enumvals __ enumval {% ([values,,value]) => values.concat(value) %} 
+enumval -> name {% ([name]) => ({ name }) %}
+         | name _ "=" _ expr {% ([name,,,expr]) => ({ name, expr }) %}
 
 maybentype -> null {% () => undefined %}
             | ":" _ ntype {% ([,,type]) => type %}
@@ -110,8 +117,8 @@ assignop -> "=" {% val %}
 local -> "local" __ field {% ([,,field]) => ({ _: 'local', name: field.name, type: field.type }) %}
        | "local" __ field _ "=" _ expr {% ([,,field,,,,expr]) => ({ _: 'local', name: field.name, type: field.type, expr }) %}
 
-if -> "if" __ boolean _ code "end" {% ([,,expr,,code]) => ({ _: 'if', expr, code }) %}
-    | "if" __ boolean _ code _ "else" _ code "end" {% ([,,expr,,code,,,,code2]) => ({ _: 'if', expr, code, code2 }) %}
+if -> "if" __ expr _ code "end" {% ([,,expr,,code]) => ({ _: 'if', expr, code }) %}
+    | "if" __ expr _ code _ "else" _ code "end" {% ([,,expr,,code,,,,code2]) => ({ _: 'if', expr, code, code2 }) %}
 
 return -> "exit" {% () => ({ _: 'return' }) %}
         | "return" __ expr {% ([,,expr]) => ({ _: 'return', expr }) %}
@@ -126,19 +133,12 @@ args -> null {% () => [] %}
       | args _ "," _ arg {% ([args,,,,arg]) => args.concat(arg) %}
 arg -> expr {% id %}
 
-boolean -> expr {% id %}
-         | boolean _ boolop _ expr {% ([left,,op,,right]) => ({ _: 'binary', left, op, right }) %}
-boolop -> ">" {% id %}
-        | ">=" {% id %}
-        | "<" {% id %}
-        | "<=" {% id %}
-        | "==" {% id %}
-        | "!=" {% id %}
-
 expr -> maths {% id %}
 
 maths   -> logic {% id %}
-logic   -> logic _ logicop _ sum {% ([left,,op,,right]) => ({ _: 'binary', left, op, right }) %}
+logic   -> logic _ logicop _ boolean {% ([left,,op,,right]) => ({ _: 'binary', left, op, right }) %}
+         | boolean {% id %}
+boolean -> boolean _ boolop _ sum {% ([left,,op,,right]) => ({ _: 'binary', left, op, right }) %}
          | sum {% id %}
 sum     -> sum _ sumop _ product {% ([left,,op,,right]) => ({ _: 'binary', left, op, right }) %}
          | product {% id %}
@@ -151,6 +151,12 @@ unary   -> "-" number {% ([op,value]) => ({ _: 'unary', op: op.value, value }) %
          | value {% id %}
 
 logicop -> "and" {% val %}
+boolop  -> ">" {% id %}
+         | ">=" {% id %}
+         | "<" {% id %}
+         | "<=" {% id %}
+         | "==" {% id %}
+         | "!=" {% id %}
 sumop   -> "+" {% val %}
          | "-" {% val %}
 mulop   -> "*" {% val %}

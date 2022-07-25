@@ -1,7 +1,9 @@
 component Appearance
+  name: str
   ch: char
   fg: str
   bg: str
+  layer: int
 end
 
 component OldPosition
@@ -28,7 +30,6 @@ component Actor
 end
 
 component Fighter
-  name: str
   maxHp: int
   hp: int
   defense: int
@@ -44,11 +45,18 @@ tag BaseAI
 tag HostileEnemy
 tag WaitAction
 
+enum Layer
+  Nothing
+  Corpse
+  Enemy
+  Player
+end
+
 template Player
   IsBlocker
   IsPlayer
-  Appearance('@', "white", "black")
-  Fighter("player", 30, 30, 2, 5)
+  Appearance("player", '@', "white", "black", Layer.Player)
+  Fighter(30, 30, 2, 5)
   Actor(100)
   MyTurn
   RecalculateFOV
@@ -62,19 +70,19 @@ end
 
 template Orc
   Enemy
-  Appearance('o', "green", "black")
-  Fighter("orc", 10, 10, 0, 3)
+  Appearance("orc", 'o', "green", "black", Layer.Enemy)
+  Fighter(10, 10, 0, 3)
 end
 
 template Troll
   Enemy
-  Appearance('T', "lime", "black")
-  Fighter("troll", 16, 16, 1, 4)
+  Appearance("troll", 'T', "lime", "black", Layer.Enemy)
+  Fighter(16, 16, 1, 4)
 end
 
 template Corpse
   Redraw
-  Appearance('%', "red", "black")
+  Appearance("corpse", '%', "red", "black", Layer.Corpse)
 end
 
 tiletype Floor '.' walkable transparent end
@@ -156,21 +164,21 @@ fn hurt(e: entity, damage: int)
     if e.IsPlayer
       log("You died!")
     else
-      log(join(' ', e.Fighter.name, "is dead!"))
+      log(join(' ', e.Appearance.name, "is dead!"))
     end
 
-    remove(e)
     local corpse: entity = spawn(Corpse, Position(e.Position.x, e.Position.y))
-    ;; TODO set name of corpse
+    corpse.Appearance.name = join(' ', "corpse of", e.Appearance.name)
+    remove(e)
   end
 end
 
-system doMelee(e: entity, m: MeleeAction, f: Fighter, MyTurn)
+system doMelee(e: entity, m: MeleeAction, a: Appearance, f: Fighter, MyTurn)
   local target: entity = m.target
   e.remove(m)
   useTurn(e)
 
-  local attack: str = join(' ', f.name, "attacks", target.Fighter.name)
+  local attack: str = join(' ', a.name, "attacks", target.Appearance.name)
   local damage: int = f.power - target.Fighter.defense
   if damage > 0
     log(join(' ', attack, "for", damage, "hit points"))
@@ -195,8 +203,6 @@ system fov(e: entity, p: Position, RecalculateFOV)
       drawTileAt(x, y)
     end
   end
-
-  add(Redraw)
 end
 
 fn useTurn(e: entity)
@@ -207,8 +213,21 @@ end
 fn drawTileAt(x: int, y: int)
   local ch: char = ' '
   local fg: str = "white"
+  local bg: str = "black"
+  local layer: Layer = Layer.Nothing
 
-  if explored.at(x, y)
+  if visible.at(x, y)
+    query (a: Appearance, p: Position)
+      if p.x == x and p.y == y and a.layer > layer
+        ch = a.ch
+        fg = a.fg
+        bg = a.bg
+        layer = a.layer
+      end
+    end
+  end
+
+  if layer == Layer.Nothing and explored.at(x, y)
     local t: tile? = map.at(x, y)
     if t
       ch = t.ch
@@ -219,7 +238,8 @@ fn drawTileAt(x: int, y: int)
       end
     end
   end
-  draw(x, y, ch, fg)
+
+  draw(x, y, ch, fg, bg)
 end
 
 fn drawEntity(e: entity)
@@ -234,9 +254,9 @@ system drawUnderTile(e: entity, o: OldPosition)
   e.add(Redraw)
 end
 
-system drawKnownEntities(e: entity, Redraw)
+system redrawEntity(e: entity, p: Position, Redraw)
+  drawTileAt(p.x, p.y)
   e.remove(Redraw)
-  drawEntity(e)
 end
 
 system nextTurn()

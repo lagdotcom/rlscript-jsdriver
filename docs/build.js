@@ -1350,12 +1350,14 @@
   var BaseAI = new RLTag("BaseAI");
   var HostileEnemy = new RLTag("HostileEnemy");
   var WaitAction = new RLTag("WaitAction");
-  var mkAppearance = (ch, fg, bg) => ({
+  var mkAppearance = (name, ch, fg, bg, layer) => ({
     type: "component",
     typeName: "Appearance",
+    name,
     ch,
     fg,
-    bg
+    bg,
+    layer
   });
   var mkOldPosition = (x, y) => ({
     type: "component",
@@ -1385,10 +1387,9 @@
     typeName: "Actor",
     energy
   });
-  var mkFighter = (name, maxHp, hp, defense, power) => ({
+  var mkFighter = (maxHp, hp, defense, power) => ({
     type: "component",
     typeName: "Fighter",
-    name,
     maxHp,
     hp,
     defense,
@@ -1400,8 +1401,8 @@
     get: () => [
       IsBlocker,
       IsPlayer,
-      mkAppearance("@", "white", "black"),
-      mkFighter("player", 30, 30, 2, 5),
+      mkAppearance("player", "@", "white", "black", 3 /* Player */),
+      mkFighter(30, 30, 2, 5),
       mkActor(100),
       MyTurn,
       RecalculateFOV
@@ -1417,8 +1418,8 @@
     name: "Orc",
     get: () => [
       tmEnemy,
-      mkAppearance("o", "green", "black"),
-      mkFighter("orc", 10, 10, 0, 3)
+      mkAppearance("orc", "o", "green", "black", 2 /* Enemy */),
+      mkFighter(10, 10, 0, 3)
     ]
   };
   var tmTroll = {
@@ -1426,14 +1427,17 @@
     name: "Troll",
     get: () => [
       tmEnemy,
-      mkAppearance("T", "lime", "black"),
-      mkFighter("troll", 16, 16, 1, 4)
+      mkAppearance("troll", "T", "lime", "black", 2 /* Enemy */),
+      mkFighter(16, 16, 1, 4)
     ]
   };
   var tmCorpse = {
     type: "template",
     name: "Corpse",
-    get: () => [Redraw, mkAppearance("%", "red", "black")]
+    get: () => [
+      Redraw,
+      mkAppearance("corpse", "%", "red", "black", 1 /* Corpse */)
+    ]
   };
   var Floor = new RLTile(".", true, true);
   var Wall = new RLTile("#", false, false);
@@ -1467,13 +1471,14 @@
             type: "str",
             value: RL.instance.callNamedFunction("join", { type: "positional", value: { type: "char", value: " " } }, {
               type: "positional",
-              value: { type: "str", value: e.Fighter.name }
+              value: { type: "str", value: e.Appearance.name }
             }, { type: "positional", value: { type: "str", value: "is dead!" } })
           }
         });
       }
-      RL.instance.callNamedFunction("remove", { type: "positional", value: e });
       const corpse = RL.instance.callNamedFunction("spawn", { type: "positional", value: tmCorpse }, { type: "positional", value: mkPosition(e.Position.x, e.Position.y) });
+      corpse.Appearance.name = RL.instance.callNamedFunction("join", { type: "positional", value: { type: "char", value: " " } }, { type: "positional", value: { type: "str", value: "corpse of" } }, { type: "positional", value: { type: "str", value: e.Appearance.name } });
+      RL.instance.callNamedFunction("remove", { type: "positional", value: e });
     }
   }
   var fn_hurt = new RLFn("hurt", hurt, [
@@ -1490,7 +1495,23 @@
   function drawTileAt(x, y) {
     let ch = " ";
     let fg = "white";
-    if (explored.at(x, y)) {
+    let bg = "black";
+    let layer = 0 /* Nothing */;
+    if (visible.at(x, y)) {
+      for (const _entity of new RLQuery(RL.instance, [
+        "Appearance",
+        "Position"
+      ]).get()) {
+        const { Appearance: a, Position: p } = _entity;
+        if (p.x == x && p.y == y && a.layer > layer) {
+          ch = a.ch;
+          fg = a.fg;
+          bg = a.bg;
+          layer = a.layer;
+        }
+      }
+    }
+    if (layer == 0 /* Nothing */ && explored.at(x, y)) {
       const t = map.at(x, y);
       if (t) {
         ch = t.ch;
@@ -1501,7 +1522,7 @@
         }
       }
     }
-    RL.instance.callNamedFunction("draw", { type: "positional", value: { type: "int", value: x } }, { type: "positional", value: { type: "int", value: y } }, { type: "positional", value: { type: "char", value: ch } }, { type: "positional", value: { type: "str", value: fg } });
+    RL.instance.callNamedFunction("draw", { type: "positional", value: { type: "int", value: x } }, { type: "positional", value: { type: "int", value: y } }, { type: "positional", value: { type: "char", value: ch } }, { type: "positional", value: { type: "str", value: fg } }, { type: "positional", value: { type: "str", value: bg } });
   }
   var fn_drawTileAt = new RLFn("drawTileAt", drawTileAt, [
     { type: "param", name: "x", typeName: "int" },
@@ -1668,11 +1689,14 @@
     { type: "param", name: "m", typeName: "MoveAction" },
     { type: "constraint", typeName: "MyTurn" }
   ]);
-  function doMelee(e, m, f) {
+  function doMelee(e, m, a, f) {
     const target = m.target;
     e.remove(m);
     useTurn(e);
-    const attack = RL.instance.callNamedFunction("join", { type: "positional", value: { type: "char", value: " " } }, { type: "positional", value: { type: "str", value: f.name } }, { type: "positional", value: { type: "str", value: "attacks" } }, { type: "positional", value: { type: "str", value: target.Fighter.name } });
+    const attack = RL.instance.callNamedFunction("join", { type: "positional", value: { type: "char", value: " " } }, { type: "positional", value: { type: "str", value: a.name } }, { type: "positional", value: { type: "str", value: "attacks" } }, {
+      type: "positional",
+      value: { type: "str", value: target.Appearance.name }
+    });
     const damage = f.power - target.Fighter.defense;
     if (damage > 0) {
       RL.instance.callNamedFunction("log", {
@@ -1699,6 +1723,7 @@
   var system_doMelee = new RLSystem("doMelee", doMelee, [
     { type: "param", name: "e", typeName: "entity" },
     { type: "param", name: "m", typeName: "MeleeAction" },
+    { type: "param", name: "a", typeName: "Appearance" },
     { type: "param", name: "f", typeName: "Fighter" },
     { type: "constraint", typeName: "MyTurn" }
   ]);
@@ -1719,7 +1744,6 @@
         drawTileAt(x, y);
       }
     }
-    RL.instance.callNamedFunction("add", { type: "positional", value: Redraw });
   }
   var system_fov = new RLSystem("fov", fov, [
     { type: "param", name: "e", typeName: "entity" },
@@ -1735,12 +1759,13 @@
     { type: "param", name: "e", typeName: "entity" },
     { type: "param", name: "o", typeName: "OldPosition" }
   ]);
-  function drawKnownEntities(e) {
+  function redrawEntity(e, p) {
+    drawTileAt(p.x, p.y);
     e.remove(Redraw);
-    drawEntity(e);
   }
-  var system_drawKnownEntities = new RLSystem("drawKnownEntities", drawKnownEntities, [
+  var system_redrawEntity = new RLSystem("redrawEntity", redrawEntity, [
     { type: "param", name: "e", typeName: "entity" },
+    { type: "param", name: "p", typeName: "Position" },
     { type: "constraint", typeName: "Redraw" }
   ]);
   function nextTurn() {
@@ -1782,7 +1807,7 @@
     ["doWait", system_doWait],
     ["fov", system_fov],
     ["drawUnderTile", system_drawUnderTile],
-    ["drawKnownEntities", system_drawKnownEntities],
+    ["redrawEntity", system_redrawEntity],
     ["nextTurn", system_nextTurn],
     ["IsBlocker", IsBlocker],
     ["IsPlayer", IsPlayer],

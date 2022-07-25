@@ -35,6 +35,11 @@ export type ASTGlobalDecl = {
   name: string;
   type: ASTType;
 };
+export type ASTEnumDecl = {
+  _: "enum";
+  name: string;
+  values: ASTEnumValue[];
+};
 export type ASTDecl =
   | ASTComponentDecl
   | ASTTagDecl
@@ -42,7 +47,8 @@ export type ASTDecl =
   | ASTFnDecl
   | ASTTemplateDecl
   | ASTTileTypeDecl
-  | ASTGlobalDecl;
+  | ASTGlobalDecl
+  | ASTEnumDecl;
 
 export type ASTField = { _: "field"; name: string; type: ASTType };
 export type ASTConstraint = { _: "constraint"; type: string };
@@ -55,6 +61,8 @@ export type ASTTemplateField = ASTCall | ASTTemplateTag;
 export type ASTTileFlag = { _: "flag"; name: string };
 export type ASTTileField = { _: "field"; name: string; expr: ASTExpr };
 export type ASTTileMember = ASTTileFlag | ASTTileField;
+
+export type ASTEnumValue = { name: ASTIdent; value?: ASTExpr };
 
 export type ASTCode = ASTStatement[];
 export type ASTStatement =

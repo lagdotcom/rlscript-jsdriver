@@ -1,9 +1,11 @@
 export type Appearance = {
   type: "component";
   typeName: "Appearance";
+  name: string;
   ch: string;
   fg: string;
   bg: string;
+  layer: number;
 };
 export type OldPosition = {
   type: "component";
@@ -36,7 +38,6 @@ export type Actor = {
 export type Fighter = {
   type: "component";
   typeName: "Fighter";
-  name: string;
   maxHp: number;
   hp: number;
   defense: number;

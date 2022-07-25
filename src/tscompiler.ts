@@ -3,6 +3,7 @@ import {
   ASTCall,
   ASTCode,
   ASTComponentDecl,
+  ASTEnumDecl,
   ASTExpr,
   ASTFnDecl,
   ASTGlobalDecl,
@@ -134,6 +135,7 @@ function asType(n: string): ASTType {
 const boolType = asType("bool");
 const builtinType = asType("builtin");
 const charType = asType("char");
+const enumType = asType("enum");
 const fnType = asType("fn");
 const globalType = asType("global");
 const intType = asType("int");
@@ -318,6 +320,18 @@ class XYScope implements TSScope {
   }
 }
 
+class EnumScope implements TSScope {
+  members: Map<string, ASTType>;
+  name: string;
+
+  constructor(public parent: TSScope, public source: ASTEnumDecl) {
+    this.name = `enum[${source.name}]`;
+    this.members = new Map<string, ASTType>(
+      source.values.map((ev) => [ev.name.value, intType])
+    );
+  }
+}
+
 class TileScope implements TSScope {
   name: "tile";
 
@@ -338,6 +352,7 @@ export default class TSCompiler implements TSScope {
   name: "global";
   members: Map<string, ASTType>;
   components: ASTComponentDecl[];
+  enums: ASTEnumDecl[];
   functions: ASTFnDecl[];
   globals: ASTGlobalDecl[];
   scopes: Stack<TSScope>;
@@ -350,6 +365,7 @@ export default class TSCompiler implements TSScope {
   constructor() {
     this.name = "global";
     this.components = [];
+    this.enums = [];
     this.functions = [];
     this.globals = [];
     this.scopes = new Stack([this]);
@@ -369,6 +385,9 @@ export default class TSCompiler implements TSScope {
       if (d._ === "component") {
         this.components.push(d);
         this.define(d.name, asType(d.name));
+      } else if (d._ === "enum") {
+        this.enums.push(d);
+        this.define(d.name, enumType);
       } else if (d._ === "fn") {
         this.functions.push(d);
         this.define(d.name, fnType);
@@ -541,6 +560,7 @@ export default class TSCompiler implements TSScope {
       implTemplate,
       new Map([
         ["IMPLTYPES", this.getImplImport()],
+        ["ENUMS", this.getEnumTypes()],
         ["TAGTYPES", this.getTagTypes()],
         ["COMPONENTMAKERS", this.getComponentMakers()],
         ["TEMPLATES", this.getTemplates()],
@@ -583,6 +603,22 @@ export default class TSCompiler implements TSScope {
     return Array.from(this.tileFields.entries())
       .map(([name, type]) => `public ${name}: ${this.getTSType(type)}`)
       .join(", ");
+  }
+
+  getEnumTypes() {
+    return this.enums
+      .map(
+        (en) => `enum ${en.name} {
+      ${en.values
+        .map((ev) =>
+          ev.value
+            ? `${ev.name.value} = ${this.getExpr(ev.value)},`
+            : `${ev.name.value},`
+        )
+        .join("\n")}
+    };`
+      )
+      .join("\n");
   }
 
   getTagTypes() {
@@ -925,9 +961,13 @@ export default class TSCompiler implements TSScope {
     switch (s) {
       case "and":
         return "&&";
-
       case "not":
         return "!";
+
+      case "==":
+        return "===";
+      case "!=":
+        return "!==";
 
       default:
         return s;
@@ -963,7 +1003,8 @@ export default class TSCompiler implements TSScope {
       default:
         if (
           this.componentNames.includes(t.value) ||
-          this.tagNames.includes(t.value)
+          this.tagNames.includes(t.value) ||
+          this.enums.find((en) => en.name === t.value)
         )
           return fixType(t);
 
@@ -1097,6 +1138,11 @@ export default class TSCompiler implements TSScope {
 
       // TODO generalise this
       if (type.value === "entity") scope = new EntityScope(scope, this);
+      else if (type.value === enumType.value)
+        scope = new EnumScope(
+          scope,
+          this.enums.find((en) => en.name === name) as ASTEnumDecl
+        );
       else if (type.value === "grid") scope = new GridScope(scope);
       else if (type.value === "rect") scope = new RectScope(scope);
       else if (type.value === "tile") scope = new TileScope(scope, this);
