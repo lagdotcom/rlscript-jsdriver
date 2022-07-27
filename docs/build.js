@@ -1571,6 +1571,31 @@
     const fn_drawEntity = new RLFn("drawEntity", drawEntity, [
       { type: "param", name: "e", typeName: "entity" }
     ]);
+    function drawBar(x, y, value, maxValue, maxWidth, emptyColour, filledColour) {
+      const barWidth = __lib.floor({
+        type: "int",
+        value: value / maxValue * maxWidth
+      });
+      __lib.draw({ type: "int", value: x }, { type: "int", value: y }, {
+        type: "str",
+        value: __lib.repeat({ type: "char", value: " " }, { type: "int", value: maxWidth })
+      }, { type: "str", value: "white" }, { type: "str", value: emptyColour });
+      if (barWidth > 0) {
+        __lib.draw({ type: "int", value: x }, { type: "int", value: y }, {
+          type: "str",
+          value: __lib.repeat({ type: "char", value: " " }, { type: "int", value: barWidth })
+        }, { type: "str", value: "white" }, { type: "str", value: filledColour });
+      }
+    }
+    const fn_drawBar = new RLFn("drawBar", drawBar, [
+      { type: "param", name: "x", typeName: "int" },
+      { type: "param", name: "y", typeName: "int" },
+      { type: "param", name: "value", typeName: "int" },
+      { type: "param", name: "maxValue", typeName: "int" },
+      { type: "param", name: "maxWidth", typeName: "int" },
+      { type: "param", name: "emptyColour", typeName: "str" },
+      { type: "param", name: "filledColour", typeName: "str" }
+    ]);
     function randomRoom() {
       const w = __lib.randInt({ type: "int", value: 6 }, { type: "int", value: 14 });
       const h = __lib.randInt({ type: "int", value: 6 }, { type: "int", value: 14 });
@@ -1792,6 +1817,7 @@
     ]);
     function code_drawUI(e, f) {
       e.remove(RedrawUI);
+      drawBar(0, hpY, f.hp, f.maxHp, 20, "red", "green");
       __lib.draw({ type: "int", value: 1 }, { type: "int", value: hpY }, {
         type: "str",
         value: __lib.join({ type: "str", value: "" }, { type: "str", value: "HP: " }, { type: "int", value: f.hp }, { type: "str", value: "/" }, { type: "int", value: f.maxHp })
@@ -1829,6 +1855,7 @@
       ["useTurn", fn_useTurn],
       ["drawTileAt", fn_drawTileAt],
       ["drawEntity", fn_drawEntity],
+      ["drawBar", fn_drawBar],
       ["randomRoom", fn_randomRoom],
       ["randomCorridor", fn_randomCorridor],
       ["generateDungeon", fn_generateDungeon],
@@ -2956,7 +2983,7 @@
     }
     return path[0];
   }
-  function join(glue, ...parts) {
+  function join({ value: glue }, ...parts) {
     return parts.map((p) => {
       switch (p.type) {
         case "char":
@@ -2965,13 +2992,22 @@
         case "int":
           return p.value.toString();
       }
-    }).join(glue.value);
+    }).join(glue);
   }
-  function log(message) {
-    console.log(message.value);
+  function log({ value: message }) {
+    console.log(message);
   }
   function remove(e) {
     RL.instance.entities.delete(e.id);
+  }
+  function floor({ value }) {
+    return Math.floor(value);
+  }
+  function repeat({ value: ch }, { value: count }) {
+    let s = "";
+    for (let i = 0; i < count; i++)
+      s += ch;
+    return s;
   }
   var lib = {
     abs,
@@ -2979,6 +3015,7 @@
     draw,
     drawGrid,
     find,
+    floor,
     getFOV,
     getNextMove,
     join,
@@ -2986,6 +3023,7 @@
     pushKeyHandler,
     randInt,
     remove,
+    repeat,
     setSize,
     spawn
   };

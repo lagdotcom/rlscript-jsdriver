@@ -135,8 +135,9 @@ export type ASTLogicOp = "and";
 export type ASTCondOp = ">" | ">=" | "<" | "<=" | "==" | "!=";
 export type ASTBinaryOp = ASTArithOp | ASTLogicOp | ASTCondOp;
 
-export type ASTValue = ASTBool | ASTChar | ASTStr | ASTInt;
+export type ASTValue = ASTBool | ASTChar | ASTStr | ASTInt | ASTFloat;
 export type ASTChar = { _: "char"; value: string };
 export type ASTStr = { _: "str"; value: string };
 export type ASTInt = { _: "int"; value: number };
+export type ASTFloat = { _: "float"; value: number };
 export type ASTBool = { _: "bool"; value: boolean };

@@ -279,6 +279,58 @@ export default function implementation(__lib: libtype): RLEnv {
     { type: "param", name: "e", typeName: "entity" },
   ]);
 
+  function drawBar(
+    x: number,
+    y: number,
+    value: number,
+    maxValue: number,
+    maxWidth: number,
+    emptyColour: string,
+    filledColour: string
+  ) {
+    const barWidth: number = __lib.floor({
+      type: "int",
+      value: (value / maxValue) * maxWidth,
+    });
+    __lib.draw(
+      { type: "int", value: x },
+      { type: "int", value: y },
+      {
+        type: "str",
+        value: __lib.repeat(
+          { type: "char", value: " " },
+          { type: "int", value: maxWidth }
+        ),
+      },
+      { type: "str", value: "white" },
+      { type: "str", value: emptyColour }
+    );
+    if (barWidth > 0) {
+      __lib.draw(
+        { type: "int", value: x },
+        { type: "int", value: y },
+        {
+          type: "str",
+          value: __lib.repeat(
+            { type: "char", value: " " },
+            { type: "int", value: barWidth }
+          ),
+        },
+        { type: "str", value: "white" },
+        { type: "str", value: filledColour }
+      );
+    }
+  }
+  const fn_drawBar = new RLFn("drawBar", drawBar, [
+    { type: "param", name: "x", typeName: "int" },
+    { type: "param", name: "y", typeName: "int" },
+    { type: "param", name: "value", typeName: "int" },
+    { type: "param", name: "maxValue", typeName: "int" },
+    { type: "param", name: "maxWidth", typeName: "int" },
+    { type: "param", name: "emptyColour", typeName: "str" },
+    { type: "param", name: "filledColour", typeName: "str" },
+  ]);
+
   function randomRoom() {
     const w: number = __lib.randInt(
       { type: "int", value: 6 },
@@ -574,6 +626,7 @@ export default function implementation(__lib: libtype): RLEnv {
 
   function code_drawUI(e: RLEntity, f: Fighter) {
     e.remove(RedrawUI);
+    drawBar(0, hpY, f.hp, f.maxHp, 20, "red", "green");
     __lib.draw(
       { type: "int", value: 1 },
       { type: "int", value: hpY },
@@ -623,6 +676,7 @@ export default function implementation(__lib: libtype): RLEnv {
     ["useTurn", fn_useTurn],
     ["drawTileAt", fn_drawTileAt],
     ["drawEntity", fn_drawEntity],
+    ["drawBar", fn_drawBar],
     ["randomRoom", fn_randomRoom],
     ["randomCorridor", fn_randomCorridor],
     ["generateDungeon", fn_generateDungeon],

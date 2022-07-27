@@ -5,7 +5,7 @@ import grammar from "./grammar";
 import { readFileSync } from "fs";
 
 const parser = new Parser(grammar as unknown as Grammar);
-const src = readFileSync("./rlsrc/week4.rlscript", { encoding: "utf-8" });
+const src = readFileSync("./rlsrc/week5.rlscript", { encoding: "utf-8" });
 parser.feed(src);
 
 if (parser.results.length === 0) console.error("No possible parsings.");

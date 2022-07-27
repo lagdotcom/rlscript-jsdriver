@@ -201,6 +201,7 @@ const grammar: Grammar = {
     {"name": "nonnumber", "symbols": [{"literal":"true"}], "postprocess": () => ({ _: 'bool', value: true })},
     {"name": "nonnumber", "symbols": [{"literal":"false"}], "postprocess": () => ({ _: 'bool', value: false })},
     {"name": "number", "symbols": [(lexer.has("number") ? {type: "number"} : number)], "postprocess": ([tok]) => ({ _: 'int', value: Number(tok.value) })},
+    {"name": "number", "symbols": [(lexer.has("number") ? {type: "number"} : number), {"literal":"."}, (lexer.has("number") ? {type: "number"} : number)], "postprocess": ([whole,,frac]) => ({ _: 'float', value: Number(whole.value + '.' + frac.value)})},
     {"name": "matchexpr", "symbols": [{"literal":"match"}, "__", "expr", "_", "matchlist", "_", {"literal":"end"}], "postprocess": ([,,expr,,matches]) => ({ _: 'match', expr, matches })},
     {"name": "matchlist", "symbols": ["match"]},
     {"name": "matchlist", "symbols": ["matchlist", "_", "match"], "postprocess": ([matches,,match]) => matches.concat(match)},

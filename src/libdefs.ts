@@ -3,6 +3,7 @@ export type LibFunctionType =
   | "char"
   | "component"
   | "entity"
+  | "float"
   | "fn"
   | "grid"
   | "int"
@@ -76,6 +77,7 @@ const library = [
   ]),
   f("drawGrid", [p("g", "grid")]),
   v("find", [], p("criteria", "component", "tag"), o("match", "entity")),
+  f("floor", [p("value", "float", "int")], p("value", "int")),
   f("getFOV", [
     p("tiles", "grid"),
     p("x", "int"),
@@ -99,6 +101,7 @@ const library = [
   f("pushKeyHandler", [p("handler", "system")]),
   f("randInt", [p("min", "int"), p("max", "int")], p("value", "int")),
   f("remove", [p("e", "entity")]),
+  f("repeat", [p("ch", "char", "str"), p("count", "int")], p("string", "str")),
   f("setSize", [p("width", "int"), p("height", "int")]),
   v(
     "spawn",

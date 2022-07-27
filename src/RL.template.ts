@@ -105,6 +105,7 @@ export class RLTag {
 
 export type RLChar = { type: "char"; value: string };
 export type RLInt = { type: "int"; value: number };
+export type RLFloat = { type: "float"; value: number };
 export type RLStr = { type: "str"; value: string };
 export type RLTemplate = {
   type: "template";
@@ -395,6 +396,7 @@ export type RLObject =
   | RLFn
   | RLGrid<unknown>
   | RLInt
+  | RLFloat
   | RLKeyEvent
   | RLRect
   | RLStr

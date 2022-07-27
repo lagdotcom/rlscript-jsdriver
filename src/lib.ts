@@ -3,6 +3,7 @@ import Game from "./Game";
 import RL, {
   RLChar,
   RLEntity,
+  RLFloat,
   RLGrid,
   RLInt,
   RLStr,
@@ -190,7 +191,7 @@ function getNextMove(
 }
 
 function join(
-  glue: RLChar | RLStr,
+  { value: glue }: RLChar | RLStr,
   ...parts: (RLChar | RLStr | RLInt)[]
 ): string {
   return parts
@@ -204,15 +205,26 @@ function join(
           return p.value.toString();
       }
     })
-    .join(glue.value);
+    .join(glue);
 }
 
-function log(message: RLStr) {
-  console.log(message.value);
+function log({ value: message }: RLStr) {
+  console.log(message);
 }
 
 function remove(e: RLEntity) {
   RL.instance.entities.delete(e.id);
+}
+
+function floor({ value }: RLInt | RLFloat) {
+  return Math.floor(value);
+}
+
+function repeat({ value: ch }: RLChar | RLStr, { value: count }: RLInt) {
+  let s = "";
+  for (let i = 0; i < count; i++) s += ch;
+
+  return s;
 }
 
 const lib: libtype = {
@@ -221,6 +233,7 @@ const lib: libtype = {
   draw,
   drawGrid,
   find,
+  floor,
   getFOV,
   getNextMove,
   join,
@@ -228,6 +241,7 @@ const lib: libtype = {
   pushKeyHandler,
   randInt,
   remove,
+  repeat,
   setSize,
   spawn,
 };

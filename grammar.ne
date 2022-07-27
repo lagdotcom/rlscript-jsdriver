@@ -176,6 +176,7 @@ nonnumber -> %sqstring {% ([tok]) => ({ _: 'char', value: tok.value[1] }) %}
            | "false" {% () => ({ _: 'bool', value: false }) %}
 
 number -> %number {% ([tok]) => ({ _: 'int', value: Number(tok.value) }) %}
+        | %number "." %number {% ([whole,,frac]) => ({ _: 'float', value: Number(whole.value + '.' + frac.value)}) %}
 
 matchexpr -> "match" __ expr _ matchlist _ "end" {% ([,,expr,,matches]) => ({ _: 'match', expr, matches }) %}
 matchlist -> match

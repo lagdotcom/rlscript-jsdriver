@@ -1,6 +1,7 @@
 import {
   RLChar,
   RLEntity,
+  RLFloat,
   RLGrid,
   RLInt,
   RLStr,
@@ -18,6 +19,7 @@ type libtype = {
   draw(x: RLInt, y: RLInt, s: RLChar | RLStr, fg?: RLStr, bg?: RLStr): void;
   drawGrid(g: RLGrid<RLTile>): void;
   find(...args: (RLComponent | RLTag)[]): RLEntity | undefined;
+  floor(x: RLInt | RLFloat): number;
   getFOV(
     tiles: RLGrid<RLTile>,
     x: RLInt,
@@ -37,6 +39,7 @@ type libtype = {
   pushKeyHandler(handler: RLSystem): void;
   randInt(min: RLInt, max: RLInt): void;
   remove(e: RLEntity): void;
+  repeat(ch: RLChar | RLStr, amount: RLInt): string;
   setSize(width: RLInt, height: RLInt): void;
   spawn(...args: (RLComponent | RLTag | RLTemplate)[]): RLEntity;
 };

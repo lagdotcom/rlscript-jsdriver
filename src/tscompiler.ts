@@ -995,11 +995,13 @@ export default class TSCompiler implements TSScope {
 
     switch (t.value) {
       case "int":
+      case "float":
         return "number" + suffix;
+
       case "str":
-        return "string" + suffix;
       case "char":
         return "string" + suffix;
+
       case "bool":
         return "boolean" + suffix;
 
@@ -1040,6 +1042,7 @@ export default class TSCompiler implements TSScope {
         return this.getCall(e.name, e.args);
 
       case "int":
+      case "float":
         return e.value.toString();
       case "char":
       case "str":

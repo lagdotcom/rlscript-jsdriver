@@ -1,0 +1,391 @@
+component Appearance
+  name: str
+  ch: char
+  fg: str
+  bg: str
+  layer: int
+end
+
+component OldPosition
+  x: int
+  y: int
+end
+
+component Position
+  x: int
+  y: int
+end
+
+component MoveAction
+  x: int
+  y: int
+end
+
+component MeleeAction
+  target: entity
+end
+
+component Actor
+  energy: int
+end
+
+component Fighter
+  maxHp: int
+  hp: int
+  defence: int
+  power: int
+end
+
+tag IsBlocker
+tag IsPlayer
+tag RecalculateFOV
+tag RedrawMe
+tag RedrawUI
+tag MyTurn
+tag BaseAI
+tag HostileEnemy
+tag WaitAction
+
+enum Layer
+  Nothing
+  Corpse
+  Enemy
+  Player
+end
+
+template Player
+  IsBlocker
+  IsPlayer
+  Appearance("player", '@', "white", "black", Layer.Player)
+  Fighter(30, 30, 2, 5)
+  Actor(100)
+  MyTurn
+  RecalculateFOV
+  RedrawUI
+end
+
+template Enemy
+  IsBlocker
+  HostileEnemy
+  Actor(1)
+end
+
+template Orc
+  Enemy
+  Appearance("orc", 'o', "green", "black", Layer.Enemy)
+  Fighter(10, 10, 0, 3)
+end
+
+template Troll
+  Enemy
+  Appearance("troll", 'T', "lime", "black", Layer.Enemy)
+  Fighter(16, 16, 1, 4)
+end
+
+template Corpse
+  RedrawMe
+  Appearance("corpse", '%', "red", "black", Layer.Corpse)
+end
+
+tiletype Floor '.' walkable transparent end
+tiletype Wall '#' end
+
+global gameWidth: int = 80
+global gameHeight: int = 50
+global mapWidth: int = gameWidth
+global mapHeight: int = gameHeight - 3
+global hpY: int = mapHeight
+
+global map: grid = grid(mapWidth, mapHeight, Wall)
+global explored: grid = grid(mapWidth, mapHeight, false)
+global visible: grid = grid(mapWidth, mapHeight, false)
+
+system onKeyInDungeon(e: entity, IsPlayer, k: KeyEvent)
+  e.add(match k.key
+    "up"    = MoveAction( 0, -1)
+    "right" = MoveAction( 1,  0)
+    "down"  = MoveAction( 0,  1)
+    "left"  = MoveAction(-1,  0)
+    "wait"  = WaitAction
+  end)
+end
+
+system onKeyWhenDead(e: entity, IsPlayer, k: KeyEvent)
+  ;; TODO
+end
+
+fn getBlockingMap(): grid
+  local blocked: grid = grid(mapWidth, mapHeight, false)
+  query (p: Position, IsBlocker)
+    blocked.put(p.x, p.y, true)
+  end
+
+  return blocked
+end
+
+system hostileAI(e: entity, p: Position, HostileEnemy, MyTurn)
+  if visible.at(p.x, p.y)
+    query (target: entity, tp: Position, IsPlayer)
+      local dx: int = tp.x - p.x
+      local dy: int = tp.y - p.y
+      local distance: int = abs(dx) + abs(dy)
+
+      if distance < 2
+        e.add(MeleeAction(target))
+        exit
+      end
+
+      local step: xy? = getNextMove(map, getBlockingMap(), xy(p.x, p.y), xy(tp.x, tp.y))
+      if step
+        e.add(MoveAction(step.x - p.x, step.y - p.y))
+        exit
+      end
+    end
+  end
+
+  e.add(WaitAction)
+end
+
+system doMove(e: entity, p: Position, m: MoveAction, MyTurn)
+  local x: int = p.x + m.x
+  local y: int = p.y + m.y
+
+  e.remove(m)
+
+  local t: tile? = map.at(x, y)
+  if t and t.walkable
+    local b: entity? = find(IsBlocker, Position(x, y))
+    if b and b.has(Fighter)
+      e.add(MeleeAction(b))
+      exit
+    end
+
+    useTurn(e)
+    e.add(OldPosition(p.x, p.y))
+    p.x = x
+    p.y = y
+
+    if e.IsPlayer
+      e.add(RecalculateFOV)
+    end
+  end
+end
+
+fn hurt(e: entity, damage: int)
+  e.Fighter.hp -= damage
+  if e.Fighter.hp < 1
+    if e.IsPlayer
+      log("You died!")
+    else
+      log(join(' ', e.Appearance.name, "is dead!"))
+    end
+
+    local corpse: entity = spawn(Corpse, Position(e.Position.x, e.Position.y))
+    corpse.Appearance.name = join(' ', "corpse of", e.Appearance.name)
+
+    if e.IsPlayer
+      e.add(RedrawUI)
+      e.remove(Actor)
+      hostileAI.disable()
+      pushKeyHandler(onKeyWhenDead)
+    else
+      remove(e)
+    end
+  else
+    if e.IsPlayer
+      e.add(RedrawUI)
+    end
+  end
+end
+
+system doMelee(e: entity, m: MeleeAction, a: Appearance, f: Fighter, MyTurn)
+  local target: entity = m.target
+  e.remove(m)
+  useTurn(e)
+
+  local attack: str = join(' ', a.name, "attacks", target.Appearance.name)
+  local damage: int = f.power - target.Fighter.defence
+  if damage > 0
+    log(join(' ', attack, "for", damage, "hit points"))
+    hurt(target, damage)
+  else
+    log(join(' ', attack, "but does no damage"))
+  end
+end
+
+system doWait(e: entity, WaitAction, MyTurn)
+  e.remove(WaitAction)
+  useTurn(e)
+end
+
+system fov(e: entity, p: Position, RecalculateFOV)
+  getFOV(map, p.x, p.y, 5, visible, explored)
+  e.remove(RecalculateFOV)
+
+  ;; TODO this is kinda inefficient
+  for x = 0 to mapWidth-1
+    for y = 0 to mapHeight-1
+      drawTileAt(x, y)
+    end
+  end
+end
+
+fn useTurn(e: entity)
+  e.Actor.energy -= 100
+  e.remove(MyTurn)
+end
+
+fn drawTileAt(x: int, y: int)
+  local ch: char = ' '
+  local fg: str = "white"
+  local bg: str = "black"
+  local layer: Layer = Layer.Nothing
+
+  if visible.at(x, y)
+    query (a: Appearance, p: Position)
+      if p.x == x and p.y == y and a.layer > layer
+        ch = a.ch
+        fg = a.fg
+        bg = a.bg
+        layer = a.layer
+      end
+    end
+  end
+
+  if layer == Layer.Nothing and explored.at(x, y)
+    local t: tile? = map.at(x, y)
+    if t
+      ch = t.ch
+      if visible.at(x, y)
+        fg = "silver"
+      else
+        fg = "#444"
+      end
+    end
+  end
+
+  draw(x, y, ch, fg, bg)
+end
+
+fn drawEntity(e: entity)
+  if e.Position and e.Appearance and visible.at(e.Position.x, e.Position.y)
+    draw(e.Position.x, e.Position.y, e.Appearance.ch, e.Appearance.fg, e.Appearance.bg)
+  end
+end
+
+system drawUnderTile(e: entity, o: OldPosition)
+  drawTileAt(o.x, o.y)
+  e.remove(o)
+  e.add(RedrawMe)
+end
+
+system RedrawMeEntity(e: entity, p: Position, RedrawMe)
+  drawTileAt(p.x, p.y)
+  e.remove(RedrawMe)
+end
+
+fn drawBar(x: int, y: int, value: int, maxValue: int, maxWidth: int, emptyColour: str, filledColour: str)
+  local barWidth: int = floor(value / maxValue * maxWidth)
+
+  draw(x, y, repeat(' ', maxWidth), "white", emptyColour)
+  if barWidth > 0
+    draw(x, y, repeat(' ', barWidth), "white", filledColour)
+  end
+end
+
+system drawUI(e: entity, f: Fighter, RedrawUI)
+  e.remove(RedrawUI)
+
+  drawBar(0, hpY, f.hp, f.maxHp, 20, "red", "green")
+  draw(1, hpY, join("", "HP: ", f.hp, "/", f.maxHp))
+end
+
+system nextTurn()
+  local highest: int = -99999
+  query (a: Actor)
+    if a.energy > highest
+      highest = a.energy
+    end
+  end
+
+  if highest >= 100
+    return false
+  end
+  local elapse: int = 100 - highest
+  query (e: entity, a: Actor)
+    a.energy += elapse
+    if a.energy >= 100
+      e.add(MyTurn)
+    end
+  end
+end
+
+fn randomRoom(): rect
+  local w: int = randInt(6, 14)
+  local h: int = randInt(6, 14)
+  local x: int = randInt(1, mapWidth - w - 1)
+  local y: int = randInt(1, mapHeight - h - 1)
+  return rect(x, y, w, h)
+end
+
+fn randomCorridor(x1: int, y1: int, x2: int, y2: int)
+  local cx: int = x2
+  local cy: int = y1
+
+  if randInt(0, 1)
+    cx = x1
+    cy = y2
+  end
+
+  map.line(x1, y1, cx, cy, Floor)
+  map.line(cx, cy, x2, y2, Floor)
+end
+
+fn generateDungeon()
+  map.clear()
+  explored.clear()
+  visible.clear()
+
+  local prev: rect?
+  local room: rect
+  local taken: grid = grid(mapWidth, mapHeight, false)
+
+  for r = 1 to 30
+    room = randomRoom()
+    if not map.findInRegion(room, Floor)
+      map.rect(room.x + 1, room.y + 1, room.x2 - 1, room.y2 - 1, Floor)
+      if prev
+        randomCorridor(prev.cx, prev.cy, room.cx, room.cy)
+        addEnemies(room, taken)
+      else
+        spawn(Player, Position(room.cx, room.cy))
+      end
+
+      prev = room
+    end
+  end
+
+  hostileAI.enable()
+end
+
+fn addEnemies(r: rect, taken: grid)
+  for z = 1 to randInt(0, 2)
+    local x: int = randInt(r.x + 1, r.x2 - 1)
+    local y: int = randInt(r.y + 1, r.y2 - 1)
+
+    if not taken.at(x, y)
+      taken.put(x, y, true)
+      if randInt(1, 100) < 80
+        spawn(Orc, Position(x, y))
+      else
+        spawn(Troll, Position(x, y))
+      end
+    end
+  end
+end
+
+fn main()
+  setSize(gameWidth, gameHeight)
+  generateDungeon()
+  pushKeyHandler(onKeyInDungeon)
+end
