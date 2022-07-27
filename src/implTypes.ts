@@ -40,7 +40,7 @@ export type Fighter = {
   typeName: "Fighter";
   maxHp: number;
   hp: number;
-  defense: number;
+  defence: number;
   power: number;
 };
 export type RLComponent =

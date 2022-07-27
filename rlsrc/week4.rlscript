@@ -32,7 +32,7 @@ end
 component Fighter
   maxHp: int
   hp: int
-  defense: int
+  defence: int
   power: int
 end
 
@@ -100,7 +100,7 @@ global map: grid = grid(mapWidth, mapHeight, Wall)
 global explored: grid = grid(mapWidth, mapHeight, false)
 global visible: grid = grid(mapWidth, mapHeight, false)
 
-system onKey(e: entity, IsPlayer, k: KeyEvent)
+system onKeyInDungeon(e: entity, IsPlayer, k: KeyEvent)
   e.add(match k.key
     "up"    = MoveAction( 0, -1)
     "right" = MoveAction( 1,  0)
@@ -108,6 +108,10 @@ system onKey(e: entity, IsPlayer, k: KeyEvent)
     "left"  = MoveAction(-1,  0)
     "wait"  = WaitAction
   end)
+end
+
+system onKeyWhenDead(e: entity, IsPlayer, k: KeyEvent)
+  ;; TODO
 end
 
 fn getBlockingMap(): grid
@@ -169,7 +173,7 @@ end
 
 fn hurt(e: entity, damage: int)
   e.Fighter.hp -= damage
-  if e.Fighter.hp < 0
+  if e.Fighter.hp < 1
     if e.IsPlayer
       log("You died!")
     else
@@ -178,7 +182,15 @@ fn hurt(e: entity, damage: int)
 
     local corpse: entity = spawn(Corpse, Position(e.Position.x, e.Position.y))
     corpse.Appearance.name = join(' ', "corpse of", e.Appearance.name)
-    remove(e)
+
+    if e.IsPlayer
+      e.add(RedrawUI)
+      e.remove(Actor)
+      hostileAI.disable()
+      pushKeyHandler(onKeyWhenDead)
+    else
+      remove(e)
+    end
   else
     if e.IsPlayer
       e.add(RedrawUI)
@@ -192,7 +204,7 @@ system doMelee(e: entity, m: MeleeAction, a: Appearance, f: Fighter, MyTurn)
   useTurn(e)
 
   local attack: str = join(' ', a.name, "attacks", target.Appearance.name)
-  local damage: int = f.power - target.Fighter.defense
+  local damage: int = f.power - target.Fighter.defence
   if damage > 0
     log(join(' ', attack, "for", damage, "hit points"))
     hurt(target, damage)
@@ -342,6 +354,8 @@ fn generateDungeon()
       prev = room
     end
   end
+
+  hostileAI.enable()
 end
 
 fn addEnemies(r: rect, taken: grid)
@@ -363,5 +377,5 @@ end
 fn main()
   setSize(gameWidth, gameHeight)
   generateDungeon()
-  pushKeyHandler(onKey)
+  pushKeyHandler(onKeyInDungeon)
 end

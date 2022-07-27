@@ -949,10 +949,11 @@
     return p.typeName !== "entity" && !isConstraint(p);
   }
   var RLSystem = class {
-    constructor(name, code, allParams) {
+    constructor(name, code, allParams, enabled = true) {
       this.name = name;
       this.code = code;
       this.allParams = allParams;
+      this.enabled = enabled;
       this.type = "system";
       this.componentTypes = allParams.filter(isConstraint).map((p) => p.typeName);
       this.externals = allParams.filter(isExternal);
@@ -961,6 +962,12 @@
     apply(args) {
       const resolved = resolveArgs(args, this.params, []);
       return this.code(...resolved);
+    }
+    enable() {
+      this.enabled = true;
+    }
+    disable() {
+      this.enabled = false;
     }
   };
   RLSystem.type = "system";
@@ -1289,14 +1296,16 @@
       return __async(this, null, function* () {
         this.rl.callNamedFunction("main");
         this.terminal = new import_wglt.Terminal(this.canvas, this.width, this.height);
+        let count = 0;
         this.running = true;
         while (this.running) {
           let fired = false;
-          for (const sys of this.rl.systems) {
+          for (const sys of this.rl.systems.filter((s) => s.enabled)) {
             if (this.trySystem(sys))
               fired = true;
           }
           if (!fired) {
+            count = 0;
             const key = yield this.getKey();
             const sys = this.rl.keyHandlers.top;
             this.trySystem(sys, {
@@ -1304,6 +1313,12 @@
               typeName: "KeyEvent",
               value: key
             });
+          } else {
+            count++;
+            if (count > 5e3) {
+              this.running = false;
+              console.warn("Suspected infinite loop.");
+            }
           }
         }
       });
@@ -1399,12 +1414,12 @@
       typeName: "Actor",
       energy
     });
-    const mkFighter = (maxHp, hp, defense, power) => ({
+    const mkFighter = (maxHp, hp, defence, power) => ({
       type: "component",
       typeName: "Fighter",
       maxHp,
       hp,
-      defense,
+      defence,
       power
     });
     const tmPlayer = {
@@ -1476,7 +1491,7 @@
     const fn_getBlockingMap = new RLFn("getBlockingMap", getBlockingMap, []);
     function hurt(e, damage) {
       e.Fighter.hp -= damage;
-      if (e.Fighter.hp < 0) {
+      if (e.Fighter.hp < 1) {
         if (e.IsPlayer) {
           __lib.log({ type: "str", value: "You died!" });
         } else {
@@ -1487,7 +1502,14 @@
         }
         const corpse = __lib.spawn(tmCorpse, mkPosition(e.Position.x, e.Position.y));
         corpse.Appearance.name = __lib.join({ type: "char", value: " " }, { type: "str", value: "corpse of" }, { type: "str", value: e.Appearance.name });
-        __lib.remove(e);
+        if (e.IsPlayer) {
+          e.add(RedrawUI);
+          e.remove("Actor");
+          hostileAI.disable();
+          __lib.pushKeyHandler(onKeyWhenDead);
+        } else {
+          __lib.remove(e);
+        }
       } else {
         if (e.IsPlayer) {
           e.add(RedrawUI);
@@ -1593,6 +1615,7 @@
           prev = room;
         }
       }
+      hostileAI.enable();
     }
     const fn_generateDungeon = new RLFn("generateDungeon", generateDungeon, []);
     function addEnemies(r, taken) {
@@ -1616,10 +1639,10 @@
     function main() {
       __lib.setSize({ type: "int", value: gameWidth }, { type: "int", value: gameHeight });
       generateDungeon();
-      __lib.pushKeyHandler(system_onKey);
+      __lib.pushKeyHandler(onKeyInDungeon);
     }
     const fn_main = new RLFn("main", main, []);
-    function onKey(e, k) {
+    function code_onKeyInDungeon(e, k) {
       e.add(((matchvar) => {
         if (matchvar === "up")
           return mkMoveAction(0, -1);
@@ -1633,12 +1656,19 @@
           return WaitAction;
       })(k.key));
     }
-    const system_onKey = new RLSystem("onKey", onKey, [
+    const onKeyInDungeon = new RLSystem("onKeyInDungeon", code_onKeyInDungeon, [
       { type: "param", name: "e", typeName: "entity" },
       { type: "constraint", typeName: "IsPlayer" },
       { type: "param", name: "k", typeName: "KeyEvent" }
     ]);
-    function hostileAI(e, p) {
+    function code_onKeyWhenDead(e, k) {
+    }
+    const onKeyWhenDead = new RLSystem("onKeyWhenDead", code_onKeyWhenDead, [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "constraint", typeName: "IsPlayer" },
+      { type: "param", name: "k", typeName: "KeyEvent" }
+    ]);
+    function code_hostileAI(e, p) {
       if (visible.at(p.x, p.y)) {
         for (const target of new RLQuery(RL.instance, [
           "Position",
@@ -1661,13 +1691,13 @@
       }
       e.add(WaitAction);
     }
-    const system_hostileAI = new RLSystem("hostileAI", hostileAI, [
+    const hostileAI = new RLSystem("hostileAI", code_hostileAI, [
       { type: "param", name: "e", typeName: "entity" },
       { type: "param", name: "p", typeName: "Position" },
       { type: "constraint", typeName: "HostileEnemy" },
       { type: "constraint", typeName: "MyTurn" }
     ]);
-    function doMove(e, p, m) {
+    function code_doMove(e, p, m) {
       const x = p.x + m.x;
       const y = p.y + m.y;
       e.remove(m);
@@ -1687,18 +1717,18 @@
         }
       }
     }
-    const system_doMove = new RLSystem("doMove", doMove, [
+    const doMove = new RLSystem("doMove", code_doMove, [
       { type: "param", name: "e", typeName: "entity" },
       { type: "param", name: "p", typeName: "Position" },
       { type: "param", name: "m", typeName: "MoveAction" },
       { type: "constraint", typeName: "MyTurn" }
     ]);
-    function doMelee(e, m, a, f) {
+    function code_doMelee(e, m, a, f) {
       const target = m.target;
       e.remove(m);
       useTurn(e);
       const attack = __lib.join({ type: "char", value: " " }, { type: "str", value: a.name }, { type: "str", value: "attacks" }, { type: "str", value: target.Appearance.name });
-      const damage = f.power - target.Fighter.defense;
+      const damage = f.power - target.Fighter.defence;
       if (damage > 0) {
         __lib.log({
           type: "str",
@@ -1712,23 +1742,23 @@
         });
       }
     }
-    const system_doMelee = new RLSystem("doMelee", doMelee, [
+    const doMelee = new RLSystem("doMelee", code_doMelee, [
       { type: "param", name: "e", typeName: "entity" },
       { type: "param", name: "m", typeName: "MeleeAction" },
       { type: "param", name: "a", typeName: "Appearance" },
       { type: "param", name: "f", typeName: "Fighter" },
       { type: "constraint", typeName: "MyTurn" }
     ]);
-    function doWait(e) {
+    function code_doWait(e) {
       e.remove(WaitAction);
       useTurn(e);
     }
-    const system_doWait = new RLSystem("doWait", doWait, [
+    const doWait = new RLSystem("doWait", code_doWait, [
       { type: "param", name: "e", typeName: "entity" },
       { type: "constraint", typeName: "WaitAction" },
       { type: "constraint", typeName: "MyTurn" }
     ]);
-    function fov(e, p) {
+    function code_fov(e, p) {
       __lib.getFOV(map, { type: "int", value: p.x }, { type: "int", value: p.y }, { type: "int", value: 5 }, visible, explored);
       e.remove(RecalculateFOV);
       for (let x = 0; x <= mapWidth - 1; x++) {
@@ -1737,42 +1767,42 @@
         }
       }
     }
-    const system_fov = new RLSystem("fov", fov, [
+    const fov = new RLSystem("fov", code_fov, [
       { type: "param", name: "e", typeName: "entity" },
       { type: "param", name: "p", typeName: "Position" },
       { type: "constraint", typeName: "RecalculateFOV" }
     ]);
-    function drawUnderTile(e, o) {
+    function code_drawUnderTile(e, o) {
       drawTileAt(o.x, o.y);
       e.remove(o);
       e.add(RedrawMe);
     }
-    const system_drawUnderTile = new RLSystem("drawUnderTile", drawUnderTile, [
+    const drawUnderTile = new RLSystem("drawUnderTile", code_drawUnderTile, [
       { type: "param", name: "e", typeName: "entity" },
       { type: "param", name: "o", typeName: "OldPosition" }
     ]);
-    function RedrawMeEntity(e, p) {
+    function code_RedrawMeEntity(e, p) {
       drawTileAt(p.x, p.y);
       e.remove(RedrawMe);
     }
-    const system_RedrawMeEntity = new RLSystem("RedrawMeEntity", RedrawMeEntity, [
+    const RedrawMeEntity = new RLSystem("RedrawMeEntity", code_RedrawMeEntity, [
       { type: "param", name: "e", typeName: "entity" },
       { type: "param", name: "p", typeName: "Position" },
       { type: "constraint", typeName: "RedrawMe" }
     ]);
-    function drawUI(e, f) {
+    function code_drawUI(e, f) {
       e.remove(RedrawUI);
       __lib.draw({ type: "int", value: 1 }, { type: "int", value: hpY }, {
         type: "str",
         value: __lib.join({ type: "str", value: "" }, { type: "str", value: "HP: " }, { type: "int", value: f.hp }, { type: "str", value: "/" }, { type: "int", value: f.maxHp })
       });
     }
-    const system_drawUI = new RLSystem("drawUI", drawUI, [
+    const drawUI = new RLSystem("drawUI", code_drawUI, [
       { type: "param", name: "e", typeName: "entity" },
       { type: "param", name: "f", typeName: "Fighter" },
       { type: "constraint", typeName: "RedrawUI" }
     ]);
-    function nextTurn() {
+    function code_nextTurn() {
       let highest = -99999;
       for (const _entity of new RLQuery(RL.instance, ["Actor"]).get()) {
         const { Actor: a } = _entity;
@@ -1792,7 +1822,7 @@
         }
       }
     }
-    const system_nextTurn = new RLSystem("nextTurn", nextTurn, []);
+    const nextTurn = new RLSystem("nextTurn", code_nextTurn, []);
     return /* @__PURE__ */ new Map([
       ["getBlockingMap", fn_getBlockingMap],
       ["hurt", fn_hurt],
@@ -1804,16 +1834,17 @@
       ["generateDungeon", fn_generateDungeon],
       ["addEnemies", fn_addEnemies],
       ["main", fn_main],
-      ["onKey", system_onKey],
-      ["hostileAI", system_hostileAI],
-      ["doMove", system_doMove],
-      ["doMelee", system_doMelee],
-      ["doWait", system_doWait],
-      ["fov", system_fov],
-      ["drawUnderTile", system_drawUnderTile],
-      ["RedrawMeEntity", system_RedrawMeEntity],
-      ["drawUI", system_drawUI],
-      ["nextTurn", system_nextTurn],
+      ["onKeyInDungeon", onKeyInDungeon],
+      ["onKeyWhenDead", onKeyWhenDead],
+      ["hostileAI", hostileAI],
+      ["doMove", doMove],
+      ["doMelee", doMelee],
+      ["doWait", doWait],
+      ["fov", fov],
+      ["drawUnderTile", drawUnderTile],
+      ["RedrawMeEntity", RedrawMeEntity],
+      ["drawUI", drawUI],
+      ["nextTurn", nextTurn],
       ["IsBlocker", IsBlocker],
       ["IsPlayer", IsPlayer],
       ["RecalculateFOV", RecalculateFOV],

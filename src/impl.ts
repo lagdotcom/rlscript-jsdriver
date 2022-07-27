@@ -88,14 +88,14 @@ export default function implementation(__lib: libtype): RLEnv {
   const mkFighter = (
     maxHp: number,
     hp: number,
-    defense: number,
+    defence: number,
     power: number
   ): Fighter => ({
     type: "component",
     typeName: "Fighter",
     maxHp,
     hp,
-    defense,
+    defence,
     power,
   });
 
@@ -172,7 +172,7 @@ export default function implementation(__lib: libtype): RLEnv {
 
   function hurt(e: RLEntity, damage: number) {
     e.Fighter.hp -= damage;
-    if (e.Fighter.hp < 0) {
+    if (e.Fighter.hp < 1) {
       if (e.IsPlayer) {
         __lib.log({ type: "str", value: "You died!" });
       } else {
@@ -194,7 +194,14 @@ export default function implementation(__lib: libtype): RLEnv {
         { type: "str", value: "corpse of" },
         { type: "str", value: e.Appearance.name }
       );
-      __lib.remove(e);
+      if (e.IsPlayer) {
+        e.add(RedrawUI);
+        e.remove("Actor");
+        hostileAI.disable();
+        __lib.pushKeyHandler(onKeyWhenDead);
+      } else {
+        __lib.remove(e);
+      }
     } else {
       if (e.IsPlayer) {
         e.add(RedrawUI);
@@ -330,6 +337,7 @@ export default function implementation(__lib: libtype): RLEnv {
         prev = room;
       }
     }
+    hostileAI.enable();
   }
   const fn_generateDungeon = new RLFn("generateDungeon", generateDungeon, []);
 
@@ -373,11 +381,11 @@ export default function implementation(__lib: libtype): RLEnv {
       { type: "int", value: gameHeight }
     );
     generateDungeon();
-    __lib.pushKeyHandler(system_onKey);
+    __lib.pushKeyHandler(onKeyInDungeon);
   }
   const fn_main = new RLFn("main", main, []);
 
-  function onKey(e: RLEntity, k: RLKeyEvent) {
+  function code_onKeyInDungeon(e: RLEntity, k: RLKeyEvent) {
     e.add(
       ((matchvar) => {
         if (matchvar === "up") return mkMoveAction(0, -1);
@@ -388,13 +396,20 @@ export default function implementation(__lib: libtype): RLEnv {
       })(k.key)
     );
   }
-  const system_onKey = new RLSystem("onKey", onKey, [
+  const onKeyInDungeon = new RLSystem("onKeyInDungeon", code_onKeyInDungeon, [
     { type: "param", name: "e", typeName: "entity" },
     { type: "constraint", typeName: "IsPlayer" },
     { type: "param", name: "k", typeName: "KeyEvent" },
   ]);
 
-  function hostileAI(e: RLEntity, p: Position) {
+  function code_onKeyWhenDead(e: RLEntity, k: RLKeyEvent) {}
+  const onKeyWhenDead = new RLSystem("onKeyWhenDead", code_onKeyWhenDead, [
+    { type: "param", name: "e", typeName: "entity" },
+    { type: "constraint", typeName: "IsPlayer" },
+    { type: "param", name: "k", typeName: "KeyEvent" },
+  ]);
+
+  function code_hostileAI(e: RLEntity, p: Position) {
     if (visible.at(p.x, p.y)) {
       for (const target of new RLQuery(RL.instance, [
         "Position",
@@ -424,14 +439,14 @@ export default function implementation(__lib: libtype): RLEnv {
     }
     e.add(WaitAction);
   }
-  const system_hostileAI = new RLSystem("hostileAI", hostileAI, [
+  const hostileAI = new RLSystem("hostileAI", code_hostileAI, [
     { type: "param", name: "e", typeName: "entity" },
     { type: "param", name: "p", typeName: "Position" },
     { type: "constraint", typeName: "HostileEnemy" },
     { type: "constraint", typeName: "MyTurn" },
   ]);
 
-  function doMove(e: RLEntity, p: Position, m: MoveAction) {
+  function code_doMove(e: RLEntity, p: Position, m: MoveAction) {
     const x: number = p.x + m.x;
     const y: number = p.y + m.y;
     e.remove(m);
@@ -451,14 +466,19 @@ export default function implementation(__lib: libtype): RLEnv {
       }
     }
   }
-  const system_doMove = new RLSystem("doMove", doMove, [
+  const doMove = new RLSystem("doMove", code_doMove, [
     { type: "param", name: "e", typeName: "entity" },
     { type: "param", name: "p", typeName: "Position" },
     { type: "param", name: "m", typeName: "MoveAction" },
     { type: "constraint", typeName: "MyTurn" },
   ]);
 
-  function doMelee(e: RLEntity, m: MeleeAction, a: Appearance, f: Fighter) {
+  function code_doMelee(
+    e: RLEntity,
+    m: MeleeAction,
+    a: Appearance,
+    f: Fighter
+  ) {
     const target: RLEntity = m.target;
     e.remove(m);
     useTurn(e);
@@ -468,7 +488,7 @@ export default function implementation(__lib: libtype): RLEnv {
       { type: "str", value: "attacks" },
       { type: "str", value: target.Appearance.name }
     );
-    const damage: number = f.power - target.Fighter.defense;
+    const damage: number = f.power - target.Fighter.defence;
     if (damage > 0) {
       __lib.log({
         type: "str",
@@ -492,7 +512,7 @@ export default function implementation(__lib: libtype): RLEnv {
       });
     }
   }
-  const system_doMelee = new RLSystem("doMelee", doMelee, [
+  const doMelee = new RLSystem("doMelee", code_doMelee, [
     { type: "param", name: "e", typeName: "entity" },
     { type: "param", name: "m", typeName: "MeleeAction" },
     { type: "param", name: "a", typeName: "Appearance" },
@@ -500,17 +520,17 @@ export default function implementation(__lib: libtype): RLEnv {
     { type: "constraint", typeName: "MyTurn" },
   ]);
 
-  function doWait(e: RLEntity) {
+  function code_doWait(e: RLEntity) {
     e.remove(WaitAction);
     useTurn(e);
   }
-  const system_doWait = new RLSystem("doWait", doWait, [
+  const doWait = new RLSystem("doWait", code_doWait, [
     { type: "param", name: "e", typeName: "entity" },
     { type: "constraint", typeName: "WaitAction" },
     { type: "constraint", typeName: "MyTurn" },
   ]);
 
-  function fov(e: RLEntity, p: Position) {
+  function code_fov(e: RLEntity, p: Position) {
     __lib.getFOV(
       map,
       { type: "int", value: p.x },
@@ -526,33 +546,33 @@ export default function implementation(__lib: libtype): RLEnv {
       }
     }
   }
-  const system_fov = new RLSystem("fov", fov, [
+  const fov = new RLSystem("fov", code_fov, [
     { type: "param", name: "e", typeName: "entity" },
     { type: "param", name: "p", typeName: "Position" },
     { type: "constraint", typeName: "RecalculateFOV" },
   ]);
 
-  function drawUnderTile(e: RLEntity, o: OldPosition) {
+  function code_drawUnderTile(e: RLEntity, o: OldPosition) {
     drawTileAt(o.x, o.y);
     e.remove(o);
     e.add(RedrawMe);
   }
-  const system_drawUnderTile = new RLSystem("drawUnderTile", drawUnderTile, [
+  const drawUnderTile = new RLSystem("drawUnderTile", code_drawUnderTile, [
     { type: "param", name: "e", typeName: "entity" },
     { type: "param", name: "o", typeName: "OldPosition" },
   ]);
 
-  function RedrawMeEntity(e: RLEntity, p: Position) {
+  function code_RedrawMeEntity(e: RLEntity, p: Position) {
     drawTileAt(p.x, p.y);
     e.remove(RedrawMe);
   }
-  const system_RedrawMeEntity = new RLSystem("RedrawMeEntity", RedrawMeEntity, [
+  const RedrawMeEntity = new RLSystem("RedrawMeEntity", code_RedrawMeEntity, [
     { type: "param", name: "e", typeName: "entity" },
     { type: "param", name: "p", typeName: "Position" },
     { type: "constraint", typeName: "RedrawMe" },
   ]);
 
-  function drawUI(e: RLEntity, f: Fighter) {
+  function code_drawUI(e: RLEntity, f: Fighter) {
     e.remove(RedrawUI);
     __lib.draw(
       { type: "int", value: 1 },
@@ -569,13 +589,13 @@ export default function implementation(__lib: libtype): RLEnv {
       }
     );
   }
-  const system_drawUI = new RLSystem("drawUI", drawUI, [
+  const drawUI = new RLSystem("drawUI", code_drawUI, [
     { type: "param", name: "e", typeName: "entity" },
     { type: "param", name: "f", typeName: "Fighter" },
     { type: "constraint", typeName: "RedrawUI" },
   ]);
 
-  function nextTurn() {
+  function code_nextTurn() {
     let highest = -99999;
     for (const _entity of new RLQuery(RL.instance, ["Actor"]).get()) {
       const { Actor: a } = _entity;
@@ -595,7 +615,7 @@ export default function implementation(__lib: libtype): RLEnv {
       }
     }
   }
-  const system_nextTurn = new RLSystem("nextTurn", nextTurn, []);
+  const nextTurn = new RLSystem("nextTurn", code_nextTurn, []);
 
   return new Map<string, RLObject>([
     ["getBlockingMap", fn_getBlockingMap],
@@ -608,16 +628,17 @@ export default function implementation(__lib: libtype): RLEnv {
     ["generateDungeon", fn_generateDungeon],
     ["addEnemies", fn_addEnemies],
     ["main", fn_main],
-    ["onKey", system_onKey],
-    ["hostileAI", system_hostileAI],
-    ["doMove", system_doMove],
-    ["doMelee", system_doMelee],
-    ["doWait", system_doWait],
-    ["fov", system_fov],
-    ["drawUnderTile", system_drawUnderTile],
-    ["RedrawMeEntity", system_RedrawMeEntity],
-    ["drawUI", system_drawUI],
-    ["nextTurn", system_nextTurn],
+    ["onKeyInDungeon", onKeyInDungeon],
+    ["onKeyWhenDead", onKeyWhenDead],
+    ["hostileAI", hostileAI],
+    ["doMove", doMove],
+    ["doMelee", doMelee],
+    ["doWait", doWait],
+    ["fov", fov],
+    ["drawUnderTile", drawUnderTile],
+    ["RedrawMeEntity", RedrawMeEntity],
+    ["drawUI", drawUI],
+    ["nextTurn", nextTurn],
     ["IsBlocker", IsBlocker],
     ["IsPlayer", IsPlayer],
     ["RecalculateFOV", RecalculateFOV],

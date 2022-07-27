@@ -54,14 +54,17 @@ export default class Game {
     this.rl.callNamedFunction("main");
     this.terminal = new Terminal(this.canvas, this.width, this.height);
 
+    let count = 0;
     this.running = true;
     while (this.running) {
       let fired = false;
-      for (const sys of this.rl.systems) {
+      for (const sys of this.rl.systems.filter((s) => s.enabled)) {
         if (this.trySystem(sys)) fired = true;
       }
 
       if (!fired) {
+        count = 0;
+
         const key = await this.getKey();
         const sys = this.rl.keyHandlers.top;
         this.trySystem(sys, {
@@ -69,6 +72,13 @@ export default class Game {
           typeName: "KeyEvent",
           value: key,
         });
+      } else {
+        count++;
+
+        if (count > 5000) {
+          this.running = false;
+          console.warn("Suspected infinite loop.");
+        }
       }
     }
   }
@@ -87,11 +97,15 @@ export default class Game {
     if (sys.params.length === 0) {
       // a system that can fail to execute
       const result = this.rl.runSystem(sys, ...args);
+
+      // console.log(`${sys.name}: ${result !== false ? "ok" : "failed"}`);
       return result !== false;
     }
 
     const matches = sys.query.get();
     if (matches.length) {
+      // console.log(`${sys.name}: ${matches.length} found`);
+
       for (const e of matches)
         this.rl.runSystem(
           sys,

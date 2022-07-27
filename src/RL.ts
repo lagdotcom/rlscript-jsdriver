@@ -100,7 +100,8 @@ export class RLSystem {
   constructor(
     public name: string,
     private code: CallableFunction,
-    public allParams: RLSystemParam[]
+    public allParams: RLSystemParam[],
+    public enabled = true
   ) {
     this.type = "system";
     this.componentTypes = allParams.filter(isConstraint).map((p) => p.typeName);
@@ -111,6 +112,13 @@ export class RLSystem {
   apply(args: RLArg[]) {
     const resolved = resolveArgs(args, this.params, []);
     return this.code(...resolved);
+  }
+
+  enable() {
+    this.enabled = true;
+  }
+  disable() {
+    this.enabled = false;
   }
 }
 

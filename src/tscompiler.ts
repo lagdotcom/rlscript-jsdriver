@@ -349,6 +349,20 @@ class TileScope implements TSScope {
   }
 }
 
+class SystemScope implements TSScope {
+  name: string;
+  members: Map<string, ASTType>;
+
+  constructor(public parent: TSScope, public source: ASTSystemDecl) {
+    this.name = `system[${source.name}]`;
+    this.members = new Map<string, ASTType>([
+      ["enabled", boolType],
+      ["enable", fnType],
+      ["disable", fnType],
+    ]);
+  }
+}
+
 export default class TSCompiler implements TSScope {
   name: "global";
   members: Map<string, ASTType>;
@@ -696,10 +710,10 @@ export default class TSCompiler implements TSScope {
     return this.systems
       .map(
         (s) =>
-          `function ${fixName(s.name)}(${this.getParams(s)}) {
+          `function code_${fixName(s.name)}(${this.getParams(s)}) {
         ${this.getCode(s.code, new FnScope(this.scopes.top, s))}
       }
-      const system_${s.name} = new RLSystem("${fixName(s.name)}", ${fixName(
+      const ${s.name} = new RLSystem("${fixName(s.name)}", code_${fixName(
             s.name
           )}, [
         ${this.getStructArgs(s)}
@@ -821,11 +835,10 @@ export default class TSCompiler implements TSScope {
             const name = this.getQName(a);
 
             switch (type.value) {
-              case "system":
-                return "system_" + name;
               case "template":
                 return "tm" + name;
 
+              case "system":
               case "tag":
               case "tile":
               case "entity":
@@ -954,7 +967,7 @@ export default class TSCompiler implements TSScope {
   getEnv() {
     return this.functions
       .map((f) => `["${f.name}", fn_${f.name}],`)
-      .concat(this.systems.map((s) => `["${s.name}", system_${s.name}],`))
+      .concat(this.systems.map((s) => `["${s.name}", ${s.name}],`))
       .concat(this.tagNames.map((t) => `["${t}", ${t}],`))
       .concat(this.templates.map((t) => `["${t.name}", tm${t.name}],`))
       .join("\n");
@@ -1148,6 +1161,11 @@ export default class TSCompiler implements TSScope {
         );
       else if (type.value === "grid") scope = new GridScope(scope);
       else if (type.value === "rect") scope = new RectScope(scope);
+      else if (type.value === "system")
+        scope = new SystemScope(
+          scope,
+          this.systems.find((s) => s.name === name) as ASTSystemDecl
+        );
       else if (type.value === "tile") scope = new TileScope(scope, this);
       else if (type.value === "xy") scope = new XYScope(scope);
       else if (type.value === "KeyEvent") scope = new KeyEventScope(scope);
