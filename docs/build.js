@@ -1359,621 +1359,6 @@
     }
   };
 
-  // src/impl.ts
-  function implementation(__lib) {
-    let Layer;
-    ((Layer2) => {
-      Layer2[Layer2["Nothing"] = 0] = "Nothing";
-      Layer2[Layer2["Corpse"] = 1] = "Corpse";
-      Layer2[Layer2["Enemy"] = 2] = "Enemy";
-      Layer2[Layer2["Player"] = 3] = "Player";
-    })(Layer || (Layer = {}));
-    const IsBlocker = new RLTag("IsBlocker");
-    const IsPlayer = new RLTag("IsPlayer");
-    const RecalculateFOV = new RLTag("RecalculateFOV");
-    const RedrawMe = new RLTag("RedrawMe");
-    const RedrawUI = new RLTag("RedrawUI");
-    const MyTurn = new RLTag("MyTurn");
-    const BaseAI = new RLTag("BaseAI");
-    const HostileEnemy = new RLTag("HostileEnemy");
-    const WaitAction = new RLTag("WaitAction");
-    const mkAppearance = (name, ch, fg, bg, layer) => ({
-      type: "component",
-      typeName: "Appearance",
-      name,
-      ch,
-      fg,
-      bg,
-      layer
-    });
-    const mkOldPosition = (x, y) => ({
-      type: "component",
-      typeName: "OldPosition",
-      x,
-      y
-    });
-    const mkPosition = (x, y) => ({
-      type: "component",
-      typeName: "Position",
-      x,
-      y
-    });
-    const mkMoveAction = (x, y) => ({
-      type: "component",
-      typeName: "MoveAction",
-      x,
-      y
-    });
-    const mkMeleeAction = (target) => ({
-      type: "component",
-      typeName: "MeleeAction",
-      target
-    });
-    const mkActor = (energy) => ({
-      type: "component",
-      typeName: "Actor",
-      energy
-    });
-    const mkFighter = (maxHp, hp, defence, power) => ({
-      type: "component",
-      typeName: "Fighter",
-      maxHp,
-      hp,
-      defence,
-      power
-    });
-    const tmPlayer = {
-      type: "template",
-      name: "Player",
-      get: () => [
-        IsBlocker,
-        IsPlayer,
-        mkAppearance("player", "@", "white", "black", 3 /* Player */),
-        mkFighter(30, 30, 2, 5),
-        mkActor(100),
-        MyTurn,
-        RecalculateFOV,
-        RedrawUI
-      ]
-    };
-    const tmEnemy = {
-      type: "template",
-      name: "Enemy",
-      get: () => [IsBlocker, HostileEnemy, mkActor(1)]
-    };
-    const tmOrc = {
-      type: "template",
-      name: "Orc",
-      get: () => [
-        tmEnemy,
-        mkAppearance("orc", "o", "green", "black", 2 /* Enemy */),
-        mkFighter(10, 10, 0, 3)
-      ]
-    };
-    const tmTroll = {
-      type: "template",
-      name: "Troll",
-      get: () => [
-        tmEnemy,
-        mkAppearance("troll", "T", "lime", "black", 2 /* Enemy */),
-        mkFighter(16, 16, 1, 4)
-      ]
-    };
-    const tmCorpse = {
-      type: "template",
-      name: "Corpse",
-      get: () => [
-        RedrawMe,
-        mkAppearance("corpse", "%", "red", "black", 1 /* Corpse */)
-      ]
-    };
-    const Floor = new RLTile(".", true, true);
-    const Wall = new RLTile("#", false, false);
-    const gameWidth = 80;
-    const gameHeight = 50;
-    const mapWidth = gameWidth;
-    const mapHeight = gameHeight - 3;
-    const hpY = mapHeight;
-    const map = new RLGrid(mapWidth, mapHeight, Wall);
-    const explored = new RLGrid(mapWidth, mapHeight, false);
-    const visible = new RLGrid(mapWidth, mapHeight, false);
-    function getBlockingMap() {
-      const blocked = new RLGrid(mapWidth, mapHeight, false);
-      for (const _entity of new RLQuery(RL.instance, [
-        "Position",
-        "IsBlocker"
-      ]).get()) {
-        const { Position: p } = _entity;
-        blocked.put(p.x, p.y, true);
-      }
-      return blocked;
-    }
-    const fn_getBlockingMap = new RLFn("getBlockingMap", getBlockingMap, []);
-    function hurt(e, damage) {
-      e.Fighter.hp -= damage;
-      if (e.Fighter.hp < 1) {
-        if (e.IsPlayer) {
-          __lib.log({ type: "str", value: "You died!" });
-        } else {
-          __lib.log({
-            type: "str",
-            value: __lib.join({ type: "char", value: " " }, { type: "str", value: e.Appearance.name }, { type: "str", value: "is dead!" })
-          });
-        }
-        const corpse = __lib.spawn(tmCorpse, mkPosition(e.Position.x, e.Position.y));
-        corpse.Appearance.name = __lib.join({ type: "char", value: " " }, { type: "str", value: "corpse of" }, { type: "str", value: e.Appearance.name });
-        if (e.IsPlayer) {
-          e.add(RedrawUI);
-          e.remove("Actor");
-          hostileAI.disable();
-          __lib.pushKeyHandler(onKeyWhenDead);
-        } else {
-          __lib.remove(e);
-        }
-      } else {
-        if (e.IsPlayer) {
-          e.add(RedrawUI);
-        }
-      }
-    }
-    const fn_hurt = new RLFn("hurt", hurt, [
-      { type: "param", name: "e", typeName: "entity" },
-      { type: "param", name: "damage", typeName: "int" }
-    ]);
-    function useTurn(e) {
-      e.Actor.energy -= 100;
-      e.remove(MyTurn);
-    }
-    const fn_useTurn = new RLFn("useTurn", useTurn, [
-      { type: "param", name: "e", typeName: "entity" }
-    ]);
-    function drawTileAt(x, y) {
-      let ch = " ";
-      let fg = "white";
-      let bg = "black";
-      let layer = 0 /* Nothing */;
-      if (visible.at(x, y)) {
-        for (const _entity of new RLQuery(RL.instance, [
-          "Appearance",
-          "Position"
-        ]).get()) {
-          const { Appearance: a, Position: p } = _entity;
-          if (p.x == x && p.y == y && a.layer > layer) {
-            ch = a.ch;
-            fg = a.fg;
-            bg = a.bg;
-            layer = a.layer;
-          }
-        }
-      }
-      if (layer == 0 /* Nothing */ && explored.at(x, y)) {
-        const t = map.at(x, y);
-        if (t) {
-          ch = t.ch;
-          if (visible.at(x, y)) {
-            fg = "silver";
-          } else {
-            fg = "#444";
-          }
-        }
-      }
-      __lib.draw({ type: "int", value: x }, { type: "int", value: y }, { type: "char", value: ch }, { type: "str", value: fg }, { type: "str", value: bg });
-    }
-    const fn_drawTileAt = new RLFn("drawTileAt", drawTileAt, [
-      { type: "param", name: "x", typeName: "int" },
-      { type: "param", name: "y", typeName: "int" }
-    ]);
-    function drawEntity(e) {
-      if (e.Position && e.Appearance && visible.at(e.Position.x, e.Position.y)) {
-        __lib.draw({ type: "int", value: e.Position.x }, { type: "int", value: e.Position.y }, { type: "char", value: e.Appearance.ch }, { type: "str", value: e.Appearance.fg }, { type: "str", value: e.Appearance.bg });
-      }
-    }
-    const fn_drawEntity = new RLFn("drawEntity", drawEntity, [
-      { type: "param", name: "e", typeName: "entity" }
-    ]);
-    function drawBar(x, y, value, maxValue, maxWidth, emptyColour, filledColour) {
-      const barWidth = __lib.floor({
-        type: "int",
-        value: value / maxValue * maxWidth
-      });
-      __lib.draw({ type: "int", value: x }, { type: "int", value: y }, {
-        type: "str",
-        value: __lib.repeat({ type: "char", value: " " }, { type: "int", value: maxWidth })
-      }, { type: "str", value: "white" }, { type: "str", value: emptyColour });
-      if (barWidth > 0) {
-        __lib.draw({ type: "int", value: x }, { type: "int", value: y }, {
-          type: "str",
-          value: __lib.repeat({ type: "char", value: " " }, { type: "int", value: barWidth })
-        }, { type: "str", value: "white" }, { type: "str", value: filledColour });
-      }
-    }
-    const fn_drawBar = new RLFn("drawBar", drawBar, [
-      { type: "param", name: "x", typeName: "int" },
-      { type: "param", name: "y", typeName: "int" },
-      { type: "param", name: "value", typeName: "int" },
-      { type: "param", name: "maxValue", typeName: "int" },
-      { type: "param", name: "maxWidth", typeName: "int" },
-      { type: "param", name: "emptyColour", typeName: "str" },
-      { type: "param", name: "filledColour", typeName: "str" }
-    ]);
-    function randomRoom() {
-      const w = __lib.randInt({ type: "int", value: 6 }, { type: "int", value: 14 });
-      const h = __lib.randInt({ type: "int", value: 6 }, { type: "int", value: 14 });
-      const x = __lib.randInt({ type: "int", value: 1 }, { type: "int", value: mapWidth - w - 1 });
-      const y = __lib.randInt({ type: "int", value: 1 }, { type: "int", value: mapHeight - h - 1 });
-      return new RLRect(x, y, w, h);
-    }
-    const fn_randomRoom = new RLFn("randomRoom", randomRoom, []);
-    function randomCorridor(x1, y1, x2, y2) {
-      let cx = x2;
-      let cy = y1;
-      if (__lib.randInt({ type: "int", value: 0 }, { type: "int", value: 1 })) {
-        cx = x1;
-        cy = y2;
-      }
-      map.line(x1, y1, cx, cy, Floor);
-      map.line(cx, cy, x2, y2, Floor);
-    }
-    const fn_randomCorridor = new RLFn("randomCorridor", randomCorridor, [
-      { type: "param", name: "x1", typeName: "int" },
-      { type: "param", name: "y1", typeName: "int" },
-      { type: "param", name: "x2", typeName: "int" },
-      { type: "param", name: "y2", typeName: "int" }
-    ]);
-    function generateDungeon() {
-      map.clear();
-      explored.clear();
-      visible.clear();
-      let prev;
-      let room;
-      const taken = new RLGrid(mapWidth, mapHeight, false);
-      for (let r = 1; r <= 30; r++) {
-        room = randomRoom();
-        if (!map.findInRegion(room, Floor)) {
-          map.rect(room.x + 1, room.y + 1, room.x2 - 1, room.y2 - 1, Floor);
-          if (prev) {
-            randomCorridor(prev.cx, prev.cy, room.cx, room.cy);
-            addEnemies(room, taken);
-          } else {
-            __lib.spawn(tmPlayer, mkPosition(room.cx, room.cy));
-          }
-          prev = room;
-        }
-      }
-      hostileAI.enable();
-    }
-    const fn_generateDungeon = new RLFn("generateDungeon", generateDungeon, []);
-    function addEnemies(r, taken) {
-      for (let z = 1; z <= __lib.randInt({ type: "int", value: 0 }, { type: "int", value: 2 }); z++) {
-        const x = __lib.randInt({ type: "int", value: r.x + 1 }, { type: "int", value: r.x2 - 1 });
-        const y = __lib.randInt({ type: "int", value: r.y + 1 }, { type: "int", value: r.y2 - 1 });
-        if (!taken.at(x, y)) {
-          taken.put(x, y, true);
-          if (__lib.randInt({ type: "int", value: 1 }, { type: "int", value: 100 }) < 80) {
-            __lib.spawn(tmOrc, mkPosition(x, y));
-          } else {
-            __lib.spawn(tmTroll, mkPosition(x, y));
-          }
-        }
-      }
-    }
-    const fn_addEnemies = new RLFn("addEnemies", addEnemies, [
-      { type: "param", name: "r", typeName: "rect" },
-      { type: "param", name: "taken", typeName: "grid" }
-    ]);
-    function main() {
-      __lib.setSize({ type: "int", value: gameWidth }, { type: "int", value: gameHeight });
-      generateDungeon();
-      __lib.pushKeyHandler(onKeyInDungeon);
-    }
-    const fn_main = new RLFn("main", main, []);
-    function code_onKeyInDungeon(e, k) {
-      e.add(((matchvar) => {
-        if (matchvar === "up")
-          return mkMoveAction(0, -1);
-        else if (matchvar === "right")
-          return mkMoveAction(1, 0);
-        else if (matchvar === "down")
-          return mkMoveAction(0, 1);
-        else if (matchvar === "left")
-          return mkMoveAction(-1, 0);
-        else if (matchvar === "wait")
-          return WaitAction;
-      })(k.key));
-    }
-    const onKeyInDungeon = new RLSystem("onKeyInDungeon", code_onKeyInDungeon, [
-      { type: "param", name: "e", typeName: "entity" },
-      { type: "constraint", typeName: "IsPlayer" },
-      { type: "param", name: "k", typeName: "KeyEvent" }
-    ]);
-    function code_onKeyWhenDead(e, k) {
-    }
-    const onKeyWhenDead = new RLSystem("onKeyWhenDead", code_onKeyWhenDead, [
-      { type: "param", name: "e", typeName: "entity" },
-      { type: "constraint", typeName: "IsPlayer" },
-      { type: "param", name: "k", typeName: "KeyEvent" }
-    ]);
-    function code_hostileAI(e, p) {
-      if (visible.at(p.x, p.y)) {
-        for (const target of new RLQuery(RL.instance, [
-          "Position",
-          "IsPlayer"
-        ]).get()) {
-          const { Position: tp } = target;
-          const dx = tp.x - p.x;
-          const dy = tp.y - p.y;
-          const distance = __lib.abs({ type: "int", value: dx }) + __lib.abs({ type: "int", value: dy });
-          if (distance < 2) {
-            e.add(mkMeleeAction(target));
-            return;
-          }
-          const step = __lib.getNextMove(map, getBlockingMap(), new RLXY(p.x, p.y), new RLXY(tp.x, tp.y));
-          if (step) {
-            e.add(mkMoveAction(step.x - p.x, step.y - p.y));
-            return;
-          }
-        }
-      }
-      e.add(WaitAction);
-    }
-    const hostileAI = new RLSystem("hostileAI", code_hostileAI, [
-      { type: "param", name: "e", typeName: "entity" },
-      { type: "param", name: "p", typeName: "Position" },
-      { type: "constraint", typeName: "HostileEnemy" },
-      { type: "constraint", typeName: "MyTurn" }
-    ]);
-    function code_doMove(e, p, m) {
-      const x = p.x + m.x;
-      const y = p.y + m.y;
-      e.remove(m);
-      const t = map.at(x, y);
-      if (t && t.walkable) {
-        const b = __lib.find(IsBlocker, mkPosition(x, y));
-        if (b && b.has("Fighter")) {
-          e.add(mkMeleeAction(b));
-          return;
-        }
-        useTurn(e);
-        e.add(mkOldPosition(p.x, p.y));
-        p.x = x;
-        p.y = y;
-        if (e.IsPlayer) {
-          e.add(RecalculateFOV);
-        }
-      }
-    }
-    const doMove = new RLSystem("doMove", code_doMove, [
-      { type: "param", name: "e", typeName: "entity" },
-      { type: "param", name: "p", typeName: "Position" },
-      { type: "param", name: "m", typeName: "MoveAction" },
-      { type: "constraint", typeName: "MyTurn" }
-    ]);
-    function code_doMelee(e, m, a, f) {
-      const target = m.target;
-      e.remove(m);
-      useTurn(e);
-      const attack = __lib.join({ type: "char", value: " " }, { type: "str", value: a.name }, { type: "str", value: "attacks" }, { type: "str", value: target.Appearance.name });
-      const damage = f.power - target.Fighter.defence;
-      if (damage > 0) {
-        __lib.log({
-          type: "str",
-          value: __lib.join({ type: "char", value: " " }, { type: "str", value: attack }, { type: "str", value: "for" }, { type: "int", value: damage }, { type: "str", value: "hit points" })
-        });
-        hurt(target, damage);
-      } else {
-        __lib.log({
-          type: "str",
-          value: __lib.join({ type: "char", value: " " }, { type: "str", value: attack }, { type: "str", value: "but does no damage" })
-        });
-      }
-    }
-    const doMelee = new RLSystem("doMelee", code_doMelee, [
-      { type: "param", name: "e", typeName: "entity" },
-      { type: "param", name: "m", typeName: "MeleeAction" },
-      { type: "param", name: "a", typeName: "Appearance" },
-      { type: "param", name: "f", typeName: "Fighter" },
-      { type: "constraint", typeName: "MyTurn" }
-    ]);
-    function code_doWait(e) {
-      e.remove(WaitAction);
-      useTurn(e);
-    }
-    const doWait = new RLSystem("doWait", code_doWait, [
-      { type: "param", name: "e", typeName: "entity" },
-      { type: "constraint", typeName: "WaitAction" },
-      { type: "constraint", typeName: "MyTurn" }
-    ]);
-    function code_fov(e, p) {
-      __lib.getFOV(map, { type: "int", value: p.x }, { type: "int", value: p.y }, { type: "int", value: 5 }, visible, explored);
-      e.remove(RecalculateFOV);
-      for (let x = 0; x <= mapWidth - 1; x++) {
-        for (let y = 0; y <= mapHeight - 1; y++) {
-          drawTileAt(x, y);
-        }
-      }
-    }
-    const fov = new RLSystem("fov", code_fov, [
-      { type: "param", name: "e", typeName: "entity" },
-      { type: "param", name: "p", typeName: "Position" },
-      { type: "constraint", typeName: "RecalculateFOV" }
-    ]);
-    function code_drawUnderTile(e, o) {
-      drawTileAt(o.x, o.y);
-      e.remove(o);
-      e.add(RedrawMe);
-    }
-    const drawUnderTile = new RLSystem("drawUnderTile", code_drawUnderTile, [
-      { type: "param", name: "e", typeName: "entity" },
-      { type: "param", name: "o", typeName: "OldPosition" }
-    ]);
-    function code_RedrawMeEntity(e, p) {
-      drawTileAt(p.x, p.y);
-      e.remove(RedrawMe);
-    }
-    const RedrawMeEntity = new RLSystem("RedrawMeEntity", code_RedrawMeEntity, [
-      { type: "param", name: "e", typeName: "entity" },
-      { type: "param", name: "p", typeName: "Position" },
-      { type: "constraint", typeName: "RedrawMe" }
-    ]);
-    function code_drawUI(e, f) {
-      e.remove(RedrawUI);
-      drawBar(0, hpY, f.hp, f.maxHp, 20, "red", "green");
-      __lib.draw({ type: "int", value: 1 }, { type: "int", value: hpY }, {
-        type: "str",
-        value: __lib.join({ type: "str", value: "" }, { type: "str", value: "HP: " }, { type: "int", value: f.hp }, { type: "str", value: "/" }, { type: "int", value: f.maxHp })
-      });
-    }
-    const drawUI = new RLSystem("drawUI", code_drawUI, [
-      { type: "param", name: "e", typeName: "entity" },
-      { type: "param", name: "f", typeName: "Fighter" },
-      { type: "constraint", typeName: "RedrawUI" }
-    ]);
-    function code_nextTurn() {
-      let highest = -99999;
-      for (const _entity of new RLQuery(RL.instance, ["Actor"]).get()) {
-        const { Actor: a } = _entity;
-        if (a.energy > highest) {
-          highest = a.energy;
-        }
-      }
-      if (highest >= 100) {
-        return false;
-      }
-      const elapse = 100 - highest;
-      for (const e of new RLQuery(RL.instance, ["Actor"]).get()) {
-        const { Actor: a } = e;
-        a.energy += elapse;
-        if (a.energy >= 100) {
-          e.add(MyTurn);
-        }
-      }
-    }
-    const nextTurn = new RLSystem("nextTurn", code_nextTurn, []);
-    return /* @__PURE__ */ new Map([
-      ["getBlockingMap", fn_getBlockingMap],
-      ["hurt", fn_hurt],
-      ["useTurn", fn_useTurn],
-      ["drawTileAt", fn_drawTileAt],
-      ["drawEntity", fn_drawEntity],
-      ["drawBar", fn_drawBar],
-      ["randomRoom", fn_randomRoom],
-      ["randomCorridor", fn_randomCorridor],
-      ["generateDungeon", fn_generateDungeon],
-      ["addEnemies", fn_addEnemies],
-      ["main", fn_main],
-      ["onKeyInDungeon", onKeyInDungeon],
-      ["onKeyWhenDead", onKeyWhenDead],
-      ["hostileAI", hostileAI],
-      ["doMove", doMove],
-      ["doMelee", doMelee],
-      ["doWait", doWait],
-      ["fov", fov],
-      ["drawUnderTile", drawUnderTile],
-      ["RedrawMeEntity", RedrawMeEntity],
-      ["drawUI", drawUI],
-      ["nextTurn", nextTurn],
-      ["IsBlocker", IsBlocker],
-      ["IsPlayer", IsPlayer],
-      ["RecalculateFOV", RecalculateFOV],
-      ["RedrawMe", RedrawMe],
-      ["RedrawUI", RedrawUI],
-      ["MyTurn", MyTurn],
-      ["BaseAI", BaseAI],
-      ["HostileEnemy", HostileEnemy],
-      ["WaitAction", WaitAction],
-      ["Player", tmPlayer],
-      ["Enemy", tmEnemy],
-      ["Orc", tmOrc],
-      ["Troll", tmTroll],
-      ["Corpse", tmCorpse]
-    ]);
-  }
-
-  // src/RecursiveShadowCasting.ts
-  var OctantTransform = class {
-    constructor(xx, xy, yx, yy) {
-      this.xx = xx;
-      this.xy = xy;
-      this.yx = yx;
-      this.yy = yy;
-    }
-  };
-  var transforms = [
-    new OctantTransform(1, 0, 0, 1),
-    new OctantTransform(0, 1, 1, 0),
-    new OctantTransform(0, -1, 1, 0),
-    new OctantTransform(-1, 0, 0, 1),
-    new OctantTransform(-1, 0, 0, -1),
-    new OctantTransform(0, -1, -1, 0),
-    new OctantTransform(0, 1, -1, 0),
-    new OctantTransform(1, 0, 0, -1)
-  ];
-  var ShadowCastingGrid = class {
-    constructor(width, height, isOpaque) {
-      this.width = width;
-      this.height = height;
-      this.isOpaque = isOpaque;
-      this.values = /* @__PURE__ */ new Map();
-    }
-    light(x, y, value) {
-      this.values.set({ x, y }, value);
-    }
-  };
-  function ComputeVisibility(grid, gridPosn, viewRadius) {
-    grid.light(gridPosn.x, gridPosn.y, 0);
-    for (const tf of transforms)
-      CastLight(grid, gridPosn, viewRadius, 1, 1, 0, tf);
-  }
-  function CastLight(grid, gridPosn, viewRadius, startColumn, leftViewSlope, rightViewSlope, txfrm) {
-    const viewRadiusSq = viewRadius * viewRadius;
-    const viewCeiling = Math.ceil(viewRadius);
-    let prevWasBlocked = false;
-    let savedRightSlope = -1;
-    const xDim = grid.width;
-    const yDim = grid.height;
-    for (let currentCol = startColumn; currentCol <= viewCeiling; currentCol++) {
-      const xc = currentCol;
-      for (let yc = currentCol; yc >= 0; yc--) {
-        const gridX = gridPosn.x + xc * txfrm.xx + yc * txfrm.xy;
-        const gridY = gridPosn.y + xc * txfrm.yx + yc * txfrm.yy;
-        if (gridX < 0 || gridX >= xDim || gridY < 0 || gridY >= yDim) {
-          continue;
-        }
-        const leftBlockSlope = (yc + 0.5) / (xc - 0.5);
-        const rightBlockSlope = (yc - 0.5) / (xc + 0.5);
-        if (rightBlockSlope > leftViewSlope) {
-          continue;
-        } else if (leftBlockSlope < rightViewSlope) {
-          break;
-        }
-        const distanceSquared = xc * xc + yc * yc;
-        if (distanceSquared <= viewRadiusSq) {
-          grid.light(gridX, gridY, distanceSquared);
-        }
-        const curBlocked = grid.isOpaque(gridX, gridY);
-        if (prevWasBlocked) {
-          if (curBlocked) {
-            savedRightSlope = rightBlockSlope;
-          } else {
-            prevWasBlocked = false;
-            leftViewSlope = savedRightSlope;
-          }
-        } else {
-          if (curBlocked) {
-            if (leftBlockSlope <= leftViewSlope) {
-              CastLight(grid, gridPosn, viewRadius, currentCol + 1, leftViewSlope, leftBlockSlope, txfrm);
-            }
-            prevWasBlocked = true;
-            savedRightSlope = rightBlockSlope;
-          }
-        }
-      }
-      if (prevWasBlocked) {
-        break;
-      }
-    }
-  }
-
   // node_modules/tinycolor-ts/dist/module/util.js
   function bound01(n, max) {
     if (isOnePointZero(n)) {
@@ -2856,6 +2241,677 @@
     return TinyColor2;
   }();
 
+  // src/MessageLog.ts
+  var Message = class {
+    constructor(text, fg, count = 1) {
+      this.text = text;
+      this.fg = fg;
+      this.count = count;
+    }
+    get fullText() {
+      if (this.count > 1)
+        return `${this.text} (x${this.count})`;
+      return this.text;
+    }
+  };
+  var MessageLog = class {
+    constructor(messages = []) {
+      this.messages = messages;
+      this.dirty = false;
+    }
+    add(text, fg = "white", stack = true) {
+      const top = this.messages.at(-1);
+      if (stack && (top == null ? void 0 : top.text) === text)
+        top.count++;
+      else
+        this.messages.push(new Message(text, fg));
+      this.dirty = true;
+    }
+    render(term, x, y, width, height) {
+      let offset = height - 1;
+      term.fillRect(x, y, width, height, " ");
+      for (const msg of this.messages.slice(-height).reverse()) {
+        const text = msg.fullText;
+        const fg = new TinyColor(msg.fg).toNumber() << 8;
+        term.drawString(x, y + offset--, text, fg);
+      }
+      this.dirty = false;
+    }
+  };
+
+  // src/impl.ts
+  function implementation(__lib) {
+    let Layer;
+    ((Layer2) => {
+      Layer2[Layer2["Nothing"] = 0] = "Nothing";
+      Layer2[Layer2["Corpse"] = 1] = "Corpse";
+      Layer2[Layer2["Enemy"] = 2] = "Enemy";
+      Layer2[Layer2["Player"] = 3] = "Player";
+    })(Layer || (Layer = {}));
+    const IsBlocker = new RLTag("IsBlocker");
+    const IsPlayer = new RLTag("IsPlayer");
+    const RecalculateFOV = new RLTag("RecalculateFOV");
+    const RedrawMe = new RLTag("RedrawMe");
+    const RedrawUI = new RLTag("RedrawUI");
+    const MyTurn = new RLTag("MyTurn");
+    const BaseAI = new RLTag("BaseAI");
+    const HostileEnemy = new RLTag("HostileEnemy");
+    const WaitAction = new RLTag("WaitAction");
+    const mkAppearance = (name, ch, fg, bg, layer) => ({
+      type: "component",
+      typeName: "Appearance",
+      name,
+      ch,
+      fg,
+      bg,
+      layer
+    });
+    const mkOldPosition = (x, y) => ({
+      type: "component",
+      typeName: "OldPosition",
+      x,
+      y
+    });
+    const mkPosition = (x, y) => ({
+      type: "component",
+      typeName: "Position",
+      x,
+      y
+    });
+    const mkMoveAction = (x, y) => ({
+      type: "component",
+      typeName: "MoveAction",
+      x,
+      y
+    });
+    const mkMeleeAction = (target) => ({
+      type: "component",
+      typeName: "MeleeAction",
+      target
+    });
+    const mkActor = (energy) => ({
+      type: "component",
+      typeName: "Actor",
+      energy
+    });
+    const mkFighter = (maxHp, hp, defence, power) => ({
+      type: "component",
+      typeName: "Fighter",
+      maxHp,
+      hp,
+      defence,
+      power
+    });
+    const tmPlayer = {
+      type: "template",
+      name: "Player",
+      get: () => [
+        IsBlocker,
+        IsPlayer,
+        mkAppearance("player", "@", "white", "black", 3 /* Player */),
+        mkFighter(30, 30, 2, 5),
+        mkActor(100),
+        MyTurn,
+        RecalculateFOV,
+        RedrawUI
+      ]
+    };
+    const tmEnemy = {
+      type: "template",
+      name: "Enemy",
+      get: () => [IsBlocker, HostileEnemy, mkActor(1)]
+    };
+    const tmOrc = {
+      type: "template",
+      name: "Orc",
+      get: () => [
+        tmEnemy,
+        mkAppearance("orc", "o", "green", "black", 2 /* Enemy */),
+        mkFighter(10, 10, 0, 3)
+      ]
+    };
+    const tmTroll = {
+      type: "template",
+      name: "Troll",
+      get: () => [
+        tmEnemy,
+        mkAppearance("troll", "T", "lime", "black", 2 /* Enemy */),
+        mkFighter(16, 16, 1, 4)
+      ]
+    };
+    const tmCorpse = {
+      type: "template",
+      name: "Corpse",
+      get: () => [
+        RedrawMe,
+        mkAppearance("corpse", "%", "red", "black", 1 /* Corpse */)
+      ]
+    };
+    const Floor = new RLTile(".", true, true);
+    const Wall = new RLTile("#", false, false);
+    const gameWidth = 80;
+    const gameHeight = 50;
+    const mapWidth = gameWidth;
+    const mapHeight = gameHeight - 4;
+    const hpX = 0;
+    const hpY = mapHeight;
+    const hpWidth = 20;
+    const logX = hpWidth + 2;
+    const logY = hpY;
+    const map = new RLGrid(mapWidth, mapHeight, Wall);
+    const explored = new RLGrid(mapWidth, mapHeight, false);
+    const visible = new RLGrid(mapWidth, mapHeight, false);
+    const log = new MessageLog();
+    function getBlockingMap() {
+      const blocked = new RLGrid(mapWidth, mapHeight, false);
+      for (const _entity of new RLQuery(RL.instance, [
+        "Position",
+        "IsBlocker"
+      ]).get()) {
+        const { Position: p } = _entity;
+        blocked.put(p.x, p.y, true);
+      }
+      return blocked;
+    }
+    const fn_getBlockingMap = new RLFn("getBlockingMap", getBlockingMap, []);
+    function hurt(e, damage) {
+      e.Fighter.hp -= damage;
+      if (e.Fighter.hp < 1) {
+        const colour = ((__match) => {
+          if (__match.has(IsPlayer.typeName))
+            return "red";
+          else
+            return "orange";
+        })(e);
+        if (e.IsPlayer) {
+          log.add("You died!", colour);
+        } else {
+          log.add(__lib.join({ type: "char", value: " " }, { type: "str", value: e.Appearance.name }, { type: "str", value: "is dead!" }), colour);
+        }
+        const corpse = __lib.spawn(tmCorpse, mkPosition(e.Position.x, e.Position.y));
+        corpse.Appearance.name = __lib.join({ type: "char", value: " " }, { type: "str", value: "corpse of" }, { type: "str", value: e.Appearance.name });
+        if (e.IsPlayer) {
+          e.add(RedrawUI);
+          e.remove("Actor");
+          hostileAI.disable();
+          __lib.pushKeyHandler(onKeyWhenDead);
+        } else {
+          __lib.remove(e);
+        }
+      } else {
+        if (e.IsPlayer) {
+          e.add(RedrawUI);
+        }
+      }
+    }
+    const fn_hurt = new RLFn("hurt", hurt, [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "param", name: "damage", typeName: "int" }
+    ]);
+    function useTurn(e) {
+      e.Actor.energy -= 100;
+      e.remove(MyTurn);
+    }
+    const fn_useTurn = new RLFn("useTurn", useTurn, [
+      { type: "param", name: "e", typeName: "entity" }
+    ]);
+    function drawTileAt(x, y) {
+      let ch = " ";
+      let fg = "white";
+      let bg = "black";
+      let layer = 0 /* Nothing */;
+      if (visible.at(x, y)) {
+        for (const _entity of new RLQuery(RL.instance, [
+          "Appearance",
+          "Position"
+        ]).get()) {
+          const { Appearance: a, Position: p } = _entity;
+          if (p.x == x && p.y == y && a.layer > layer) {
+            ch = a.ch;
+            fg = a.fg;
+            bg = a.bg;
+            layer = a.layer;
+          }
+        }
+      }
+      if (layer == 0 /* Nothing */ && explored.at(x, y)) {
+        const t = map.at(x, y);
+        if (t) {
+          ch = t.ch;
+          if (visible.at(x, y)) {
+            fg = "silver";
+          } else {
+            fg = "#444";
+          }
+        }
+      }
+      __lib.draw({ type: "int", value: x }, { type: "int", value: y }, { type: "char", value: ch }, { type: "str", value: fg }, { type: "str", value: bg });
+    }
+    const fn_drawTileAt = new RLFn("drawTileAt", drawTileAt, [
+      { type: "param", name: "x", typeName: "int" },
+      { type: "param", name: "y", typeName: "int" }
+    ]);
+    function drawEntity(e) {
+      if (e.Position && e.Appearance && visible.at(e.Position.x, e.Position.y)) {
+        __lib.draw({ type: "int", value: e.Position.x }, { type: "int", value: e.Position.y }, { type: "char", value: e.Appearance.ch }, { type: "str", value: e.Appearance.fg }, { type: "str", value: e.Appearance.bg });
+      }
+    }
+    const fn_drawEntity = new RLFn("drawEntity", drawEntity, [
+      { type: "param", name: "e", typeName: "entity" }
+    ]);
+    function drawBar(x, y, value, maxValue, maxWidth, emptyColour, filledColour) {
+      const barWidth = __lib.floor({
+        type: "int",
+        value: value / maxValue * maxWidth
+      });
+      __lib.draw({ type: "int", value: x }, { type: "int", value: y }, {
+        type: "str",
+        value: __lib.repeat({ type: "char", value: " " }, { type: "int", value: maxWidth })
+      }, { type: "str", value: "white" }, { type: "str", value: emptyColour });
+      if (barWidth > 0) {
+        __lib.draw({ type: "int", value: x }, { type: "int", value: y }, {
+          type: "str",
+          value: __lib.repeat({ type: "char", value: " " }, { type: "int", value: barWidth })
+        }, { type: "str", value: "white" }, { type: "str", value: filledColour });
+      }
+    }
+    const fn_drawBar = new RLFn("drawBar", drawBar, [
+      { type: "param", name: "x", typeName: "int" },
+      { type: "param", name: "y", typeName: "int" },
+      { type: "param", name: "value", typeName: "int" },
+      { type: "param", name: "maxValue", typeName: "int" },
+      { type: "param", name: "maxWidth", typeName: "int" },
+      { type: "param", name: "emptyColour", typeName: "str" },
+      { type: "param", name: "filledColour", typeName: "str" }
+    ]);
+    function randomRoom() {
+      const w = __lib.randInt({ type: "int", value: 6 }, { type: "int", value: 14 });
+      const h = __lib.randInt({ type: "int", value: 6 }, { type: "int", value: 14 });
+      const x = __lib.randInt({ type: "int", value: 1 }, { type: "int", value: mapWidth - w - 1 });
+      const y = __lib.randInt({ type: "int", value: 1 }, { type: "int", value: mapHeight - h - 1 });
+      return new RLRect(x, y, w, h);
+    }
+    const fn_randomRoom = new RLFn("randomRoom", randomRoom, []);
+    function randomCorridor(x1, y1, x2, y2) {
+      let cx = x2;
+      let cy = y1;
+      if (__lib.randInt({ type: "int", value: 0 }, { type: "int", value: 1 })) {
+        cx = x1;
+        cy = y2;
+      }
+      map.line(x1, y1, cx, cy, Floor);
+      map.line(cx, cy, x2, y2, Floor);
+    }
+    const fn_randomCorridor = new RLFn("randomCorridor", randomCorridor, [
+      { type: "param", name: "x1", typeName: "int" },
+      { type: "param", name: "y1", typeName: "int" },
+      { type: "param", name: "x2", typeName: "int" },
+      { type: "param", name: "y2", typeName: "int" }
+    ]);
+    function generateDungeon() {
+      map.clear();
+      explored.clear();
+      visible.clear();
+      let prev;
+      let room;
+      const taken = new RLGrid(mapWidth, mapHeight, false);
+      for (let r = 1; r <= 30; r++) {
+        room = randomRoom();
+        if (!map.findInRegion(room, Floor)) {
+          map.rect(room.x + 1, room.y + 1, room.x2 - 1, room.y2 - 1, Floor);
+          if (prev) {
+            randomCorridor(prev.cx, prev.cy, room.cx, room.cy);
+            addEnemies(room, taken);
+          } else {
+            __lib.spawn(tmPlayer, mkPosition(room.cx, room.cy));
+          }
+          prev = room;
+        }
+      }
+      hostileAI.enable();
+      log.add("Welcome to the RLscript dungeon!", "skyblue");
+    }
+    const fn_generateDungeon = new RLFn("generateDungeon", generateDungeon, []);
+    function addEnemies(r, taken) {
+      for (let z = 1; z <= __lib.randInt({ type: "int", value: 0 }, { type: "int", value: 2 }); z++) {
+        const x = __lib.randInt({ type: "int", value: r.x + 1 }, { type: "int", value: r.x2 - 1 });
+        const y = __lib.randInt({ type: "int", value: r.y + 1 }, { type: "int", value: r.y2 - 1 });
+        if (!taken.at(x, y)) {
+          taken.put(x, y, true);
+          if (__lib.randInt({ type: "int", value: 1 }, { type: "int", value: 100 }) < 80) {
+            __lib.spawn(tmOrc, mkPosition(x, y));
+          } else {
+            __lib.spawn(tmTroll, mkPosition(x, y));
+          }
+        }
+      }
+    }
+    const fn_addEnemies = new RLFn("addEnemies", addEnemies, [
+      { type: "param", name: "r", typeName: "rect" },
+      { type: "param", name: "taken", typeName: "grid" }
+    ]);
+    function main() {
+      __lib.setSize({ type: "int", value: gameWidth }, { type: "int", value: gameHeight });
+      generateDungeon();
+      __lib.pushKeyHandler(onKeyInDungeon);
+    }
+    const fn_main = new RLFn("main", main, []);
+    function code_onKeyInDungeon(e, k) {
+      e.add(((__match) => {
+        if (__match === "up")
+          return mkMoveAction(0, -1);
+        else if (__match === "right")
+          return mkMoveAction(1, 0);
+        else if (__match === "down")
+          return mkMoveAction(0, 1);
+        else if (__match === "left")
+          return mkMoveAction(-1, 0);
+        else if (__match === "wait")
+          return WaitAction;
+      })(k.key));
+    }
+    const onKeyInDungeon = new RLSystem("onKeyInDungeon", code_onKeyInDungeon, [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "constraint", typeName: "IsPlayer" },
+      { type: "param", name: "k", typeName: "KeyEvent" }
+    ]);
+    function code_onKeyWhenDead(e, k) {
+    }
+    const onKeyWhenDead = new RLSystem("onKeyWhenDead", code_onKeyWhenDead, [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "constraint", typeName: "IsPlayer" },
+      { type: "param", name: "k", typeName: "KeyEvent" }
+    ]);
+    function code_hostileAI(e, p) {
+      if (visible.at(p.x, p.y)) {
+        for (const target of new RLQuery(RL.instance, [
+          "Position",
+          "IsPlayer"
+        ]).get()) {
+          const { Position: tp } = target;
+          const dx = tp.x - p.x;
+          const dy = tp.y - p.y;
+          const distance = __lib.abs({ type: "int", value: dx }) + __lib.abs({ type: "int", value: dy });
+          if (distance < 2) {
+            e.add(mkMeleeAction(target));
+            return;
+          }
+          const step = __lib.getNextMove(map, getBlockingMap(), new RLXY(p.x, p.y), new RLXY(tp.x, tp.y));
+          if (step) {
+            e.add(mkMoveAction(step.x - p.x, step.y - p.y));
+            return;
+          }
+        }
+      }
+      e.add(WaitAction);
+    }
+    const hostileAI = new RLSystem("hostileAI", code_hostileAI, [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "param", name: "p", typeName: "Position" },
+      { type: "constraint", typeName: "HostileEnemy" },
+      { type: "constraint", typeName: "MyTurn" }
+    ]);
+    function code_doMove(e, p, m) {
+      const x = p.x + m.x;
+      const y = p.y + m.y;
+      e.remove(m);
+      const t = map.at(x, y);
+      if (t && t.walkable) {
+        const b = __lib.find(IsBlocker, mkPosition(x, y));
+        if (b && b.has("Fighter")) {
+          e.add(mkMeleeAction(b));
+          return;
+        }
+        useTurn(e);
+        e.add(mkOldPosition(p.x, p.y));
+        p.x = x;
+        p.y = y;
+        if (e.IsPlayer) {
+          e.add(RecalculateFOV);
+        }
+      }
+    }
+    const doMove = new RLSystem("doMove", code_doMove, [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "param", name: "p", typeName: "Position" },
+      { type: "param", name: "m", typeName: "MoveAction" },
+      { type: "constraint", typeName: "MyTurn" }
+    ]);
+    function code_doMelee(e, m, a, f) {
+      const target = m.target;
+      e.remove(m);
+      useTurn(e);
+      const attack = __lib.join({ type: "char", value: " " }, { type: "str", value: a.name }, { type: "str", value: "attacks" }, { type: "str", value: target.Appearance.name });
+      const damage = f.power - target.Fighter.defence;
+      const colour = ((__match) => {
+        if (__match.has(IsPlayer.typeName))
+          return "white";
+        else
+          return "red";
+      })(e);
+      if (damage > 0) {
+        log.add(__lib.join({ type: "char", value: " " }, { type: "str", value: attack }, { type: "str", value: "for" }, { type: "int", value: damage }, { type: "str", value: "hit points" }), colour);
+        hurt(target, damage);
+      } else {
+        log.add(__lib.join({ type: "char", value: " " }, { type: "str", value: attack }, { type: "str", value: "but does no damage" }), colour);
+      }
+    }
+    const doMelee = new RLSystem("doMelee", code_doMelee, [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "param", name: "m", typeName: "MeleeAction" },
+      { type: "param", name: "a", typeName: "Appearance" },
+      { type: "param", name: "f", typeName: "Fighter" },
+      { type: "constraint", typeName: "MyTurn" }
+    ]);
+    function code_doWait(e) {
+      e.remove(WaitAction);
+      useTurn(e);
+    }
+    const doWait = new RLSystem("doWait", code_doWait, [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "constraint", typeName: "WaitAction" },
+      { type: "constraint", typeName: "MyTurn" }
+    ]);
+    function code_fov(e, p) {
+      __lib.getFOV(map, { type: "int", value: p.x }, { type: "int", value: p.y }, { type: "int", value: 5 }, visible, explored);
+      e.remove(RecalculateFOV);
+      for (let x = 0; x <= mapWidth - 1; x++) {
+        for (let y = 0; y <= mapHeight - 1; y++) {
+          drawTileAt(x, y);
+        }
+      }
+    }
+    const fov = new RLSystem("fov", code_fov, [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "param", name: "p", typeName: "Position" },
+      { type: "constraint", typeName: "RecalculateFOV" }
+    ]);
+    function code_drawUnderTile(e, o) {
+      drawTileAt(o.x, o.y);
+      e.remove(o);
+      e.add(RedrawMe);
+    }
+    const drawUnderTile = new RLSystem("drawUnderTile", code_drawUnderTile, [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "param", name: "o", typeName: "OldPosition" }
+    ]);
+    function code_RedrawMeEntity(e, p) {
+      drawTileAt(p.x, p.y);
+      e.remove(RedrawMe);
+    }
+    const RedrawMeEntity = new RLSystem("RedrawMeEntity", code_RedrawMeEntity, [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "param", name: "p", typeName: "Position" },
+      { type: "constraint", typeName: "RedrawMe" }
+    ]);
+    function code_drawUI(e, f) {
+      e.remove(RedrawUI);
+      drawBar(hpX, hpY, f.hp, f.maxHp, hpWidth, "red", "green");
+      __lib.draw({ type: "int", value: hpX + 1 }, { type: "int", value: hpY }, {
+        type: "str",
+        value: __lib.join({ type: "str", value: "" }, { type: "str", value: "HP: " }, { type: "int", value: f.hp }, { type: "str", value: "/" }, { type: "int", value: f.maxHp })
+      });
+    }
+    const drawUI = new RLSystem("drawUI", code_drawUI, [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "param", name: "f", typeName: "Fighter" },
+      { type: "constraint", typeName: "RedrawUI" }
+    ]);
+    function code_nextTurn() {
+      let highest = -99999;
+      for (const _entity of new RLQuery(RL.instance, ["Actor"]).get()) {
+        const { Actor: a } = _entity;
+        if (a.energy > highest) {
+          highest = a.energy;
+        }
+      }
+      if (highest >= 100) {
+        return false;
+      }
+      const elapse = 100 - highest;
+      for (const e of new RLQuery(RL.instance, ["Actor"]).get()) {
+        const { Actor: a } = e;
+        a.energy += elapse;
+        if (a.energy >= 100) {
+          e.add(MyTurn);
+        }
+      }
+    }
+    const nextTurn = new RLSystem("nextTurn", code_nextTurn, []);
+    function code_showLog() {
+      if (log.dirty) {
+        __lib.drawLog(log, { type: "int", value: logX }, { type: "int", value: logY }, { type: "int", value: gameWidth - logX }, { type: "int", value: gameHeight - logY });
+      } else {
+        return false;
+      }
+    }
+    const showLog = new RLSystem("showLog", code_showLog, []);
+    return /* @__PURE__ */ new Map([
+      ["getBlockingMap", fn_getBlockingMap],
+      ["hurt", fn_hurt],
+      ["useTurn", fn_useTurn],
+      ["drawTileAt", fn_drawTileAt],
+      ["drawEntity", fn_drawEntity],
+      ["drawBar", fn_drawBar],
+      ["randomRoom", fn_randomRoom],
+      ["randomCorridor", fn_randomCorridor],
+      ["generateDungeon", fn_generateDungeon],
+      ["addEnemies", fn_addEnemies],
+      ["main", fn_main],
+      ["onKeyInDungeon", onKeyInDungeon],
+      ["onKeyWhenDead", onKeyWhenDead],
+      ["hostileAI", hostileAI],
+      ["doMove", doMove],
+      ["doMelee", doMelee],
+      ["doWait", doWait],
+      ["fov", fov],
+      ["drawUnderTile", drawUnderTile],
+      ["RedrawMeEntity", RedrawMeEntity],
+      ["drawUI", drawUI],
+      ["nextTurn", nextTurn],
+      ["showLog", showLog],
+      ["IsBlocker", IsBlocker],
+      ["IsPlayer", IsPlayer],
+      ["RecalculateFOV", RecalculateFOV],
+      ["RedrawMe", RedrawMe],
+      ["RedrawUI", RedrawUI],
+      ["MyTurn", MyTurn],
+      ["BaseAI", BaseAI],
+      ["HostileEnemy", HostileEnemy],
+      ["WaitAction", WaitAction],
+      ["Player", tmPlayer],
+      ["Enemy", tmEnemy],
+      ["Orc", tmOrc],
+      ["Troll", tmTroll],
+      ["Corpse", tmCorpse]
+    ]);
+  }
+
+  // src/RecursiveShadowCasting.ts
+  var OctantTransform = class {
+    constructor(xx, xy, yx, yy) {
+      this.xx = xx;
+      this.xy = xy;
+      this.yx = yx;
+      this.yy = yy;
+    }
+  };
+  var transforms = [
+    new OctantTransform(1, 0, 0, 1),
+    new OctantTransform(0, 1, 1, 0),
+    new OctantTransform(0, -1, 1, 0),
+    new OctantTransform(-1, 0, 0, 1),
+    new OctantTransform(-1, 0, 0, -1),
+    new OctantTransform(0, -1, -1, 0),
+    new OctantTransform(0, 1, -1, 0),
+    new OctantTransform(1, 0, 0, -1)
+  ];
+  var ShadowCastingGrid = class {
+    constructor(width, height, isOpaque) {
+      this.width = width;
+      this.height = height;
+      this.isOpaque = isOpaque;
+      this.values = /* @__PURE__ */ new Map();
+    }
+    light(x, y, value) {
+      this.values.set({ x, y }, value);
+    }
+  };
+  function ComputeVisibility(grid, gridPosn, viewRadius) {
+    grid.light(gridPosn.x, gridPosn.y, 0);
+    for (const tf of transforms)
+      CastLight(grid, gridPosn, viewRadius, 1, 1, 0, tf);
+  }
+  function CastLight(grid, gridPosn, viewRadius, startColumn, leftViewSlope, rightViewSlope, txfrm) {
+    const viewRadiusSq = viewRadius * viewRadius;
+    const viewCeiling = Math.ceil(viewRadius);
+    let prevWasBlocked = false;
+    let savedRightSlope = -1;
+    const xDim = grid.width;
+    const yDim = grid.height;
+    for (let currentCol = startColumn; currentCol <= viewCeiling; currentCol++) {
+      const xc = currentCol;
+      for (let yc = currentCol; yc >= 0; yc--) {
+        const gridX = gridPosn.x + xc * txfrm.xx + yc * txfrm.xy;
+        const gridY = gridPosn.y + xc * txfrm.yx + yc * txfrm.yy;
+        if (gridX < 0 || gridX >= xDim || gridY < 0 || gridY >= yDim) {
+          continue;
+        }
+        const leftBlockSlope = (yc + 0.5) / (xc - 0.5);
+        const rightBlockSlope = (yc - 0.5) / (xc + 0.5);
+        if (rightBlockSlope > leftViewSlope) {
+          continue;
+        } else if (leftBlockSlope < rightViewSlope) {
+          break;
+        }
+        const distanceSquared = xc * xc + yc * yc;
+        if (distanceSquared <= viewRadiusSq) {
+          grid.light(gridX, gridY, distanceSquared);
+        }
+        const curBlocked = grid.isOpaque(gridX, gridY);
+        if (prevWasBlocked) {
+          if (curBlocked) {
+            savedRightSlope = rightBlockSlope;
+          } else {
+            prevWasBlocked = false;
+            leftViewSlope = savedRightSlope;
+          }
+        } else {
+          if (curBlocked) {
+            if (leftBlockSlope <= leftViewSlope) {
+              CastLight(grid, gridPosn, viewRadius, currentCol + 1, leftViewSlope, leftBlockSlope, txfrm);
+            }
+            prevWasBlocked = true;
+            savedRightSlope = rightBlockSlope;
+          }
+        }
+      }
+      if (prevWasBlocked) {
+        break;
+      }
+    }
+  }
+
   // src/lib.ts
   function setSize({ value: width }, { value: height }) {
     Game.instance.width = width;
@@ -2994,7 +3050,7 @@
       }
     }).join(glue);
   }
-  function log({ value: message }) {
+  function debug({ value: message }) {
     console.log(message);
   }
   function remove(e) {
@@ -3009,17 +3065,21 @@
       s += ch;
     return s;
   }
+  function drawLog(log, { value: x }, { value: y }, { value: width }, { value: height }) {
+    log.render(Game.instance.terminal, x, y, width, height);
+  }
   var lib = {
     abs,
     add,
+    debug,
     draw,
+    drawLog,
     drawGrid,
     find,
     floor,
     getFOV,
     getNextMove,
     join,
-    log,
     pushKeyHandler,
     randInt,
     remove,

@@ -93,12 +93,17 @@ tiletype Wall '#' end
 global gameWidth: int = 80
 global gameHeight: int = 50
 global mapWidth: int = gameWidth
-global mapHeight: int = gameHeight - 3
+global mapHeight: int = gameHeight - 4
+global hpX: int = 0
 global hpY: int = mapHeight
+global hpWidth: int = 20
+global logX: int = hpWidth + 2
+global logY: int = hpY
 
 global map: grid = grid(mapWidth, mapHeight, Wall)
 global explored: grid = grid(mapWidth, mapHeight, false)
 global visible: grid = grid(mapWidth, mapHeight, false)
+global log: messages = messages()
 
 system onKeyInDungeon(e: entity, IsPlayer, k: KeyEvent)
   e.add(match k.key
@@ -174,10 +179,12 @@ end
 fn hurt(e: entity, damage: int)
   e.Fighter.hp -= damage
   if e.Fighter.hp < 1
+    local colour: str = match e IsPlayer="red" else="orange" end
+
     if e.IsPlayer
-      log("You died!")
+      log.add("You died!", colour)
     else
-      log(join(' ', e.Appearance.name, "is dead!"))
+      log.add(join(' ', e.Appearance.name, "is dead!"), colour)
     end
 
     local corpse: entity = spawn(Corpse, Position(e.Position.x, e.Position.y))
@@ -205,11 +212,12 @@ system doMelee(e: entity, m: MeleeAction, a: Appearance, f: Fighter, MyTurn)
 
   local attack: str = join(' ', a.name, "attacks", target.Appearance.name)
   local damage: int = f.power - target.Fighter.defence
+  local colour: str = match e IsPlayer="white" else="red" end
   if damage > 0
-    log(join(' ', attack, "for", damage, "hit points"))
+    log.add(join(' ', attack, "for", damage, "hit points"), colour)
     hurt(target, damage)
   else
-    log(join(' ', attack, "but does no damage"))
+    log.add(join(' ', attack, "but does no damage"), colour)
   end
 end
 
@@ -296,8 +304,8 @@ end
 system drawUI(e: entity, f: Fighter, RedrawUI)
   e.remove(RedrawUI)
 
-  drawBar(0, hpY, f.hp, f.maxHp, 20, "red", "green")
-  draw(1, hpY, join("", "HP: ", f.hp, "/", f.maxHp))
+  drawBar(hpX, hpY, f.hp, f.maxHp, hpWidth, "red", "green")
+  draw(hpX+1, hpY, join("", "HP: ", f.hp, "/", f.maxHp))
 end
 
 system nextTurn()
@@ -317,6 +325,14 @@ system nextTurn()
     if a.energy >= 100
       e.add(MyTurn)
     end
+  end
+end
+
+system showLog()
+  if log.dirty
+    drawLog(log, logX, logY, gameWidth - logX, gameHeight - logY)
+  else
+    return false
   end
 end
 
@@ -366,6 +382,7 @@ fn generateDungeon()
   end
 
   hostileAI.enable()
+  log.add("Welcome to the RLscript dungeon!", "skyblue")
 end
 
 fn addEnemies(r: rect, taken: grid)

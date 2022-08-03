@@ -7,6 +7,7 @@ import {
   OldPosition,
   Position,
 } from "./implTypes";
+import MessageLog from "./MessageLog";
 import RL, {
   RLEntity,
   RLEnv,
@@ -151,11 +152,16 @@ export default function implementation(__lib: libtype): RLEnv {
   const gameWidth = 80;
   const gameHeight = 50;
   const mapWidth: number = gameWidth;
-  const mapHeight: number = gameHeight - 3;
+  const mapHeight: number = gameHeight - 4;
+  const hpX = 0;
   const hpY: number = mapHeight;
+  const hpWidth = 20;
+  const logX: number = hpWidth + 2;
+  const logY: number = hpY;
   const map: RLGrid = new RLGrid(mapWidth, mapHeight, Wall);
   const explored: RLGrid = new RLGrid(mapWidth, mapHeight, false);
   const visible: RLGrid = new RLGrid(mapWidth, mapHeight, false);
+  const log: MessageLog = new MessageLog();
 
   function getBlockingMap() {
     const blocked: RLGrid = new RLGrid(mapWidth, mapHeight, false);
@@ -173,17 +179,21 @@ export default function implementation(__lib: libtype): RLEnv {
   function hurt(e: RLEntity, damage: number) {
     e.Fighter.hp -= damage;
     if (e.Fighter.hp < 1) {
+      const colour: string = ((__match) => {
+        if (__match.has(IsPlayer.typeName)) return "red";
+        else return "orange";
+      })(e);
       if (e.IsPlayer) {
-        __lib.log({ type: "str", value: "You died!" });
+        log.add("You died!", colour);
       } else {
-        __lib.log({
-          type: "str",
-          value: __lib.join(
+        log.add(
+          __lib.join(
             { type: "char", value: " " },
             { type: "str", value: e.Appearance.name },
             { type: "str", value: "is dead!" }
           ),
-        });
+          colour
+        );
       }
       const corpse: RLEntity = __lib.spawn(
         tmCorpse,
@@ -390,6 +400,7 @@ export default function implementation(__lib: libtype): RLEnv {
       }
     }
     hostileAI.enable();
+    log.add("Welcome to the RLscript dungeon!", "skyblue");
   }
   const fn_generateDungeon = new RLFn("generateDungeon", generateDungeon, []);
 
@@ -439,12 +450,12 @@ export default function implementation(__lib: libtype): RLEnv {
 
   function code_onKeyInDungeon(e: RLEntity, k: RLKeyEvent) {
     e.add(
-      ((matchvar) => {
-        if (matchvar === "up") return mkMoveAction(0, -1);
-        else if (matchvar === "right") return mkMoveAction(1, 0);
-        else if (matchvar === "down") return mkMoveAction(0, 1);
-        else if (matchvar === "left") return mkMoveAction(-1, 0);
-        else if (matchvar === "wait") return WaitAction;
+      ((__match) => {
+        if (__match === "up") return mkMoveAction(0, -1);
+        else if (__match === "right") return mkMoveAction(1, 0);
+        else if (__match === "down") return mkMoveAction(0, 1);
+        else if (__match === "left") return mkMoveAction(-1, 0);
+        else if (__match === "wait") return WaitAction;
       })(k.key)
     );
   }
@@ -541,27 +552,31 @@ export default function implementation(__lib: libtype): RLEnv {
       { type: "str", value: target.Appearance.name }
     );
     const damage: number = f.power - target.Fighter.defence;
+    const colour: string = ((__match) => {
+      if (__match.has(IsPlayer.typeName)) return "white";
+      else return "red";
+    })(e);
     if (damage > 0) {
-      __lib.log({
-        type: "str",
-        value: __lib.join(
+      log.add(
+        __lib.join(
           { type: "char", value: " " },
           { type: "str", value: attack },
           { type: "str", value: "for" },
           { type: "int", value: damage },
           { type: "str", value: "hit points" }
         ),
-      });
+        colour
+      );
       hurt(target, damage);
     } else {
-      __lib.log({
-        type: "str",
-        value: __lib.join(
+      log.add(
+        __lib.join(
           { type: "char", value: " " },
           { type: "str", value: attack },
           { type: "str", value: "but does no damage" }
         ),
-      });
+        colour
+      );
     }
   }
   const doMelee = new RLSystem("doMelee", code_doMelee, [
@@ -626,9 +641,9 @@ export default function implementation(__lib: libtype): RLEnv {
 
   function code_drawUI(e: RLEntity, f: Fighter) {
     e.remove(RedrawUI);
-    drawBar(0, hpY, f.hp, f.maxHp, 20, "red", "green");
+    drawBar(hpX, hpY, f.hp, f.maxHp, hpWidth, "red", "green");
     __lib.draw(
-      { type: "int", value: 1 },
+      { type: "int", value: hpX + 1 },
       { type: "int", value: hpY },
       {
         type: "str",
@@ -670,6 +685,21 @@ export default function implementation(__lib: libtype): RLEnv {
   }
   const nextTurn = new RLSystem("nextTurn", code_nextTurn, []);
 
+  function code_showLog() {
+    if (log.dirty) {
+      __lib.drawLog(
+        log,
+        { type: "int", value: logX },
+        { type: "int", value: logY },
+        { type: "int", value: gameWidth - logX },
+        { type: "int", value: gameHeight - logY }
+      );
+    } else {
+      return false;
+    }
+  }
+  const showLog = new RLSystem("showLog", code_showLog, []);
+
   return new Map<string, RLObject>([
     ["getBlockingMap", fn_getBlockingMap],
     ["hurt", fn_hurt],
@@ -693,6 +723,7 @@ export default function implementation(__lib: libtype): RLEnv {
     ["RedrawMeEntity", RedrawMeEntity],
     ["drawUI", drawUI],
     ["nextTurn", nextTurn],
+    ["showLog", showLog],
     ["IsBlocker", IsBlocker],
     ["IsPlayer", IsPlayer],
     ["RecalculateFOV", RecalculateFOV],

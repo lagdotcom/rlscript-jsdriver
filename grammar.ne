@@ -78,7 +78,7 @@ param -> field {% id %}
        | type {% ([type]) => ({ _: 'constraint', type: type.value }) %}
 
 enumvals -> enumval
-          | enumvals __ enumval {% ([values,,value]) => values.concat(value) %} 
+          | enumvals __ enumval {% ([values,,value]) => values.concat(value) %}
 enumval -> name {% ([name]) => ({ name }) %}
          | name _ "=" _ expr {% ([name,,,expr]) => ({ name, expr }) %}
 
@@ -182,6 +182,7 @@ matchexpr -> "match" __ expr _ matchlist _ "end" {% ([,,expr,,matches]) => ({ _:
 matchlist -> match
            | matchlist _ match {% ([matches,,match]) => matches.concat(match) %}
 match -> expr _ "=" _ expr {% ([expr,,,,value]) => ({ _: 'case', expr, value }) %}
+       | "else" _ "=" _ expr {% ([,,,,value]) => ({ _: 'case', expr: "else", value }) %}
 
 qname -> name {% ([name]) => ({ _: 'qname', chain: [name.value] }) %}
        | qname "." name {% ([qname,,name]) => ({ ...qname, chain: qname.chain.concat(name.value) }) %}

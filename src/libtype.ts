@@ -11,12 +11,21 @@ import {
   RLTile,
   RLXY,
 } from "./RL";
+import MessageLog from "./MessageLog";
 import { RLComponent } from "./implTypes";
 
 type libtype = {
   abs(n: RLInt): number;
   add(...args: (RLComponent | RLTag)[]): void;
+  debug(message: RLStr): void;
   draw(x: RLInt, y: RLInt, s: RLChar | RLStr, fg?: RLStr, bg?: RLStr): void;
+  drawLog(
+    log: MessageLog,
+    x: RLInt,
+    y: RLInt,
+    width: RLInt,
+    height: RLInt
+  ): void;
   drawGrid(g: RLGrid<RLTile>): void;
   find(...args: (RLComponent | RLTag)[]): RLEntity | undefined;
   floor(x: RLInt | RLFloat): number;
@@ -35,7 +44,6 @@ type libtype = {
     dst: RLXY
   ): RLXY | undefined;
   join(glue: RLChar | RLStr, ...parts: (RLChar | RLStr | RLInt)[]): string;
-  log(message: RLStr): void;
   pushKeyHandler(handler: RLSystem): void;
   randInt(min: RLInt, max: RLInt): void;
   remove(e: RLEntity): void;

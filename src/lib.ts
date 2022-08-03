@@ -1,5 +1,6 @@
 import { ComputeVisibility, ShadowCastingGrid } from "./RecursiveShadowCasting";
 import Game from "./Game";
+import MessageLog from "./MessageLog";
 import RL, {
   RLChar,
   RLEntity,
@@ -208,7 +209,7 @@ function join(
     .join(glue);
 }
 
-function log({ value: message }: RLStr) {
+function debug({ value: message }: RLStr) {
   console.log(message);
 }
 
@@ -227,17 +228,28 @@ function repeat({ value: ch }: RLChar | RLStr, { value: count }: RLInt) {
   return s;
 }
 
+function drawLog(
+  log: MessageLog,
+  { value: x }: RLInt,
+  { value: y }: RLInt,
+  { value: width }: RLInt,
+  { value: height }: RLInt
+) {
+  log.render(Game.instance.terminal, x, y, width, height);
+}
+
 const lib: libtype = {
   abs,
   add,
+  debug,
   draw,
+  drawLog,
   drawGrid,
   find,
   floor,
   getFOV,
   getNextMove,
   join,
-  log,
   pushKeyHandler,
   randInt,
   remove,

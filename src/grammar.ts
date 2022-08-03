@@ -206,6 +206,7 @@ const grammar: Grammar = {
     {"name": "matchlist", "symbols": ["match"]},
     {"name": "matchlist", "symbols": ["matchlist", "_", "match"], "postprocess": ([matches,,match]) => matches.concat(match)},
     {"name": "match", "symbols": ["expr", "_", {"literal":"="}, "_", "expr"], "postprocess": ([expr,,,,value]) => ({ _: 'case', expr, value })},
+    {"name": "match", "symbols": [{"literal":"else"}, "_", {"literal":"="}, "_", "expr"], "postprocess": ([,,,,value]) => ({ _: 'case', expr: "else", value })},
     {"name": "qname", "symbols": ["name"], "postprocess": ([name]) => ({ _: 'qname', chain: [name.value] })},
     {"name": "qname", "symbols": ["qname", {"literal":"."}, "name"], "postprocess": ([qname,,name]) => ({ ...qname, chain: qname.chain.concat(name.value) })},
     {"name": "ntype", "symbols": ["type"], "postprocess": ([name]) => ({ _: 'type', value: name.value })},

@@ -7,6 +7,7 @@ export type LibFunctionType =
   | "fn"
   | "grid"
   | "int"
+  | "messages"
   | "KeyEvent"
   | "rect"
   | "str"
@@ -58,6 +59,7 @@ const library = [
     [p("width", "int"), p("height", "int"), p("empty", "bool", "int", "tile")],
     p("g", "grid")
   ),
+  f("messages", [], p("log", "messages")),
   f(
     "rect",
     [p("x", "int"), p("y", "int"), p("width", "int"), p("height", "int")],
@@ -68,12 +70,20 @@ const library = [
   // library
   f("abs", [p("value", "int")], p("value", "int")),
   v("add", [], p("components", "component", "tag")),
+  f("debug", [p("message", "str")]),
   f("draw", [
     p("x", "int"),
     p("y", "int"),
     p("s", "char", "str"),
     o("fg", "str"),
     o("bg", "str"),
+  ]),
+  f("drawLog", [
+    p("log", "messages"),
+    p("x", "int"),
+    p("y", "int"),
+    p("width", "int"),
+    p("height", "int"),
   ]),
   f("drawGrid", [p("g", "grid")]),
   v("find", [], p("criteria", "component", "tag"), o("match", "entity")),
@@ -97,7 +107,6 @@ const library = [
     p("parts", "char", "str", "int"),
     p("string", "str")
   ),
-  f("log", [p("message", "str")]),
   f("pushKeyHandler", [p("handler", "system")]),
   f("randInt", [p("min", "int"), p("max", "int")], p("value", "int")),
   f("remove", [p("e", "entity")]),

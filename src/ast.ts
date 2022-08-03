@@ -117,7 +117,7 @@ export type ASTExpr =
 export type ASTIdent = { _: "id"; value: string };
 
 export type ASTMatch = { _: "match"; expr: ASTExpr; matches: ASTCase[] };
-export type ASTCase = { _: "case"; expr: ASTExpr; value: ASTExpr };
+export type ASTCase = { _: "case"; expr: ASTExpr | "else"; value: ASTExpr };
 
 export type ASTQName = { _: "qname"; chain: string[] };
 

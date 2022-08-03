@@ -148,18 +148,18 @@ const tileType = asType("tile");
 const builtinTypes = new Set<string>([
   "char",
   "component",
+  "entity",
   "fn",
   "grid",
   "int",
+  "KeyEvent",
+  "messages",
   "str",
   "system",
   "tag",
   "template",
   "tile",
   "xy",
-
-  "entity",
-  "KeyEvent",
 ]);
 function fixType(n: string | ASTType) {
   if (typeof n === "string") return fixName(n);
@@ -359,6 +359,19 @@ class SystemScope implements TSScope {
       ["enabled", boolType],
       ["enable", fnType],
       ["disable", fnType],
+    ]);
+  }
+}
+
+class MessagesScope implements TSScope {
+  members: Map<string, ASTType>;
+  name: "messages";
+
+  constructor(public parent: TSScope) {
+    this.name = "messages";
+    this.members = new Map<string, ASTType>([
+      ["dirty", boolType],
+      ["add", fnType],
     ]);
   }
 }
@@ -808,6 +821,7 @@ export default class TSCompiler implements TSScope {
       if (n === "grid") return `new RLGrid(${this.getArgs(args)})`;
       else if (n === "rect") return `new RLRect(${this.getArgs(args)})`;
       else if (n === "xy") return `new RLXY(${this.getArgs(args)})`;
+      else if (n === "messages") return `new MessageLog(${this.getArgs(args)})`;
     }
 
     if (s.value === "fn") return `${fixName(n)}(${this.getArgs(args)})`;
@@ -838,11 +852,12 @@ export default class TSCompiler implements TSScope {
               case "template":
                 return "tm" + name;
 
+              case "entity":
+              case "grid":
+              case "messages":
               case "system":
               case "tag":
               case "tile":
-              case "entity":
-              case "grid":
               case "xy":
                 return fixName(name);
             }
@@ -1005,6 +1020,9 @@ export default class TSCompiler implements TSScope {
       case "bool":
         return "boolean" + suffix;
 
+      case "messages":
+        return "MessageLog" + suffix;
+
       case "entity":
         return "RLEntity" + suffix;
       case "grid":
@@ -1058,13 +1076,14 @@ export default class TSCompiler implements TSScope {
         )})`;
 
       case "match":
-        return `((matchvar) => {
+        return `((__match) => {
             ${e.matches
-              .map(
-                (m) =>
-                  `if (matchvar === ${this.getExpr(
-                    m.expr
-                  )}) return ${this.getExpr(m.value)};`
+              .map((m) =>
+                m.expr === "else"
+                  ? `return ${this.getExpr(m.value)}`
+                  : `if (${this.getMatchCase(m.expr)}) return ${this.getExpr(
+                      m.value
+                    )};`
               )
               .join("\n else ")}
           })(${this.getExpr(e.expr)})`;
@@ -1072,6 +1091,21 @@ export default class TSCompiler implements TSScope {
       default:
         throw new Error(`Unknown expression: ${JSON.stringify(e)}`);
     }
+  }
+
+  getMatchCase(e: ASTExpr) {
+    const type = this.getExprType(e);
+
+    switch (type.value) {
+      case "tag":
+        return `__match.has(${this.getExpr(e)}.typeName)`;
+
+      case "str":
+      case "template":
+        return `__match === ${this.getExpr(e)}`;
+    }
+
+    throw new Error(`Unknown case type: ${JSON.stringify(e)}`);
   }
 
   getExprType(
@@ -1171,6 +1205,7 @@ export default class TSCompiler implements TSScope {
         );
       else if (type.value === "tile") scope = new TileScope(scope, this);
       else if (type.value === "xy") scope = new XYScope(scope);
+      else if (type.value === "messages") scope = new MessagesScope(scope);
       else if (type.value === "KeyEvent") scope = new KeyEventScope(scope);
       else if (this.componentNames.includes(type.value))
         scope = new ComponentScope(
