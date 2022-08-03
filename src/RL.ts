@@ -377,6 +377,7 @@ export class RLEntity {
   id: string;
 
   components: Set<string>;
+  templates: Set<string>;
   Appearance?: Appearance;
   OldPosition?: OldPosition;
   Position?: Position;
@@ -398,6 +399,7 @@ export class RLEntity {
     this.type = "entity";
     this.id = nanoid();
     this.components = new Set();
+    this.templates = new Set();
     this.IsBlocker = false;
     this.IsPlayer = false;
     this.RecalculateFOV = false;
@@ -409,6 +411,14 @@ export class RLEntity {
     this.WaitAction = false;
   }
 
+  toString() {
+    return `#${this.id} (${Array.from(this.templates.values()).join(" ")})`;
+  }
+
+  get [Symbol.toStringTag]() {
+    return `Entity#${this.toString()})`;
+  }
+
   has(name: RLObjectType) {
     return this.components.has(name);
   }
@@ -417,6 +427,7 @@ export class RLEntity {
     if (!thing) return;
 
     if (thing.type === "template") {
+      this.templates.add(thing.name);
       for (const part of thing.get()) this.add(part);
       return;
     }

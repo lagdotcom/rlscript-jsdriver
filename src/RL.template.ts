@@ -342,13 +342,23 @@ export class RLEntity {
   id: string;
 
   components: Set<string>;
+  templates: Set<string>;
   //#ENTITYFIELDS
 
   constructor() {
     this.type = "entity";
     this.id = nanoid();
     this.components = new Set();
+    this.templates = new Set();
     //#ENTITYCONSTRUCTOR
+  }
+
+  toString() {
+    return `#${this.id} (${Array.from(this.templates.values()).join(' ')})`
+  }
+
+  get [Symbol.toStringTag]() {
+    return `Entity#${this.toString()})`;
   }
 
   has(name: RLObjectType) {
@@ -359,6 +369,7 @@ export class RLEntity {
     if (!thing) return;
 
     if (thing.type === "template") {
+      this.templates.add(thing.name);
       for (const part of thing.get()) this.add(part);
       return;
     }

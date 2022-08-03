@@ -1162,6 +1162,7 @@
       this.type = "entity";
       this.id = nanoid();
       this.components = /* @__PURE__ */ new Set();
+      this.templates = /* @__PURE__ */ new Set();
       this.IsBlocker = false;
       this.IsPlayer = false;
       this.RecalculateFOV = false;
@@ -1172,6 +1173,12 @@
       this.HostileEnemy = false;
       this.WaitAction = false;
     }
+    toString() {
+      return `#${this.id} (${Array.from(this.templates.values()).join(" ")})`;
+    }
+    get [Symbol.toStringTag]() {
+      return `Entity#${this.toString()})`;
+    }
     has(name) {
       return this.components.has(name);
     }
@@ -1179,6 +1186,7 @@
       if (!thing)
         return;
       if (thing.type === "template") {
+        this.templates.add(thing.name);
         for (const part of thing.get())
           this.add(part);
         return;
