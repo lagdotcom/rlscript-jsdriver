@@ -93,9 +93,11 @@ tiletype Wall '#' end
 global gameWidth: int = 80
 global gameHeight: int = 50
 global mapWidth: int = gameWidth
-global mapHeight: int = gameHeight - 4
+global mapHeight: int = gameHeight - 5
+global hoverX: int = 0
+global hoverY: int = mapHeight
 global hpX: int = 0
-global hpY: int = mapHeight
+global hpY: int = hoverY + 1
 global hpWidth: int = 20
 global logX: int = hpWidth + 2
 global logY: int = hpY
@@ -104,6 +106,33 @@ global map: grid = grid(mapWidth, mapHeight, Wall)
 global explored: grid = grid(mapWidth, mapHeight, false)
 global visible: grid = grid(mapWidth, mapHeight, false)
 global log: messages = messages()
+
+fn getNamesAtLocation(x: int, y: int): str
+  local total: str
+
+  query (a: Appearance, p: Position)
+    if p.x == x and p.y == y
+      if total
+        total = join(", ", total, a.name)
+      else
+        total = a.name
+      end
+    end
+  end
+
+  return total
+end
+
+system onMouseInDungeon(m: MouseEvent)
+  draw(hoverX, hoverY, repeat(' ', gameWidth), "white", "black")
+
+  if visible.at(m.x, m.y)
+    local names: str = getNamesAtLocation(m.x, m.y)
+    if names
+      draw(hoverX, hoverY, names, "white")
+    end
+  end
+end
 
 system onKeyInDungeon(e: entity, IsPlayer, k: KeyEvent)
   e.add(match k.key
@@ -310,9 +339,9 @@ end
 
 system nextTurn()
   local highest: int = -99999
-  query (a: Actor)
-    if a.energy > highest
-      highest = a.energy
+  query (ac: Actor)
+    if ac.energy > highest
+      highest = ac.energy
     end
   end
 
@@ -320,9 +349,9 @@ system nextTurn()
     return false
   end
   local elapse: int = 100 - highest
-  query (e: entity, a: Actor)
-    a.energy += elapse
-    if a.energy >= 100
+  query (e: entity, ac: Actor)
+    ac.energy += elapse
+    if ac.energy >= 100
       e.add(MyTurn)
     end
   end
@@ -405,4 +434,5 @@ fn main()
   setSize(gameWidth, gameHeight)
   generateDungeon()
   pushKeyHandler(onKeyInDungeon)
+  pushMouseHandler(onMouseInDungeon)
 end

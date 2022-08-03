@@ -6,6 +6,7 @@ import RLFn from "./RLFn";
 import RLGrid from "./RLGrid";
 import RLInt from "./RLInt";
 import RLKeyEvent from "./RLKeyEvent";
+import RLMouseEvent from "./RLMouseEvent";
 import RLRect from "./RLRect";
 import RLStr from "./RLStr";
 import RLSystem from "./RLSystem";
@@ -23,6 +24,7 @@ type RLObject =
   | RLInt
   | RLFloat
   | RLKeyEvent
+  | RLMouseEvent
   | RLRect
   | RLStr
   | RLSystem

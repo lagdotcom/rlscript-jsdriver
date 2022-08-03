@@ -155,6 +155,7 @@ const builtinTypes = new Set<string>([
   "int",
   "KeyEvent",
   "messages",
+  "MouseEvent",
   "str",
   "system",
   "tag",
@@ -263,6 +264,21 @@ class KeyEventScope implements TSScope {
   constructor(public parent: TSScope) {
     this.name = "KeyEvent";
     this.members = new Map<string, ASTType>([["key", strType]]);
+  }
+}
+
+class MouseEventScope implements TSScope {
+  members: Map<string, ASTType>;
+  name: "MouseEvent";
+
+  constructor(public parent: TSScope) {
+    this.name = "MouseEvent";
+    this.members = new Map<string, ASTType>([
+      ["event", strType],
+      ["x", intType],
+      ["y", intType],
+      ["button", intType],
+    ]);
   }
 }
 
@@ -457,6 +473,35 @@ export default class TSCompiler implements TSScope {
     this.members.set(name, type);
   }
 
+  checkArgumentMatch(
+    i: number,
+    type: ASTType,
+    optional: boolean,
+    types: string[]
+  ) {
+    if (type.optional && optional)
+      throw new Error(`arg #${i} might be optional`);
+
+    let matched = false;
+    for (const accepted of types) {
+      if (accepted === type.value) matched = true;
+      else if (
+        accepted === "component" &&
+        this.componentNames.includes(type.value)
+      )
+        matched = true;
+      else if (accepted === "tag" && this.tagNames.includes(type.value))
+        matched = true;
+    }
+
+    if (!matched)
+      throw new Error(
+        `arg #${i} is ${type.value}${
+          type.optional ? "?" : ""
+        }, does not match ${types.join("|")}${optional ? "?" : ""}`
+      );
+  }
+
   checkLibraryCall(fn: LibFunction, args: ASTExpr[]) {
     const minArgs = fn.params.filter((p) => !p.optional).length;
     const maxArgs = fn.params.length + (fn.variadic ? Infinity : 0);
@@ -472,30 +517,7 @@ export default class TSCompiler implements TSScope {
       ) as LibFunctionParam;
 
       const type = this.getExprType(arg);
-
-      if (type.optional && param.optional)
-        throw new Error(`arg #${i} might be optional`);
-
-      let matched = false;
-      for (const accepted of param.types) {
-        if (accepted === type.value) matched = true;
-        else if (
-          accepted === "component" &&
-          this.componentNames.includes(type.value)
-        )
-          matched = true;
-        else if (accepted === "tag" && this.tagNames.includes(type.value))
-          matched = true;
-      }
-
-      if (!matched)
-        throw new Error(
-          `arg #${i} is ${type.value}${
-            type.optional ? "?" : ""
-          }, does not match ${param.types.join("|")}${
-            param.optional ? "?" : ""
-          }`
-        );
+      this.checkArgumentMatch(i, type, param.optional || false, param.types);
     }
   }
 
@@ -512,9 +534,9 @@ export default class TSCompiler implements TSScope {
       const match = fn.params[i];
 
       const type = this.getExprType(arg);
-      console.log("fncheck", type, match);
-
-      throw new Error(`checkFnCall is not implemented`);
+      this.checkArgumentMatch(i, type, match.type.optional || false, [
+        match.type.value,
+      ]);
     }
   }
   get componentNames() {
@@ -787,7 +809,7 @@ export default class TSCompiler implements TSScope {
               s.name.value
             } <= ${this.getExpr(s.end)}; ${s.name.value}++) {${this.getCode(
               s.code,
-              new ForScope(scope || this.scopes.top, s.name.value)
+              new ForScope(this.scopes.top, s.name.value)
             )}}`;
 
           case "query":
@@ -795,10 +817,7 @@ export default class TSCompiler implements TSScope {
               s
             )} of new RLQuery(RL.instance, ${this.getQueryTypes(s)}).get()) {
               ${this.getQueryDestructure(s)}
-              ${this.getCode(
-                s.code,
-                new QueryScope(scope || this.scopes.top, s)
-              )}
+              ${this.getCode(s.code, new QueryScope(this.scopes.top, s))}
             }`;
 
           default:
@@ -815,6 +834,7 @@ export default class TSCompiler implements TSScope {
     // check it exists, first
     this.resolveTypeChain(q);
 
+    // TODO this seems wildly wrong
     return q.chain.map(fixName).join(".");
   }
 
@@ -1049,6 +1069,8 @@ export default class TSCompiler implements TSScope {
         return "RLTile" + suffix;
       case "KeyEvent":
         return "RLKeyEvent" + suffix;
+      case "MouseEvent":
+        return "RLMouseEvent" + suffix;
       case "xy":
         return "RLXY" + suffix;
 
@@ -1187,6 +1209,8 @@ export default class TSCompiler implements TSScope {
     name: string,
     scope: TSScope | undefined = this.scopes.top
   ): ASTType {
+    const topScope = scope;
+
     while (scope) {
       const known = scope.members;
       const sub = known.get(name);
@@ -1195,7 +1219,7 @@ export default class TSCompiler implements TSScope {
       scope = scope.parent;
     }
 
-    throw new CannotResolveError(name, scope || this.scopes.top);
+    throw new CannotResolveError(name, topScope);
   }
 
   resolveTypeChain(q: ASTQName) {
@@ -1223,6 +1247,7 @@ export default class TSCompiler implements TSScope {
       else if (type.value === "xy") scope = new XYScope(scope);
       else if (type.value === "messages") scope = new MessagesScope(scope);
       else if (type.value === "KeyEvent") scope = new KeyEventScope(scope);
+      else if (type.value === "MouseEvent") scope = new MouseEventScope(scope);
       else if (this.componentNames.includes(type.value))
         scope = new ComponentScope(
           scope,

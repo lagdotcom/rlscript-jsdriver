@@ -15,6 +15,7 @@ import RLEnv from "./RLEnv";
 import RLFn from "./RLFn";
 import RLGrid from "./RLGrid";
 import RLKeyEvent from "./RLKeyEvent";
+import RLMouseEvent from "./RLMouseEvent";
 import RLObject from "./RLObject";
 import RLQuery from "./RLQuery";
 import RLRect from "./RLRect";
@@ -152,9 +153,11 @@ export default function implementation(__lib: libtype): RLEnv {
   const gameWidth = 80;
   const gameHeight = 50;
   const mapWidth: number = gameWidth;
-  const mapHeight: number = gameHeight - 4;
+  const mapHeight: number = gameHeight - 5;
+  const hoverX = 0;
+  const hoverY: number = mapHeight;
   const hpX = 0;
-  const hpY: number = mapHeight;
+  const hpY: number = hoverY + 1;
   const hpWidth = 20;
   const logX: number = hpWidth + 2;
   const logY: number = hpY;
@@ -162,6 +165,36 @@ export default function implementation(__lib: libtype): RLEnv {
   const explored: RLGrid = new RLGrid(mapWidth, mapHeight, false);
   const visible: RLGrid = new RLGrid(mapWidth, mapHeight, false);
   const log: MessageLog = new MessageLog();
+
+  function getNamesAtLocation(x: number, y: number) {
+    let total: string;
+    for (const _entity of new RLQuery(RL.instance, [
+      "Appearance",
+      "Position",
+    ]).get()) {
+      const { Appearance: a, Position: p } = _entity;
+      if (p.x == x && p.y == y) {
+        if (total) {
+          total = __lib.join(
+            { type: "str", value: ", " },
+            { type: "str", value: total },
+            { type: "str", value: a.name }
+          );
+        } else {
+          total = a.name;
+        }
+      }
+    }
+    return total;
+  }
+  const fn_getNamesAtLocation = new RLFn(
+    "getNamesAtLocation",
+    getNamesAtLocation,
+    [
+      { type: "param", name: "x", typeName: "int" },
+      { type: "param", name: "y", typeName: "int" },
+    ]
+  );
 
   function getBlockingMap() {
     const blocked: RLGrid = new RLGrid(mapWidth, mapHeight, false);
@@ -445,8 +478,41 @@ export default function implementation(__lib: libtype): RLEnv {
     );
     generateDungeon();
     __lib.pushKeyHandler(onKeyInDungeon);
+    __lib.pushMouseHandler(onMouseInDungeon);
   }
   const fn_main = new RLFn("main", main, []);
+
+  function code_onMouseInDungeon(m: RLMouseEvent) {
+    __lib.draw(
+      { type: "int", value: hoverX },
+      { type: "int", value: hoverY },
+      {
+        type: "str",
+        value: __lib.repeat(
+          { type: "char", value: " " },
+          { type: "int", value: gameWidth }
+        ),
+      },
+      { type: "str", value: "white" },
+      { type: "str", value: "black" }
+    );
+    if (visible.at(m.x, m.y)) {
+      const names: string = getNamesAtLocation(m.x, m.y);
+      if (names) {
+        __lib.draw(
+          { type: "int", value: hoverX },
+          { type: "int", value: hoverY },
+          { type: "str", value: names },
+          { type: "str", value: "white" }
+        );
+      }
+    }
+  }
+  const onMouseInDungeon = new RLSystem(
+    "onMouseInDungeon",
+    code_onMouseInDungeon,
+    [{ type: "param", name: "m", typeName: "MouseEvent" }]
+  );
 
   function code_onKeyInDungeon(e: RLEntity, k: RLKeyEvent) {
     e.add(
@@ -666,9 +732,9 @@ export default function implementation(__lib: libtype): RLEnv {
   function code_nextTurn() {
     let highest = -99999;
     for (const _entity of new RLQuery(RL.instance, ["Actor"]).get()) {
-      const { Actor: a } = _entity;
-      if (a.energy > highest) {
-        highest = a.energy;
+      const { Actor: ac } = _entity;
+      if (ac.energy > highest) {
+        highest = ac.energy;
       }
     }
     if (highest >= 100) {
@@ -676,9 +742,9 @@ export default function implementation(__lib: libtype): RLEnv {
     }
     const elapse: number = 100 - highest;
     for (const e of new RLQuery(RL.instance, ["Actor"]).get()) {
-      const { Actor: a } = e;
-      a.energy += elapse;
-      if (a.energy >= 100) {
+      const { Actor: ac } = e;
+      ac.energy += elapse;
+      if (ac.energy >= 100) {
         e.add(MyTurn);
       }
     }
@@ -701,6 +767,7 @@ export default function implementation(__lib: libtype): RLEnv {
   const showLog = new RLSystem("showLog", code_showLog, []);
 
   return new Map<string, RLObject>([
+    ["getNamesAtLocation", fn_getNamesAtLocation],
     ["getBlockingMap", fn_getBlockingMap],
     ["hurt", fn_hurt],
     ["useTurn", fn_useTurn],
@@ -712,6 +779,7 @@ export default function implementation(__lib: libtype): RLEnv {
     ["generateDungeon", fn_generateDungeon],
     ["addEnemies", fn_addEnemies],
     ["main", fn_main],
+    ["onMouseInDungeon", onMouseInDungeon],
     ["onKeyInDungeon", onKeyInDungeon],
     ["onKeyWhenDead", onKeyWhenDead],
     ["hostileAI", hostileAI],

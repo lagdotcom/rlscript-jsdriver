@@ -11,6 +11,7 @@ export default class RL {
   entities: Map<string, RLEntity>;
   env: RLEnv;
   keyHandlers: Stack<RLSystem>;
+  mouseHandlers: Stack<RLSystem>;
   systems: RLSystem[];
 
   constructor(public lib: libtype, ...envs: RLEnv[]) {
@@ -23,6 +24,7 @@ export default class RL {
 
     this.entities = new Map();
     this.keyHandlers = new Stack();
+    this.mouseHandlers = new Stack();
     this.systems = Array.from(this.env.values()).filter(
       (o) => o.type === "system"
     ) as RLSystem[];

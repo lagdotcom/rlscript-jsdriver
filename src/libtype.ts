@@ -43,6 +43,7 @@ type libtype = {
   ): RLXY | undefined;
   join(glue: RLChar | RLStr, ...parts: (RLChar | RLStr | RLInt)[]): string;
   pushKeyHandler(handler: RLSystem): void;
+  pushMouseHandler(handler: RLSystem): void;
   randInt(min: RLInt, max: RLInt): void;
   remove(e: RLEntity): void;
   repeat(ch: RLChar | RLStr, amount: RLInt): string;

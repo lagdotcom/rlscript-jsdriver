@@ -108,6 +108,7 @@ const library = [
     p("string", "str")
   ),
   f("pushKeyHandler", [p("handler", "system")]),
+  f("pushMouseHandler", [p("handler", "system")]),
   f("randInt", [p("min", "int"), p("max", "int")], p("value", "int")),
   f("remove", [p("e", "entity")]),
   f("repeat", [p("ch", "char", "str"), p("count", "int")], p("string", "str")),

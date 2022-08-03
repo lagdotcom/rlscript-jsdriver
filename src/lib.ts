@@ -238,6 +238,9 @@ function drawLog(
   log.render(Game.instance.terminal, x, y, width, height);
 }
 
+function pushMouseHandler(handler: RLSystem) {
+  Game.instance.rl.mouseHandlers.push(handler);
+}
 const lib: libtype = {
   abs,
   add,
@@ -251,6 +254,7 @@ const lib: libtype = {
   getNextMove,
   join,
   pushKeyHandler,
+  pushMouseHandler,
   randInt,
   remove,
   repeat,
