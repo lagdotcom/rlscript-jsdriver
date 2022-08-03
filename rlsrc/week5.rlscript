@@ -45,6 +45,7 @@ tag MyTurn
 tag BaseAI
 tag HostileEnemy
 tag WaitAction
+tag HistoryAction
 
 enum Layer
   Nothing
@@ -107,6 +108,34 @@ global explored: grid = grid(mapWidth, mapHeight, false)
 global visible: grid = grid(mapWidth, mapHeight, false)
 global log: messages = messages()
 
+fn getKey(k: str): str
+  return match k
+    ;; arrows
+    "ArrowUp"    = "up"
+    "ArrowRight" = "right"
+    "ArrowDown"  = "down"
+    "ArrowLeft"  = "left"
+
+    ;; numpad
+    "Numpad8"    = "up"
+    "Numpad6"    = "right"
+    "Numpad2"    = "down"
+    "Numpad4"    = "left"
+    "Numpad5"    = "wait"
+
+    ;; vi
+    "KeyK"       = "up"
+    "KeyL"       = "right"
+    "KeyJ"       = "down"
+    "KeyH"       = "left"
+    "Period"     = "wait"
+
+    "KeyV"       = "history"
+
+    else = k
+  end
+end
+
 fn getNamesAtLocation(x: int, y: int): str
   local total: str
 
@@ -135,12 +164,14 @@ system onMouseInDungeon(m: MouseEvent)
 end
 
 system onKeyInDungeon(e: entity, IsPlayer, k: KeyEvent)
-  e.add(match k.key
-    "up"    = MoveAction( 0, -1)
-    "right" = MoveAction( 1,  0)
-    "down"  = MoveAction( 0,  1)
-    "left"  = MoveAction(-1,  0)
-    "wait"  = WaitAction
+  e.add(match getKey(k.key)
+    "up"      = MoveAction( 0, -1)
+    "right"   = MoveAction( 1,  0)
+    "down"    = MoveAction( 0,  1)
+    "left"    = MoveAction(-1,  0)
+
+    "wait"    = WaitAction
+    "history" = HistoryAction
   end)
 end
 
@@ -253,6 +284,49 @@ end
 system doWait(e: entity, WaitAction, MyTurn)
   e.remove(WaitAction)
   useTurn(e)
+end
+
+global historyOffset: int = 0
+fn showHistoryView()
+  drawLog(log, 0, 0, gameWidth, gameHeight, historyOffset)
+end
+
+system onKeyInHistory(e: entity, IsPlayer, k: KeyEvent)
+  if k.key == "KeyV"
+    ;; forgive a long keypress
+    exit
+  end
+
+  local change: int = match getKey(k.key)
+    "up"        = -1
+    "down"      = 1
+    "PageUp"    = -10
+    "PageDown"  = 10
+    "Home"      = -historyOffset - 1
+    "End"       = log.length - historyOffset
+    else = 0
+  end
+
+  if not change
+    clear()
+    e.add(RecalculateFOV)
+    e.add(RedrawUI)
+    log.dirty = true
+    popKeyHandler()
+    exit
+  end
+
+  historyOffset = clamp(historyOffset + change, 0, log.length - 1)
+  showHistoryView()
+end
+
+system doHistory(e: entity, HistoryAction, MyTurn)
+  e.remove(HistoryAction)
+
+  pushKeyHandler(onKeyInHistory)
+  historyOffset = 0
+  clear()
+  showHistoryView()
 end
 
 system fov(e: entity, p: Position, RecalculateFOV)

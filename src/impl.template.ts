@@ -7,6 +7,7 @@ import RLEnv from "./RLEnv";
 import RLFn from "./RLFn";
 import RLGrid from "./RLGrid";
 import RLKeyEvent from "./RLKeyEvent";
+import RLLibrary from "./RLLibrary";
 import RLMouseEvent from "./RLMouseEvent";
 import RLObject from "./RLObject";
 import RLQuery from "./RLQuery";
@@ -16,9 +17,8 @@ import RLTag from "./RLTag";
 import RLTemplate from "./RLTemplate";
 import RLTile from "./RLTile";
 import RLXY from "./RLXY";
-import libtype from "./libtype";
 
-export default function implementation(__lib: libtype): RLEnv {
+export default function implementation(__lib: RLLibrary): RLEnv {
   //#ENUMS
 
   //#TAGTYPES

@@ -12,9 +12,11 @@ import RLTemplate from "./RLTemplate";
 import RLTile from "./RLTile";
 import RLXY from "./RLXY";
 
-type libtype = {
+type RLLibrary = {
   abs(n: RLInt): number;
   add(...args: (RLComponent | RLTag)[]): void;
+  clamp(value: RLInt, min: RLInt, max: RLInt): number;
+  clear(): void;
   debug(message: RLStr): void;
   draw(x: RLInt, y: RLInt, s: RLChar | RLStr, fg?: RLStr, bg?: RLStr): void;
   drawLog(
@@ -22,7 +24,8 @@ type libtype = {
     x: RLInt,
     y: RLInt,
     width: RLInt,
-    height: RLInt
+    height: RLInt,
+    offset?: RLInt
   ): void;
   drawGrid(g: RLGrid<RLTile>): void;
   find(...args: (RLComponent | RLTag)[]): RLEntity | undefined;
@@ -42,12 +45,14 @@ type libtype = {
     dst: RLXY
   ): RLXY | undefined;
   join(glue: RLChar | RLStr, ...parts: (RLChar | RLStr | RLInt)[]): string;
+  popKeyHandler(): void;
+  popMouseHandler(): void;
   pushKeyHandler(handler: RLSystem): void;
   pushMouseHandler(handler: RLSystem): void;
-  randInt(min: RLInt, max: RLInt): void;
+  randInt(min: RLInt, max: RLInt): number;
   remove(e: RLEntity): void;
   repeat(ch: RLChar | RLStr, amount: RLInt): string;
   setSize(width: RLInt, height: RLInt): void;
   spawn(...args: (RLComponent | RLTag | RLTemplate)[]): RLEntity;
 };
-export default libtype;
+export default RLLibrary;

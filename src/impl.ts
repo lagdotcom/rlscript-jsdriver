@@ -15,6 +15,7 @@ import RLEnv from "./RLEnv";
 import RLFn from "./RLFn";
 import RLGrid from "./RLGrid";
 import RLKeyEvent from "./RLKeyEvent";
+import RLLibrary from "./RLLibrary";
 import RLMouseEvent from "./RLMouseEvent";
 import RLObject from "./RLObject";
 import RLQuery from "./RLQuery";
@@ -24,9 +25,8 @@ import RLTag from "./RLTag";
 import RLTemplate from "./RLTemplate";
 import RLTile from "./RLTile";
 import RLXY from "./RLXY";
-import libtype from "./libtype";
 
-export default function implementation(__lib: libtype): RLEnv {
+export default function implementation(__lib: RLLibrary): RLEnv {
   enum Layer {
     Nothing,
     Corpse,
@@ -43,6 +43,7 @@ export default function implementation(__lib: libtype): RLEnv {
   const BaseAI = new RLTag("BaseAI");
   const HostileEnemy = new RLTag("HostileEnemy");
   const WaitAction = new RLTag("WaitAction");
+  const HistoryAction = new RLTag("HistoryAction");
 
   const mkAppearance = (
     name: string,
@@ -165,6 +166,31 @@ export default function implementation(__lib: libtype): RLEnv {
   const explored: RLGrid = new RLGrid(mapWidth, mapHeight, false);
   const visible: RLGrid = new RLGrid(mapWidth, mapHeight, false);
   const log: MessageLog = new MessageLog();
+  let historyOffset = 0;
+
+  function getKey(k: string) {
+    return ((__match) => {
+      if (__match === "ArrowUp") return "up";
+      else if (__match === "ArrowRight") return "right";
+      else if (__match === "ArrowDown") return "down";
+      else if (__match === "ArrowLeft") return "left";
+      else if (__match === "Numpad8") return "up";
+      else if (__match === "Numpad6") return "right";
+      else if (__match === "Numpad2") return "down";
+      else if (__match === "Numpad4") return "left";
+      else if (__match === "Numpad5") return "wait";
+      else if (__match === "KeyK") return "up";
+      else if (__match === "KeyL") return "right";
+      else if (__match === "KeyJ") return "down";
+      else if (__match === "KeyH") return "left";
+      else if (__match === "Period") return "wait";
+      else if (__match === "KeyV") return "history";
+      else return k;
+    })(k);
+  }
+  const fn_getKey = new RLFn("getKey", getKey, [
+    { type: "param", name: "k", typeName: "str" },
+  ]);
 
   function getNamesAtLocation(x: number, y: number) {
     let total: string;
@@ -255,6 +281,18 @@ export default function implementation(__lib: libtype): RLEnv {
     { type: "param", name: "e", typeName: "entity" },
     { type: "param", name: "damage", typeName: "int" },
   ]);
+
+  function showHistoryView() {
+    __lib.drawLog(
+      log,
+      { type: "int", value: 0 },
+      { type: "int", value: 0 },
+      { type: "int", value: gameWidth },
+      { type: "int", value: gameHeight },
+      { type: "int", value: historyOffset }
+    );
+  }
+  const fn_showHistoryView = new RLFn("showHistoryView", showHistoryView, []);
 
   function useTurn(e: RLEntity) {
     e.Actor.energy -= 100;
@@ -522,7 +560,8 @@ export default function implementation(__lib: libtype): RLEnv {
         else if (__match === "down") return mkMoveAction(0, 1);
         else if (__match === "left") return mkMoveAction(-1, 0);
         else if (__match === "wait") return WaitAction;
-      })(k.key)
+        else if (__match === "history") return HistoryAction;
+      })(getKey(k.key))
     );
   }
   const onKeyInDungeon = new RLSystem("onKeyInDungeon", code_onKeyInDungeon, [
@@ -663,6 +702,53 @@ export default function implementation(__lib: libtype): RLEnv {
     { type: "constraint", typeName: "MyTurn" },
   ]);
 
+  function code_onKeyInHistory(e: RLEntity, k: RLKeyEvent) {
+    if (k.key == "KeyV") {
+      return;
+    }
+    const change: number = ((__match) => {
+      if (__match === "up") return -1;
+      else if (__match === "down") return 1;
+      else if (__match === "PageUp") return -10;
+      else if (__match === "PageDown") return 10;
+      else if (__match === "Home") return -historyOffset - 1;
+      else if (__match === "End") return log.length - historyOffset;
+      else return 0;
+    })(getKey(k.key));
+    if (!change) {
+      __lib.clear();
+      e.add(RecalculateFOV);
+      e.add(RedrawUI);
+      log.dirty = true;
+      __lib.popKeyHandler();
+      return;
+    }
+    historyOffset = __lib.clamp(
+      { type: "int", value: historyOffset + change },
+      { type: "int", value: 0 },
+      { type: "int", value: log.length - 1 }
+    );
+    showHistoryView();
+  }
+  const onKeyInHistory = new RLSystem("onKeyInHistory", code_onKeyInHistory, [
+    { type: "param", name: "e", typeName: "entity" },
+    { type: "constraint", typeName: "IsPlayer" },
+    { type: "param", name: "k", typeName: "KeyEvent" },
+  ]);
+
+  function code_doHistory(e: RLEntity) {
+    e.remove(HistoryAction);
+    __lib.pushKeyHandler(onKeyInHistory);
+    historyOffset = 0;
+    __lib.clear();
+    showHistoryView();
+  }
+  const doHistory = new RLSystem("doHistory", code_doHistory, [
+    { type: "param", name: "e", typeName: "entity" },
+    { type: "constraint", typeName: "HistoryAction" },
+    { type: "constraint", typeName: "MyTurn" },
+  ]);
+
   function code_fov(e: RLEntity, p: Position) {
     __lib.getFOV(
       map,
@@ -767,9 +853,11 @@ export default function implementation(__lib: libtype): RLEnv {
   const showLog = new RLSystem("showLog", code_showLog, []);
 
   return new Map<string, RLObject>([
+    ["getKey", fn_getKey],
     ["getNamesAtLocation", fn_getNamesAtLocation],
     ["getBlockingMap", fn_getBlockingMap],
     ["hurt", fn_hurt],
+    ["showHistoryView", fn_showHistoryView],
     ["useTurn", fn_useTurn],
     ["drawTileAt", fn_drawTileAt],
     ["drawEntity", fn_drawEntity],
@@ -786,6 +874,8 @@ export default function implementation(__lib: libtype): RLEnv {
     ["doMove", doMove],
     ["doMelee", doMelee],
     ["doWait", doWait],
+    ["onKeyInHistory", onKeyInHistory],
+    ["doHistory", doHistory],
     ["fov", fov],
     ["drawUnderTile", drawUnderTile],
     ["RedrawMeEntity", RedrawMeEntity],
@@ -801,6 +891,7 @@ export default function implementation(__lib: libtype): RLEnv {
     ["BaseAI", BaseAI],
     ["HostileEnemy", HostileEnemy],
     ["WaitAction", WaitAction],
+    ["HistoryAction", HistoryAction],
     ["Player", tmPlayer],
     ["Enemy", tmEnemy],
     ["Orc", tmOrc],

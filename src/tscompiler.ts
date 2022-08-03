@@ -389,6 +389,7 @@ class MessagesScope implements TSScope {
     this.name = "messages";
     this.members = new Map<string, ASTType>([
       ["dirty", boolType],
+      ["length", intType],
       ["add", fnType],
     ]);
   }

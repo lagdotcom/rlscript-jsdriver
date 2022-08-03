@@ -63,4 +63,5 @@ export type RLTagName =
   | "MyTurn"
   | "BaseAI"
   | "HostileEnemy"
-  | "WaitAction";
+  | "WaitAction"
+  | "HistoryAction";

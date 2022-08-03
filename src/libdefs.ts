@@ -70,6 +70,16 @@ const library = [
   // library
   f("abs", [p("value", "int")], p("value", "int")),
   v("add", [], p("components", "component", "tag")),
+  f("clear", []),
+  f(
+    "clamp",
+    [
+      p("value", "int", "float"),
+      p("min", "int", "float"),
+      p("max", "int", "float"),
+    ],
+    p("value", "int", "float")
+  ),
   f("debug", [p("message", "str")]),
   f("draw", [
     p("x", "int"),
@@ -84,6 +94,7 @@ const library = [
     p("y", "int"),
     p("width", "int"),
     p("height", "int"),
+    o("offset", "int"),
   ]),
   f("drawGrid", [p("g", "grid")]),
   v("find", [], p("criteria", "component", "tag"), o("match", "entity")),
@@ -107,6 +118,8 @@ const library = [
     p("parts", "char", "str", "int"),
     p("string", "str")
   ),
+  f("popKeyHandler", []),
+  f("popMouseHandler", []),
   f("pushKeyHandler", [p("handler", "system")]),
   f("pushMouseHandler", [p("handler", "system")]),
   f("randInt", [p("min", "int"), p("max", "int")], p("value", "int")),

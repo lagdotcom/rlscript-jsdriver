@@ -1,10 +1,10 @@
 import RLArg from "./RLArg";
 import RLEntity from "./RLEntity";
 import RLEnv from "./RLEnv";
+import RLLibrary from "./RLLibrary";
 import RLQuery from "./RLQuery";
 import RLSystem from "./RLSystem";
 import Stack from "./Stack";
-import libtype from "./libtype";
 
 export default class RL {
   static instance: RL;
@@ -14,7 +14,7 @@ export default class RL {
   mouseHandlers: Stack<RLSystem>;
   systems: RLSystem[];
 
-  constructor(public lib: libtype, ...envs: RLEnv[]) {
+  constructor(public lib: RLLibrary, ...envs: RLEnv[]) {
     RL.instance = this;
 
     this.env = new Map();

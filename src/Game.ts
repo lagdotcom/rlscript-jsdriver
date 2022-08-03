@@ -1,43 +1,10 @@
-import { Key, Terminal } from "wglt";
-
 import RL from "./RL";
 import RLArg from "./RLArg";
 import RLKeyEvent from "./RLKeyEvent";
 import RLMouseEvent from "./RLMouseEvent";
 import RLSystem from "./RLSystem";
+import { Terminal } from "wglt";
 import isAssignableTo from "./isAssignableTo";
-
-const keyEvents = new Map([
-  [Key.VK_UP, "up"],
-  [Key.VK_RIGHT, "right"],
-  [Key.VK_DOWN, "down"],
-  [Key.VK_LEFT, "left"],
-  [Key.VK_HOME, "up-left"],
-  [Key.VK_END, "down-left"],
-  [Key.VK_PAGE_UP, "up-right"],
-  [Key.VK_PAGE_DOWN, "down-right"],
-  // [Key.VK_CLEAR, "wait"],
-
-  [Key.VK_NUMPAD8, "up"],
-  [Key.VK_NUMPAD6, "right"],
-  [Key.VK_NUMPAD2, "down"],
-  [Key.VK_NUMPAD4, "left"],
-  [Key.VK_NUMPAD7, "up-left"],
-  [Key.VK_NUMPAD1, "down-left"],
-  [Key.VK_NUMPAD9, "up-right"],
-  [Key.VK_NUMPAD3, "down-right"],
-  [Key.VK_NUMPAD5, "wait"],
-
-  [Key.VK_K, "up"],
-  [Key.VK_L, "right"],
-  [Key.VK_J, "down"],
-  [Key.VK_H, "left"],
-  [Key.VK_Y, "up-left"],
-  [Key.VK_B, "down-left"],
-  [Key.VK_U, "up-right"],
-  [Key.VK_N, "down-right"],
-  [Key.VK_PERIOD, "wait"],
-]);
 
 export default class Game {
   static instance: Game;
@@ -69,8 +36,13 @@ export default class Game {
     this.running = true;
     while (this.running) {
       let fired = false;
+      const activated = new Set<string>();
+
       for (const sys of this.rl.systems.filter((s) => s.enabled)) {
-        if (this.trySystem(sys)) fired = true;
+        if (this.trySystem(sys)) {
+          activated.add(sys.name);
+          fired = true;
+        }
       }
 
       if (!fired) {
@@ -88,7 +60,7 @@ export default class Game {
 
         if (count > 5000) {
           this.running = false;
-          console.warn("Suspected infinite loop.");
+          console.warn("Suspected infinite loop.", activated);
         }
       }
     }
@@ -161,9 +133,8 @@ export default class Game {
   async getKey(): Promise<RLKeyEvent> {
     return new Promise<RLKeyEvent>((resolve) => {
       const handler = () => {
-        for (const [key, name] of keyEvents) {
-          if (this.terminal.isKeyPressed(key))
-            return resolve(new RLKeyEvent(name));
+        for (const [key, input] of this.terminal.keys.keys.entries()) {
+          if (input.isPressed()) return resolve(new RLKeyEvent(key));
         }
 
         requestAnimationFrame(handler);

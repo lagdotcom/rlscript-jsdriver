@@ -176,7 +176,7 @@ const grammar: Grammar = {
     {"name": "product", "symbols": ["exp"], "postprocess": id},
     {"name": "exp", "symbols": ["unary", "_", "expop", "_", "exp"], "postprocess": ([left,,op,,right]) => ({ _: 'binary', left, op, right })},
     {"name": "exp", "symbols": ["unary"], "postprocess": id},
-    {"name": "unary", "symbols": [{"literal":"-"}, "number"], "postprocess": ([op,value]) => ({ _: 'unary', op: op.value, value })},
+    {"name": "unary", "symbols": [{"literal":"-"}, "value"], "postprocess": ([op,value]) => ({ _: 'unary', op: op.value, value })},
     {"name": "unary", "symbols": [{"literal":"not"}, "_", "value"], "postprocess": ([op,,value]) => ({ _: 'unary', op: op.value, value })},
     {"name": "unary", "symbols": ["value"], "postprocess": id},
     {"name": "logicop", "symbols": [{"literal":"and"}], "postprocess": val},

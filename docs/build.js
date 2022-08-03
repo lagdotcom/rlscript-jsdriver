@@ -83,6 +83,27 @@
     }
   });
 
+  // src/RLKeyEvent.ts
+  var RLKeyEvent = class {
+    constructor(key) {
+      this.key = key;
+      this.type = "KeyEvent";
+    }
+  };
+  RLKeyEvent.type = "KeyEvent";
+
+  // src/RLMouseEvent.ts
+  var RLMouseEvent = class {
+    constructor(event, x, y, button = NaN) {
+      this.event = event;
+      this.x = x;
+      this.y = y;
+      this.button = button;
+      this.type = "MouseEvent";
+    }
+  };
+  RLMouseEvent.type = "MouseEvent";
+
   // node_modules/wglt/dist/esm/index.js
   var BlendMode;
   (function(BlendMode2) {
@@ -1361,27 +1382,6 @@
     }
   };
 
-  // src/RLKeyEvent.ts
-  var RLKeyEvent = class {
-    constructor(key) {
-      this.key = key;
-      this.type = "KeyEvent";
-    }
-  };
-  RLKeyEvent.type = "KeyEvent";
-
-  // src/RLMouseEvent.ts
-  var RLMouseEvent = class {
-    constructor(event, x, y, button = NaN) {
-      this.event = event;
-      this.x = x;
-      this.y = y;
-      this.button = button;
-      this.type = "MouseEvent";
-    }
-  };
-  RLMouseEvent.type = "MouseEvent";
-
   // src/isAssignableTo.ts
   function isAssignableTo(o, type) {
     if (o.type === type)
@@ -1394,34 +1394,6 @@
   }
 
   // src/Game.ts
-  var keyEvents = /* @__PURE__ */ new Map([
-    [Key.VK_UP, "up"],
-    [Key.VK_RIGHT, "right"],
-    [Key.VK_DOWN, "down"],
-    [Key.VK_LEFT, "left"],
-    [Key.VK_HOME, "up-left"],
-    [Key.VK_END, "down-left"],
-    [Key.VK_PAGE_UP, "up-right"],
-    [Key.VK_PAGE_DOWN, "down-right"],
-    [Key.VK_NUMPAD8, "up"],
-    [Key.VK_NUMPAD6, "right"],
-    [Key.VK_NUMPAD2, "down"],
-    [Key.VK_NUMPAD4, "left"],
-    [Key.VK_NUMPAD7, "up-left"],
-    [Key.VK_NUMPAD1, "down-left"],
-    [Key.VK_NUMPAD9, "up-right"],
-    [Key.VK_NUMPAD3, "down-right"],
-    [Key.VK_NUMPAD5, "wait"],
-    [Key.VK_K, "up"],
-    [Key.VK_L, "right"],
-    [Key.VK_J, "down"],
-    [Key.VK_H, "left"],
-    [Key.VK_Y, "up-left"],
-    [Key.VK_B, "down-left"],
-    [Key.VK_U, "up-right"],
-    [Key.VK_N, "down-right"],
-    [Key.VK_PERIOD, "wait"]
-  ]);
   var Game = class {
     constructor(rl, canvas) {
       this.rl = rl;
@@ -1443,9 +1415,12 @@
         this.running = true;
         while (this.running) {
           let fired = false;
+          const activated = /* @__PURE__ */ new Set();
           for (const sys of this.rl.systems.filter((s) => s.enabled)) {
-            if (this.trySystem(sys))
+            if (this.trySystem(sys)) {
+              activated.add(sys.name);
               fired = true;
+            }
           }
           if (!fired) {
             count = 0;
@@ -1460,7 +1435,7 @@
             count++;
             if (count > 5e3) {
               this.running = false;
-              console.warn("Suspected infinite loop.");
+              console.warn("Suspected infinite loop.", activated);
             }
           }
         }
@@ -1516,9 +1491,9 @@
       return __async(this, null, function* () {
         return new Promise((resolve) => {
           const handler = () => {
-            for (const [key, name] of keyEvents) {
-              if (this.terminal.isKeyPressed(key))
-                return resolve(new RLKeyEvent(name));
+            for (const [key, input] of this.terminal.keys.keys.entries()) {
+              if (input.isPressed())
+                return resolve(new RLKeyEvent(key));
             }
             requestAnimationFrame(handler);
           };
@@ -2504,6 +2479,9 @@
       this.messages = messages;
       this.dirty = false;
     }
+    get length() {
+      return this.messages.length;
+    }
     add(text, fg = "white", stack = true) {
       const top = this.messages.at(-1);
       if (stack && (top == null ? void 0 : top.text) === text)
@@ -2512,13 +2490,18 @@
         this.messages.push(new Message3(text, fg));
       this.dirty = true;
     }
-    render(term, x, y, width, height) {
-      let offset = height - 1;
+    latest(size, offset = 0) {
+      const start = this.length - offset - size;
+      const end = start + size;
+      return this.messages.slice(start, end).reverse();
+    }
+    render(term, x, y, width, height, offset = 0) {
       term.fillRect(x, y, width, height, " ");
-      for (const msg of this.messages.slice(-height).reverse()) {
+      let yOffset = height - 1;
+      for (const msg of this.latest(height, offset)) {
         const text = msg.fullText;
         const fg = new TinyColor(msg.fg).toNumber() << 8;
-        term.drawString(x, y + offset--, text, fg);
+        term.drawString(x, y + yOffset--, text, fg, 0);
       }
       this.dirty = false;
     }
@@ -2719,7 +2702,8 @@
       "MyTurn",
       "BaseAI",
       "HostileEnemy",
-      "WaitAction"
+      "WaitAction",
+      "HistoryAction"
     ].includes(p.typeName);
   }
 
@@ -2808,6 +2792,7 @@
     const BaseAI = new RLTag("BaseAI");
     const HostileEnemy = new RLTag("HostileEnemy");
     const WaitAction = new RLTag("WaitAction");
+    const HistoryAction = new RLTag("HistoryAction");
     const mkAppearance = (name, ch, fg, bg, layer) => ({
       type: "component",
       typeName: "Appearance",
@@ -2915,6 +2900,46 @@
     const explored = new RLGrid(mapWidth, mapHeight, false);
     const visible = new RLGrid(mapWidth, mapHeight, false);
     const log = new MessageLog();
+    let historyOffset = 0;
+    function getKey(k) {
+      return ((__match) => {
+        if (__match === "ArrowUp")
+          return "up";
+        else if (__match === "ArrowRight")
+          return "right";
+        else if (__match === "ArrowDown")
+          return "down";
+        else if (__match === "ArrowLeft")
+          return "left";
+        else if (__match === "Numpad8")
+          return "up";
+        else if (__match === "Numpad6")
+          return "right";
+        else if (__match === "Numpad2")
+          return "down";
+        else if (__match === "Numpad4")
+          return "left";
+        else if (__match === "Numpad5")
+          return "wait";
+        else if (__match === "KeyK")
+          return "up";
+        else if (__match === "KeyL")
+          return "right";
+        else if (__match === "KeyJ")
+          return "down";
+        else if (__match === "KeyH")
+          return "left";
+        else if (__match === "Period")
+          return "wait";
+        else if (__match === "KeyV")
+          return "history";
+        else
+          return k;
+      })(k);
+    }
+    const fn_getKey = new RLFn("getKey", getKey, [
+      { type: "param", name: "k", typeName: "str" }
+    ]);
     function getNamesAtLocation(x, y) {
       let total;
       for (const _entity of new RLQuery(RL.instance, [
@@ -3004,6 +3029,17 @@
       { type: "param", name: "e", typeName: "entity" },
       { type: "param", name: "damage", typeName: "int" }
     ]);
+    function showHistoryView() {
+      __lib.drawLog(
+        log,
+        { type: "int", value: 0 },
+        { type: "int", value: 0 },
+        { type: "int", value: gameWidth },
+        { type: "int", value: gameHeight },
+        { type: "int", value: historyOffset }
+      );
+    }
+    const fn_showHistoryView = new RLFn("showHistoryView", showHistoryView, []);
     function useTurn(e) {
       e.Actor.energy -= 100;
       e.remove(MyTurn);
@@ -3251,7 +3287,9 @@
             return mkMoveAction(-1, 0);
           else if (__match === "wait")
             return WaitAction;
-        })(k.key)
+          else if (__match === "history")
+            return HistoryAction;
+        })(getKey(k.key))
       );
     }
     const onKeyInDungeon = new RLSystem("onKeyInDungeon", code_onKeyInDungeon, [
@@ -3382,6 +3420,58 @@
       { type: "constraint", typeName: "WaitAction" },
       { type: "constraint", typeName: "MyTurn" }
     ]);
+    function code_onKeyInHistory(e, k) {
+      if (k.key == "KeyV") {
+        return;
+      }
+      const change = ((__match) => {
+        if (__match === "up")
+          return -1;
+        else if (__match === "down")
+          return 1;
+        else if (__match === "PageUp")
+          return -10;
+        else if (__match === "PageDown")
+          return 10;
+        else if (__match === "Home")
+          return -historyOffset - 1;
+        else if (__match === "End")
+          return log.length - historyOffset;
+        else
+          return 0;
+      })(getKey(k.key));
+      if (!change) {
+        __lib.clear();
+        e.add(RecalculateFOV);
+        e.add(RedrawUI);
+        log.dirty = true;
+        __lib.popKeyHandler();
+        return;
+      }
+      historyOffset = __lib.clamp(
+        { type: "int", value: historyOffset + change },
+        { type: "int", value: 0 },
+        { type: "int", value: log.length - 1 }
+      );
+      showHistoryView();
+    }
+    const onKeyInHistory = new RLSystem("onKeyInHistory", code_onKeyInHistory, [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "constraint", typeName: "IsPlayer" },
+      { type: "param", name: "k", typeName: "KeyEvent" }
+    ]);
+    function code_doHistory(e) {
+      e.remove(HistoryAction);
+      __lib.pushKeyHandler(onKeyInHistory);
+      historyOffset = 0;
+      __lib.clear();
+      showHistoryView();
+    }
+    const doHistory = new RLSystem("doHistory", code_doHistory, [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "constraint", typeName: "HistoryAction" },
+      { type: "constraint", typeName: "MyTurn" }
+    ]);
     function code_fov(e, p) {
       __lib.getFOV(
         map,
@@ -3480,9 +3570,11 @@
     }
     const showLog = new RLSystem("showLog", code_showLog, []);
     return /* @__PURE__ */ new Map([
+      ["getKey", fn_getKey],
       ["getNamesAtLocation", fn_getNamesAtLocation],
       ["getBlockingMap", fn_getBlockingMap],
       ["hurt", fn_hurt],
+      ["showHistoryView", fn_showHistoryView],
       ["useTurn", fn_useTurn],
       ["drawTileAt", fn_drawTileAt],
       ["drawEntity", fn_drawEntity],
@@ -3499,6 +3591,8 @@
       ["doMove", doMove],
       ["doMelee", doMelee],
       ["doWait", doWait],
+      ["onKeyInHistory", onKeyInHistory],
+      ["doHistory", doHistory],
       ["fov", fov],
       ["drawUnderTile", drawUnderTile],
       ["RedrawMeEntity", RedrawMeEntity],
@@ -3514,6 +3608,7 @@
       ["BaseAI", BaseAI],
       ["HostileEnemy", HostileEnemy],
       ["WaitAction", WaitAction],
+      ["HistoryAction", HistoryAction],
       ["Player", tmPlayer],
       ["Enemy", tmEnemy],
       ["Orc", tmOrc],
@@ -3646,6 +3741,7 @@
       this.BaseAI = false;
       this.HostileEnemy = false;
       this.WaitAction = false;
+      this.HistoryAction = false;
     }
     toString() {
       return `#${this.id} (${Array.from(this.templates.values()).join(" ")})`;
@@ -3850,15 +3946,36 @@
       s += ch;
     return s;
   }
-  function drawLog(log, { value: x }, { value: y }, { value: width }, { value: height }) {
-    log.render(Game.instance.terminal, x, y, width, height);
+  function drawLog(log, { value: x }, { value: y }, { value: width }, { value: height }, offset) {
+    log.render(
+      Game.instance.terminal,
+      x,
+      y,
+      width,
+      height,
+      offset ? offset.value : 0
+    );
   }
   function pushMouseHandler(handler) {
     Game.instance.rl.mouseHandlers.push(handler);
   }
+  function popKeyHandler() {
+    Game.instance.rl.keyHandlers.pop();
+  }
+  function popMouseHandler() {
+    Game.instance.rl.mouseHandlers.pop();
+  }
+  function clamp({ value }, { value: min }, { value: max }) {
+    return value < min ? min : value > max ? max : value;
+  }
+  function clear() {
+    Game.instance.terminal.clear();
+  }
   var lib = {
     abs,
     add,
+    clamp,
+    clear,
     debug,
     draw,
     drawLog,
@@ -3868,6 +3985,8 @@
     getFOV,
     getNextMove,
     join,
+    popKeyHandler,
+    popMouseHandler,
     pushKeyHandler,
     pushMouseHandler,
     randInt,

@@ -147,7 +147,7 @@ product -> product _ mulop _ exp {% ([left,,op,,right]) => ({ _: 'binary', left,
          | exp {% id %}
 exp     -> unary _ expop _ exp {% ([left,,op,,right]) => ({ _: 'binary', left, op, right }) %}
          | unary {% id %}
-unary   -> "-" number {% ([op,value]) => ({ _: 'unary', op: op.value, value }) %}
+unary   -> "-" value {% ([op,value]) => ({ _: 'unary', op: op.value, value }) %}
          | "not" _ value {% ([op,,value]) => ({ _: 'unary', op: op.value, value }) %}
          | value {% id %}
 

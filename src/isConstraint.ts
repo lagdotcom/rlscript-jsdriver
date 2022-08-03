@@ -18,5 +18,6 @@ export default function isConstraint(p: RLSystemParam) {
     "BaseAI",
     "HostileEnemy",
     "WaitAction",
+    "HistoryAction",
   ].includes(p.typeName);
 }

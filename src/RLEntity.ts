@@ -38,6 +38,7 @@ export default class RLEntity {
   BaseAI: boolean;
   HostileEnemy: boolean;
   WaitAction: boolean;
+  HistoryAction: boolean;
   constructor() {
     this.type = "entity";
     this.id = nanoid();
@@ -52,6 +53,7 @@ export default class RLEntity {
     this.BaseAI = false;
     this.HostileEnemy = false;
     this.WaitAction = false;
+    this.HistoryAction = false;
   }
 
   toString() {

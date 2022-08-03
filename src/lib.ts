@@ -9,6 +9,7 @@ import RLEntity from "./RLEntity";
 import RLFloat from "./RLFloat";
 import RLGrid from "./RLGrid";
 import RLInt from "./RLInt";
+import RLLibrary from "./RLLibrary";
 import RLStr from "./RLStr";
 import RLSystem from "./RLSystem";
 import RLTag from "./RLTag";
@@ -16,7 +17,6 @@ import RLTemplate from "./RLTemplate";
 import RLTile from "./RLTile";
 import RLXY from "./RLXY";
 import { TinyColor } from "tinycolor-ts";
-import libtype from "./libtype";
 
 function setSize({ value: width }: RLInt, { value: height }: RLInt) {
   Game.instance.width = width;
@@ -233,17 +233,48 @@ function drawLog(
   { value: x }: RLInt,
   { value: y }: RLInt,
   { value: width }: RLInt,
-  { value: height }: RLInt
+  { value: height }: RLInt,
+  offset?: RLInt
 ) {
-  log.render(Game.instance.terminal, x, y, width, height);
+  log.render(
+    Game.instance.terminal,
+    x,
+    y,
+    width,
+    height,
+    offset ? offset.value : 0
+  );
 }
 
 function pushMouseHandler(handler: RLSystem) {
   Game.instance.rl.mouseHandlers.push(handler);
 }
-const lib: libtype = {
+
+function popKeyHandler() {
+  Game.instance.rl.keyHandlers.pop();
+}
+
+function popMouseHandler() {
+  Game.instance.rl.mouseHandlers.pop();
+}
+
+function clamp(
+  { value }: RLInt | RLFloat,
+  { value: min }: RLInt | RLFloat,
+  { value: max }: RLInt | RLFloat
+) {
+  return value < min ? min : value > max ? max : value;
+}
+
+function clear() {
+  Game.instance.terminal.clear();
+}
+
+const lib: RLLibrary = {
   abs,
   add,
+  clamp,
+  clear,
   debug,
   draw,
   drawLog,
@@ -253,6 +284,8 @@ const lib: libtype = {
   getFOV,
   getNextMove,
   join,
+  popKeyHandler,
+  popMouseHandler,
   pushKeyHandler,
   pushMouseHandler,
   randInt,

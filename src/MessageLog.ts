@@ -16,6 +16,10 @@ export default class MessageLog {
     this.dirty = false;
   }
 
+  get length() {
+    return this.messages.length;
+  }
+
   add(text: string, fg = "white", stack = true) {
     const top = this.messages.at(-1);
 
@@ -25,17 +29,30 @@ export default class MessageLog {
     this.dirty = true;
   }
 
-  render(term: Terminal, x: number, y: number, width: number, height: number) {
-    let offset = height - 1;
+  latest(size: number, offset = 0) {
+    const start = this.length - offset - size;
+    const end = start + size;
 
+    return this.messages.slice(start, end).reverse();
+  }
+
+  render(
+    term: Terminal,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    offset = 0
+  ) {
     term.fillRect(x, y, width, height, " ");
 
-    for (const msg of this.messages.slice(-height).reverse()) {
+    let yOffset = height - 1;
+    for (const msg of this.latest(height, offset)) {
       // TODO wordwrap
       const text = msg.fullText;
       const fg = new TinyColor(msg.fg).toNumber() << 8;
 
-      term.drawString(x, y + offset--, text, fg);
+      term.drawString(x, y + yOffset--, text, fg, 0);
     }
 
     this.dirty = false;
