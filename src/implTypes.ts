@@ -1,3 +1,5 @@
+import RLEntity from "./RLEntity";
+
 export type Appearance = {
   type: "component";
   typeName: "Appearance";

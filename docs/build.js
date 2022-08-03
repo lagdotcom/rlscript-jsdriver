@@ -859,65 +859,7 @@
   // src/Game.ts
   var import_wglt = __toESM(require_wglt());
 
-  // src/Stack.ts
-  var Stack = class {
-    constructor(items = []) {
-      this.items = items;
-    }
-    get top() {
-      if (this.items.length)
-        return this.items[this.items.length - 1];
-      throw new Error("Stack is empty");
-    }
-    push(item) {
-      this.items.push(item);
-    }
-    pop() {
-      return this.items.pop();
-    }
-  };
-
-  // src/RL.ts
-  var import_bresenham = __toESM(require_bresenham());
-
-  // node_modules/nanoid/index.browser.js
-  var nanoid = (size = 21) => crypto.getRandomValues(new Uint8Array(size)).reduce((id, byte) => {
-    byte &= 63;
-    if (byte < 36) {
-      id += byte.toString(36);
-    } else if (byte < 62) {
-      id += (byte - 26).toString(36).toUpperCase();
-    } else if (byte > 62) {
-      id += "-";
-    } else {
-      id += "_";
-    }
-    return id;
-  }, "");
-
-  // src/RL.ts
-  var RLComponentType = class {
-    constructor(name, data) {
-      this.name = name;
-      this.data = data;
-      this.type = "component";
-    }
-  };
-  RLComponentType.type = "component";
-  var RLFn = class {
-    constructor(name, code, params, variadic = []) {
-      this.name = name;
-      this.code = code;
-      this.params = params;
-      this.variadic = variadic;
-      this.type = "fn";
-    }
-    apply(args) {
-      const resolved = resolveArgs(args, this.params, this.variadic);
-      return this.code(...resolved);
-    }
-  };
-  RLFn.type = "fn";
+  // src/RLKeyEvent.ts
   var RLKeyEvent = class {
     constructor(key) {
       this.key = key;
@@ -925,63 +867,8 @@
     }
   };
   RLKeyEvent.type = "KeyEvent";
-  function isConstraint(p) {
-    return [
-      "Appearance",
-      "OldPosition",
-      "Position",
-      "MoveAction",
-      "MeleeAction",
-      "Actor",
-      "Fighter",
-      "IsBlocker",
-      "IsPlayer",
-      "RecalculateFOV",
-      "RedrawMe",
-      "RedrawUI",
-      "MyTurn",
-      "BaseAI",
-      "HostileEnemy",
-      "WaitAction"
-    ].includes(p.typeName);
-  }
-  function isExternal(p) {
-    return p.typeName !== "entity" && !isConstraint(p);
-  }
-  var RLSystem = class {
-    constructor(name, code, allParams, enabled = true) {
-      this.name = name;
-      this.code = code;
-      this.allParams = allParams;
-      this.enabled = enabled;
-      this.type = "system";
-      this.componentTypes = allParams.filter(isConstraint).map((p) => p.typeName);
-      this.externals = allParams.filter(isExternal);
-      this.params = allParams.filter((p) => p.type === "param");
-    }
-    apply(args) {
-      const resolved = resolveArgs(args, this.params, []);
-      return this.code(...resolved);
-    }
-    enable() {
-      this.enabled = true;
-    }
-    disable() {
-      this.enabled = false;
-    }
-  };
-  RLSystem.type = "system";
-  var RLTag = class {
-    constructor(typeName) {
-      this.typeName = typeName;
-      this.type = "tag";
-    }
-  };
-  RLTag.type = "tag";
-  function getParam(params, predicate) {
-    const i = params.findIndex(predicate);
-    return [i, i < 0 ? void 0 : params[i]];
-  }
+
+  // src/isAssignableTo.ts
   function isAssignableTo(o, type) {
     if (o.type === type)
       return true;
@@ -991,274 +878,6 @@
       return true;
     return false;
   }
-  function isAssignableToAny(o, types) {
-    for (const type of types) {
-      if (isAssignableTo(o, type))
-        return true;
-    }
-    return false;
-  }
-  function resolveArgs(args, params, variadic) {
-    var _a;
-    const results = params.map((p) => p.default);
-    const filled = /* @__PURE__ */ new Set();
-    const get = (predicate) => getParam(params, predicate);
-    const set = (i, value) => {
-      if (filled.has(i))
-        throw new Error(`Param #${i} set twice`);
-      if (i >= results.length) {
-        if (variadic.length === 0)
-          throw new Error(`Function only has ${results.length} params`);
-        if (!isAssignableToAny(value, variadic))
-          throw new Error(`Function variadic type is '${variadic.join("|")}', got ${value.type}`);
-      } else if (!isAssignableTo(value, params[i].typeName))
-        throw new Error(`Param #${i} expects type '${params[i].typeName}', got ${value.type}`);
-      results[i] = value;
-      filled.add(i);
-    };
-    let pos = 0;
-    for (const a of args) {
-      switch (a.type) {
-        case "typed": {
-          const [i, p] = get((p2) => p2.typeName === a.typeName);
-          if (!p)
-            throw new Error(`No param of type ${a.typeName}`);
-          set(i, a.value);
-          break;
-        }
-        case "named": {
-          const [i, p] = get((p2) => p2.name === a.name);
-          if (!p)
-            throw new Error(`No param with name ${a.name}`);
-          set(i, a.value);
-          break;
-        }
-        case "positional": {
-          set(pos, a.value);
-          pos++;
-          break;
-        }
-      }
-    }
-    const entity = (_a = args.find((p) => p.value.type === "entity")) == null ? void 0 : _a.value;
-    for (let i = 0; i < results.length; i++) {
-      if (typeof results[i] === "undefined") {
-        if (entity && entity.has(params[i].typeName)) {
-          results[i] = entity.get(params[i].typeName);
-          continue;
-        }
-        throw new Error(`Param #${i} not filled`);
-      }
-    }
-    return results;
-  }
-  var RLTile = class {
-    constructor(ch, walkable, transparent) {
-      this.ch = ch;
-      this.walkable = walkable;
-      this.transparent = transparent;
-      this.type = "tile";
-    }
-  };
-  RLTile.type = "tile";
-  var RLGrid = class {
-    constructor(width, height, empty) {
-      this.width = width;
-      this.height = height;
-      this.empty = empty;
-      this.type = "grid";
-      this.contents = /* @__PURE__ */ new Map();
-    }
-    tag(x, y) {
-      return `${x},${y}`;
-    }
-    at(x, y) {
-      return this.atOr(x, y, this.empty);
-    }
-    atOr(x, y, empty) {
-      const tag = this.tag(x, y);
-      const item = this.contents.get(tag);
-      return typeof item === "undefined" ? empty : item;
-    }
-    put(x, y, item) {
-      const tag = this.tag(x, y);
-      if (item === this.empty)
-        this.contents.delete(tag);
-      else
-        this.contents.set(this.tag(x, y), item);
-    }
-    clear() {
-      this.contents.clear();
-    }
-    fill(item) {
-      this.rect(0, 0, this.width - 1, this.height - 1, item);
-    }
-    rect(sx, sy, ex, ey, item) {
-      for (let y = sy; y <= ey; y++) {
-        for (let x = sx; x <= ex; x++) {
-          this.put(x, y, item);
-        }
-      }
-    }
-    findInRegion(region, item) {
-      for (let y = region.y; y <= region.y2; y++) {
-        for (let x = region.x; x <= region.x2; x++) {
-          if (this.at(x, y) === item)
-            return true;
-        }
-      }
-      return false;
-    }
-    line(x1, y1, x2, y2, item) {
-      (0, import_bresenham.default)(x1, y1, x2, y2, (x, y) => this.put(x, y, item));
-    }
-    draw() {
-      RL.instance.lib.drawGrid(this);
-    }
-  };
-  RLGrid.type = "grid";
-  var RLRect = class {
-    constructor(x, y, width, height) {
-      this.x = x;
-      this.y = y;
-      this.width = width;
-      this.height = height;
-      this.type = "rect";
-    }
-    get x2() {
-      return this.x + this.width;
-    }
-    get y2() {
-      return this.y + this.height;
-    }
-    get cx() {
-      return Math.floor(this.x + this.width / 2);
-    }
-    get cy() {
-      return Math.floor(this.y + this.height / 2);
-    }
-    intersects(o) {
-      return this.x <= o.x2 && this.x2 >= o.x && this.y <= o.y2 && this.y2 >= o.y;
-    }
-  };
-  RLRect.type = "rect";
-  var _RLXY = class {
-    constructor(x, y) {
-      this.x = x;
-      this.y = y;
-      this.type = "xy";
-    }
-    equals(o) {
-      return this.x === o.x && this.y === o.y;
-    }
-    plus(o) {
-      return new _RLXY(this.x + o.x, this.y + o.y);
-    }
-  };
-  var RLXY = _RLXY;
-  RLXY.type = "xy";
-  var RLEntity = class {
-    constructor() {
-      this.type = "entity";
-      this.id = nanoid();
-      this.components = /* @__PURE__ */ new Set();
-      this.templates = /* @__PURE__ */ new Set();
-      this.IsBlocker = false;
-      this.IsPlayer = false;
-      this.RecalculateFOV = false;
-      this.RedrawMe = false;
-      this.RedrawUI = false;
-      this.MyTurn = false;
-      this.BaseAI = false;
-      this.HostileEnemy = false;
-      this.WaitAction = false;
-    }
-    toString() {
-      return `#${this.id} (${Array.from(this.templates.values()).join(" ")})`;
-    }
-    get [Symbol.toStringTag]() {
-      return `Entity#${this.toString()})`;
-    }
-    has(name) {
-      return this.components.has(name);
-    }
-    add(thing) {
-      if (!thing)
-        return;
-      if (thing.type === "template") {
-        this.templates.add(thing.name);
-        for (const part of thing.get())
-          this.add(part);
-        return;
-      }
-      if (thing.type === "component") {
-        this[thing.typeName] = thing;
-      } else
-        this[thing.typeName] = true;
-      this.components.add(thing.typeName);
-    }
-    remove(thing) {
-      if (!thing)
-        return;
-      if (thing.type === "component")
-        delete this[thing.typeName];
-      else
-        this[thing.typeName] = false;
-      this.components.delete(thing.typeName);
-    }
-    get(name) {
-      if (this.components.has(name))
-        return this[name];
-      throw new Error(`Tried to access empty entity.${name}`);
-    }
-  };
-  RLEntity.type = "entity";
-  var RLQuery = class {
-    constructor(parent, types) {
-      this.parent = parent;
-      this.types = types;
-    }
-    get() {
-      return Array.from(this.parent.entities.values()).filter((e) => this.match(e));
-    }
-    match(e) {
-      for (const type of this.types) {
-        if (!e.has(type))
-          return false;
-      }
-      return true;
-    }
-  };
-  var RL = class {
-    constructor(lib2, ...envs) {
-      this.lib = lib2;
-      RL.instance = this;
-      this.env = /* @__PURE__ */ new Map();
-      for (const env of envs) {
-        for (const [key, value] of env)
-          this.env.set(key, value);
-      }
-      this.entities = /* @__PURE__ */ new Map();
-      this.keyHandlers = new Stack();
-      this.systems = Array.from(this.env.values()).filter((o) => o.type === "system");
-      for (const sys of this.systems)
-        sys.query = this.makeQuery(sys);
-    }
-    makeQuery(sys) {
-      return new RLQuery(this, sys.componentTypes);
-    }
-    callNamedFunction(name, ...args) {
-      const fn = this.env.get(name);
-      if (!fn)
-        throw new Error(`Unknown function: ${name}`);
-      if (fn.type !== "fn")
-        throw new Error(`Not a function: ${name}`);
-      return fn.apply(args);
-    }
-    runSystem(sys, ...args) {
-      return sys.apply(args);
-    }
-  };
 
   // src/Game.ts
   var keyEvents = /* @__PURE__ */ new Map([
@@ -1364,6 +983,74 @@
           requestAnimationFrame(handler);
         });
       });
+    }
+  };
+
+  // src/RLQuery.ts
+  var RLQuery = class {
+    constructor(parent, types) {
+      this.parent = parent;
+      this.types = types;
+    }
+    get() {
+      return Array.from(this.parent.entities.values()).filter((e) => this.match(e));
+    }
+    match(e) {
+      for (const type of this.types) {
+        if (!e.has(type))
+          return false;
+      }
+      return true;
+    }
+  };
+
+  // src/Stack.ts
+  var Stack = class {
+    constructor(items = []) {
+      this.items = items;
+    }
+    get top() {
+      if (this.items.length)
+        return this.items[this.items.length - 1];
+      throw new Error("Stack is empty");
+    }
+    push(item) {
+      this.items.push(item);
+    }
+    pop() {
+      return this.items.pop();
+    }
+  };
+
+  // src/RL.ts
+  var RL = class {
+    constructor(lib2, ...envs) {
+      this.lib = lib2;
+      RL.instance = this;
+      this.env = /* @__PURE__ */ new Map();
+      for (const env of envs) {
+        for (const [key, value] of env)
+          this.env.set(key, value);
+      }
+      this.entities = /* @__PURE__ */ new Map();
+      this.keyHandlers = new Stack();
+      this.systems = Array.from(this.env.values()).filter((o) => o.type === "system");
+      for (const sys of this.systems)
+        sys.query = this.makeQuery(sys);
+    }
+    makeQuery(sys) {
+      return new RLQuery(this, sys.componentTypes);
+    }
+    callNamedFunction(name, ...args) {
+      const fn = this.env.get(name);
+      if (!fn)
+        throw new Error(`Unknown function: ${name}`);
+      if (fn.type !== "fn")
+        throw new Error(`Not a function: ${name}`);
+      return fn.apply(args);
+    }
+    runSystem(sys, ...args) {
+      return sys.apply(args);
     }
   };
 
@@ -2287,6 +1974,268 @@
     }
   };
 
+  // src/getParam.ts
+  function getParam(params, predicate) {
+    const i = params.findIndex(predicate);
+    return [i, i < 0 ? void 0 : params[i]];
+  }
+
+  // src/isAssignableToAny.ts
+  function isAssignableToAny(o, types) {
+    for (const type of types) {
+      if (isAssignableTo(o, type))
+        return true;
+    }
+    return false;
+  }
+
+  // src/resolveArgs.ts
+  function resolveArgs(args, params, variadic) {
+    var _a;
+    const results = params.map((p) => p.default);
+    const filled = /* @__PURE__ */ new Set();
+    const get = (predicate) => getParam(params, predicate);
+    const set = (i, value) => {
+      if (filled.has(i))
+        throw new Error(`Param #${i} set twice`);
+      if (i >= results.length) {
+        if (variadic.length === 0)
+          throw new Error(`Function only has ${results.length} params`);
+        if (!isAssignableToAny(value, variadic))
+          throw new Error(`Function variadic type is '${variadic.join("|")}', got ${value.type}`);
+      } else if (!isAssignableTo(value, params[i].typeName))
+        throw new Error(`Param #${i} expects type '${params[i].typeName}', got ${value.type}`);
+      results[i] = value;
+      filled.add(i);
+    };
+    let pos = 0;
+    for (const a of args) {
+      switch (a.type) {
+        case "typed": {
+          const [i, p] = get((p2) => p2.typeName === a.typeName);
+          if (!p)
+            throw new Error(`No param of type ${a.typeName}`);
+          set(i, a.value);
+          break;
+        }
+        case "named": {
+          const [i, p] = get((p2) => p2.name === a.name);
+          if (!p)
+            throw new Error(`No param with name ${a.name}`);
+          set(i, a.value);
+          break;
+        }
+        case "positional": {
+          set(pos, a.value);
+          pos++;
+          break;
+        }
+      }
+    }
+    const entity = (_a = args.find((p) => p.value.type === "entity")) == null ? void 0 : _a.value;
+    for (let i = 0; i < results.length; i++) {
+      if (typeof results[i] === "undefined") {
+        if (entity && entity.has(params[i].typeName)) {
+          results[i] = entity.get(params[i].typeName);
+          continue;
+        }
+        throw new Error(`Param #${i} not filled`);
+      }
+    }
+    return results;
+  }
+
+  // src/RLFn.ts
+  var RLFn = class {
+    constructor(name, code, params, variadic = []) {
+      this.name = name;
+      this.code = code;
+      this.params = params;
+      this.variadic = variadic;
+      this.type = "fn";
+    }
+    apply(args) {
+      const resolved = resolveArgs(args, this.params, this.variadic);
+      return this.code(...resolved);
+    }
+  };
+  RLFn.type = "fn";
+
+  // src/RLGrid.ts
+  var import_bresenham = __toESM(require_bresenham());
+  var RLGrid = class {
+    constructor(width, height, empty) {
+      this.width = width;
+      this.height = height;
+      this.empty = empty;
+      this.type = "grid";
+      this.contents = /* @__PURE__ */ new Map();
+    }
+    tag(x, y) {
+      return `${x},${y}`;
+    }
+    at(x, y) {
+      return this.atOr(x, y, this.empty);
+    }
+    atOr(x, y, empty) {
+      const tag = this.tag(x, y);
+      const item = this.contents.get(tag);
+      return typeof item === "undefined" ? empty : item;
+    }
+    put(x, y, item) {
+      const tag = this.tag(x, y);
+      if (item === this.empty)
+        this.contents.delete(tag);
+      else
+        this.contents.set(this.tag(x, y), item);
+    }
+    clear() {
+      this.contents.clear();
+    }
+    fill(item) {
+      this.rect(0, 0, this.width - 1, this.height - 1, item);
+    }
+    rect(sx, sy, ex, ey, item) {
+      for (let y = sy; y <= ey; y++) {
+        for (let x = sx; x <= ex; x++) {
+          this.put(x, y, item);
+        }
+      }
+    }
+    findInRegion(region, item) {
+      for (let y = region.y; y <= region.y2; y++) {
+        for (let x = region.x; x <= region.x2; x++) {
+          if (this.at(x, y) === item)
+            return true;
+        }
+      }
+      return false;
+    }
+    line(x1, y1, x2, y2, item) {
+      (0, import_bresenham.default)(x1, y1, x2, y2, (x, y) => this.put(x, y, item));
+    }
+    draw() {
+      RL.instance.lib.drawGrid(this);
+    }
+  };
+  RLGrid.type = "grid";
+
+  // src/RLRect.ts
+  var RLRect = class {
+    constructor(x, y, width, height) {
+      this.x = x;
+      this.y = y;
+      this.width = width;
+      this.height = height;
+      this.type = "rect";
+    }
+    get x2() {
+      return this.x + this.width;
+    }
+    get y2() {
+      return this.y + this.height;
+    }
+    get cx() {
+      return Math.floor(this.x + this.width / 2);
+    }
+    get cy() {
+      return Math.floor(this.y + this.height / 2);
+    }
+    intersects(o) {
+      return this.x <= o.x2 && this.x2 >= o.x && this.y <= o.y2 && this.y2 >= o.y;
+    }
+  };
+  RLRect.type = "rect";
+
+  // src/isConstraint.ts
+  function isConstraint(p) {
+    return [
+      "Appearance",
+      "OldPosition",
+      "Position",
+      "MoveAction",
+      "MeleeAction",
+      "Actor",
+      "Fighter",
+      "IsBlocker",
+      "IsPlayer",
+      "RecalculateFOV",
+      "RedrawMe",
+      "RedrawUI",
+      "MyTurn",
+      "BaseAI",
+      "HostileEnemy",
+      "WaitAction"
+    ].includes(p.typeName);
+  }
+
+  // src/isExternal.ts
+  function isExternal(p) {
+    return p.typeName !== "entity" && !isConstraint(p);
+  }
+
+  // src/RLSystem.ts
+  var RLSystem = class {
+    constructor(name, code, allParams, enabled = true) {
+      this.name = name;
+      this.code = code;
+      this.allParams = allParams;
+      this.enabled = enabled;
+      this.type = "system";
+      this.componentTypes = allParams.filter(isConstraint).map((p) => p.typeName);
+      this.externals = allParams.filter(isExternal);
+      this.params = allParams.filter((p) => p.type === "param");
+    }
+    apply(args) {
+      const resolved = resolveArgs(args, this.params, []);
+      return this.code(...resolved);
+    }
+    enable() {
+      this.enabled = true;
+    }
+    disable() {
+      this.enabled = false;
+    }
+  };
+  RLSystem.type = "system";
+
+  // src/RLTag.ts
+  var RLTag = class {
+    constructor(typeName) {
+      this.typeName = typeName;
+      this.type = "tag";
+    }
+  };
+  RLTag.type = "tag";
+
+  // src/RLTile.ts
+  var RLTile = class {
+    constructor(ch, walkable, transparent) {
+      this.ch = ch;
+      this.walkable = walkable;
+      this.transparent = transparent;
+      this.type = "tile";
+    }
+  };
+  RLTile.type = "tile";
+
+  // src/RLXY.ts
+  var _RLXY = class {
+    constructor(x, y) {
+      this.x = x;
+      this.y = y;
+      this.type = "xy";
+    }
+    equals(o) {
+      return this.x === o.x && this.y === o.y;
+    }
+    plus(o) {
+      return new _RLXY(this.x + o.x, this.y + o.y);
+    }
+  };
+  var RLXY = _RLXY;
+  RLXY.type = "xy";
+
   // src/impl.ts
   function implementation(__lib) {
     let Layer;
@@ -2919,6 +2868,79 @@
       }
     }
   }
+
+  // node_modules/nanoid/index.browser.js
+  var nanoid = (size = 21) => crypto.getRandomValues(new Uint8Array(size)).reduce((id, byte) => {
+    byte &= 63;
+    if (byte < 36) {
+      id += byte.toString(36);
+    } else if (byte < 62) {
+      id += (byte - 26).toString(36).toUpperCase();
+    } else if (byte > 62) {
+      id += "-";
+    } else {
+      id += "_";
+    }
+    return id;
+  }, "");
+
+  // src/RLEntity.ts
+  var RLEntity = class {
+    constructor() {
+      this.type = "entity";
+      this.id = nanoid();
+      this.components = /* @__PURE__ */ new Set();
+      this.templates = /* @__PURE__ */ new Set();
+      this.IsBlocker = false;
+      this.IsPlayer = false;
+      this.RecalculateFOV = false;
+      this.RedrawMe = false;
+      this.RedrawUI = false;
+      this.MyTurn = false;
+      this.BaseAI = false;
+      this.HostileEnemy = false;
+      this.WaitAction = false;
+    }
+    toString() {
+      return `#${this.id} (${Array.from(this.templates.values()).join(" ")})`;
+    }
+    get [Symbol.toStringTag]() {
+      return `Entity#${this.toString()})`;
+    }
+    has(name) {
+      return this.components.has(name);
+    }
+    add(thing) {
+      if (!thing)
+        return;
+      if (thing.type === "template") {
+        this.templates.add(thing.name);
+        for (const part of thing.get())
+          this.add(part);
+        return;
+      }
+      if (thing.type === "component") {
+        this[thing.typeName] = thing;
+      } else
+        this[thing.typeName] = true;
+      this.components.add(thing.typeName);
+    }
+    remove(thing) {
+      if (!thing)
+        return;
+      if (thing.type === "component")
+        delete this[thing.typeName];
+      else
+        this[thing.typeName] = false;
+      this.components.delete(thing.typeName);
+    }
+    get(name) {
+      if (this.components.has(name))
+        return this[name];
+      throw new Error(`Tried to access empty entity.${name}`);
+    }
+  };
+  RLEntity.type = "entity";
 
   // src/lib.ts
   function setSize({ value: width }, { value: height }) {

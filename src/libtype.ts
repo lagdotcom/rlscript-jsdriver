@@ -1,18 +1,16 @@
-import {
-  RLChar,
-  RLEntity,
-  RLFloat,
-  RLGrid,
-  RLInt,
-  RLStr,
-  RLSystem,
-  RLTag,
-  RLTemplate,
-  RLTile,
-  RLXY,
-} from "./RL";
 import MessageLog from "./MessageLog";
+import RLChar from "./RLChar";
 import { RLComponent } from "./implTypes";
+import RLEntity from "./RLEntity";
+import RLFloat from "./RLFloat";
+import RLGrid from "./RLGrid";
+import RLInt from "./RLInt";
+import RLStr from "./RLStr";
+import RLSystem from "./RLSystem";
+import RLTag from "./RLTag";
+import RLTemplate from "./RLTemplate";
+import RLTile from "./RLTile";
+import RLXY from "./RLXY";
 
 type libtype = {
   abs(n: RLInt): number;

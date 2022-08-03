@@ -18,10 +18,11 @@ import {
   ASTType,
   ASTUnaryOp,
 } from "./ast";
+import library, { LibFunction, LibFunctionParam } from "./libdefs";
 import { readFileSync, writeFileSync } from "fs";
+
 import Stack from "./Stack";
 import { join } from "path";
-import library, { LibFunction, LibFunctionParam } from "./libdefs";
 
 export class BadCallError extends Error {
   constructor(fn: ASTFnDecl | LibFunction, details: string) {
@@ -172,8 +173,9 @@ const read = (fn: string) => readFileSync(fn, { encoding: "utf-8" });
 const write = (fn: string, data: string) =>
   writeFileSync(fn, data, { encoding: "utf-8" });
 
+const entityTemplate = read("src/RLEntity.template.ts");
 const implTemplate = read("src/impl.template.ts");
-const rlTemplate = read("src/RL.template.ts");
+const tileTemplate = read("src/RLTile.template.ts");
 
 type TSScope = {
   name: string;
@@ -524,7 +526,9 @@ export default class TSCompiler implements TSScope {
 
   writeAll(dir: string) {
     this.write(join(dir, "implTypes.ts"), this.generateImplTypes());
-    this.write(join(dir, "RL.ts"), this.generateRL());
+    this.write(join(dir, "isConstraint.ts"), this.generateIsConstraint());
+    this.write(join(dir, "RLEntity.ts"), this.generateRLEntity());
+    this.write(join(dir, "RLTile.ts"), this.generateRLTile());
     this.write(join(dir, "impl.ts"), this.generateImpl());
   }
 
@@ -542,7 +546,9 @@ export default class TSCompiler implements TSScope {
   }
 
   generateImplTypes() {
-    return this.components
+    return `import RLEntity from "./RLEntity";
+
+    ${this.components
       .map(
         (c) => `export type ${fixName(c.name)} = {
   type: "component";
@@ -567,19 +573,24 @@ export default class TSCompiler implements TSScope {
             : "never"
         };`
       )
-      .join("\n");
+      .join("\n")}`;
   }
 
-  generateRL() {
+  generateRLEntity() {
     return this.template(
-      rlTemplate,
+      entityTemplate,
       new Map([
         ["IMPLTYPES", this.getImplImport(true)],
-        ["ISCONSTRAINT", this.getIsConstraint()],
         ["ENTITYFIELDS", this.getEntityFields()],
         ["ENTITYCONSTRUCTOR", this.getEntityConstructor()],
-        ["TILECONSTRUCTOR", this.getTileConstructor()],
       ])
+    );
+  }
+
+  generateRLTile() {
+    return this.template(
+      tileTemplate,
+      new Map([["TILECONSTRUCTOR", this.getTileConstructor()]])
     );
   }
 
@@ -601,17 +612,22 @@ export default class TSCompiler implements TSScope {
     );
   }
 
-  getImplImport(meta = false) {
-    return `import { ${this.componentNames.join(", ")}${
-      meta ? ", RLComponent, RLComponentName, RLTagName" : ""
-    } } from "./implTypes";`;
+  generateIsConstraint() {
+    return `import RLSystemParam from "./RLSystemParam";
+
+    export default function isConstraint(p: RLSystemParam) {
+      return [${this.componentNames
+        .concat(this.tagNames)
+        .map((name) => `"${fixName(name)}"`)
+        .join(", ")}].includes(p.typeName);
+    }
+    `;
   }
 
-  getIsConstraint() {
-    return `return [${this.componentNames
-      .concat(this.tagNames)
-      .map((name) => `"${fixName(name)}"`)
-      .join(", ")}].includes(p.typeName);`;
+  getImplImport(meta = false) {
+    return `import { ${this.componentNames.join(", ")}${
+      meta ? ", RLComponent, RLComponentName" : ""
+    } } from "./implTypes";`;
   }
 
   getEntityFields() {

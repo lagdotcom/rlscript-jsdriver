@@ -1,5 +1,10 @@
 import { Keys, Terminal } from "wglt";
-import RL, { RLArg, RLKeyEvent, RLSystem, isAssignableTo } from "./RL";
+
+import RL from "./RL";
+import RLArg from "./RLArg";
+import RLKeyEvent from "./RLKeyEvent";
+import RLSystem from "./RLSystem";
+import isAssignableTo from "./isAssignableTo";
 
 const keyEvents = new Map([
   [Keys.VK_UP, "up"],

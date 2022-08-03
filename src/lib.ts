@@ -1,20 +1,20 @@
 import { ComputeVisibility, ShadowCastingGrid } from "./RecursiveShadowCasting";
+
 import Game from "./Game";
 import MessageLog from "./MessageLog";
-import RL, {
-  RLChar,
-  RLEntity,
-  RLFloat,
-  RLGrid,
-  RLInt,
-  RLStr,
-  RLSystem,
-  RLTag,
-  RLTemplate,
-  RLTile,
-  RLXY,
-} from "./RL";
+import RL from "./RL";
+import RLChar from "./RLChar";
 import { RLComponent } from "./implTypes";
+import RLEntity from "./RLEntity";
+import RLFloat from "./RLFloat";
+import RLGrid from "./RLGrid";
+import RLInt from "./RLInt";
+import RLStr from "./RLStr";
+import RLSystem from "./RLSystem";
+import RLTag from "./RLTag";
+import RLTemplate from "./RLTemplate";
+import RLTile from "./RLTile";
+import RLXY from "./RLXY";
 import { TinyColor } from "tinycolor-ts";
 import libtype from "./libtype";
 
