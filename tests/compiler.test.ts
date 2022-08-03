@@ -1,9 +1,10 @@
-import { ASTProgram } from "../src/ast";
 import TSCompiler, {
   CannotResolveError,
   RedefinitionError,
   UnknownTypeError,
 } from "../src/tscompiler";
+
+import { ASTProgram } from "../src/ast";
 import { getParser } from "../src/parser";
 
 function getCompiler(src: string) {
@@ -32,22 +33,22 @@ test("detect name reuse", () => {
 
 test("escape reserved words in TS", () => {
   const c = getCompiler(`
-  tag class tag extends tag if
-  component return else: extends end
+  tag class tag extends tag do
+  component super void: extends end
   fn case(default: class)
     default = "hello"
   end
-  system break(throw: return, if)
-    throw.else = if
+  system break(throw: super, do)
+    throw.void = do
   end`);
 
   const types = c.generateImplTypes();
-  expect(types).toEqual(expect.not.stringContaining("export type return"));
-  expect(types).toEqual(expect.not.stringContaining("else: extends"));
-  expect(types).toEqual(expect.not.stringContaining("RLComponent = return"));
+  expect(types).toEqual(expect.not.stringContaining("export type super"));
+  expect(types).toEqual(expect.not.stringContaining("void: extends"));
+  expect(types).toEqual(expect.not.stringContaining("RLComponent = super"));
 
   const tags = c.getTagTypes();
-  expect(tags).toEqual(expect.not.stringContaining("const if ="));
+  expect(tags).toEqual(expect.not.stringContaining("const do ="));
 
   const fns = c.getFunctions();
   expect(fns).toEqual(expect.not.stringContaining("function case"));
@@ -56,8 +57,8 @@ test("escape reserved words in TS", () => {
 
   const sys = c.getSystems();
   expect(sys).toEqual(expect.not.stringContaining("function break"));
-  expect(sys).toEqual(expect.not.stringContaining("throw: return"));
+  expect(sys).toEqual(expect.not.stringContaining("throw: super"));
   expect(sys).toEqual(expect.not.stringContaining(" throw."));
-  expect(sys).toEqual(expect.not.stringContaining(" .else ="));
-  expect(sys).toEqual(expect.not.stringContaining(" = if"));
+  expect(sys).toEqual(expect.not.stringContaining(" .void ="));
+  expect(sys).toEqual(expect.not.stringContaining(" = finally"));
 });

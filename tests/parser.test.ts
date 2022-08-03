@@ -13,7 +13,7 @@ test("valid component", () => {
   valid("component thing a: int end", {
     _: "component",
     name: "thing",
-    fields: [{ _: "field", name: "a", type: "int" }],
+    fields: [{ _: "field", name: "a", type: { _: "type", value: "int" } }],
   });
 });
 
@@ -33,7 +33,7 @@ test("valid system", () => {
     _: "system",
     name: "something",
     params: [
-      { _: "field", name: "e", type: "entity" },
+      { _: "field", name: "e", type: { _: "type", value: "entity" } },
       { _: "constraint", type: "IsCool" },
     ],
     code: [],
@@ -44,7 +44,8 @@ test("valid fn", () => {
   valid("fn something(a: int) end", {
     _: "fn",
     name: "something",
-    params: [{ _: "field", name: "a", type: "int" }],
+    params: [{ _: "field", name: "a", type: { _: "type", value: "int" } }],
+    type: undefined,
     code: [],
   });
 });
@@ -54,6 +55,7 @@ test("some calls", () => {
     _: "fn",
     name: "test",
     params: [],
+    type: undefined,
     code: [
       {
         _: "call",
