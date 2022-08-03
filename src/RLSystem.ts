@@ -7,7 +7,7 @@ import isConstraint from "./isConstraint";
 import isExternal from "./isExternal";
 import resolveArgs from "./resolveArgs";
 
-export default class RLSystem<A extends Array<unknown> = unknown[]> {
+export default class RLSystem<A extends any[] = any[]> {
   static type: RLObjectType = "system";
   type: "system";
   params: RLFnParam[];

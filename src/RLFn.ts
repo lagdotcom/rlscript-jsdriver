@@ -3,7 +3,7 @@ import RLFnParam from "./RLFnParam";
 import RLObjectType from "./RLObjectType";
 import resolveArgs from "./resolveArgs";
 
-export default class RLFn<A extends Array<unknown> = unknown[], V = unknown> {
+export default class RLFn<A extends any[] = any[], V = any> {
   static type: RLObjectType = "fn";
   type: "fn";
 
@@ -16,7 +16,7 @@ export default class RLFn<A extends Array<unknown> = unknown[], V = unknown> {
     this.type = "fn";
   }
 
-  apply(args: RLArg[]) {
+  apply(args: RLArg[]): V {
     const resolved = resolveArgs(args, this.params, this.variadic);
     return this.code(...resolved);
   }
