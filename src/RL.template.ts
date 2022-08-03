@@ -27,13 +27,13 @@ export class RLComponentType {
   }
 }
 
-export class RLFn {
+export class RLFn<A extends Array<unknown> = unknown[], V = unknown> {
   static type: RLObjectType = "fn";
   type: "fn";
 
   constructor(
     public name: string,
-    private code: CallableFunction,
+    private code: (...args: A) => V,
     public params: RLFnParam[],
     public variadic: RLObjectType[] = []
   ) {
@@ -61,7 +61,7 @@ function isConstraint(p: RLSystemParam) {
 function isExternal(p: RLSystemParam): p is RLFnParam {
   return p.typeName !== "entity" && !isConstraint(p);
 }
-export class RLSystem {
+export class RLSystem<A extends Array<unknown> = unknown[]> {
   static type: RLObjectType = "system";
   type: "system";
   params: RLFnParam[];
@@ -71,7 +71,7 @@ export class RLSystem {
 
   constructor(
     public name: string,
-    private code: CallableFunction,
+    private code: (...args: A) => false | void,
     public allParams: RLSystemParam[],
     public enabled = true
   ) {
