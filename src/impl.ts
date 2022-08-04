@@ -621,8 +621,12 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     const t: RLTile | undefined = map.at(x, y);
     if (t && t.walkable) {
       const b: RLEntity | undefined = __lib.find(IsBlocker, mkPosition(x, y));
-      if (b && b.has("Fighter")) {
-        e.add(mkMeleeAction(b));
+      if (b) {
+        if (b.Fighter) {
+          e.add(mkMeleeAction(b));
+        } else {
+          log.add("That way is blocked.", "grey");
+        }
         return;
       }
       useTurn(e);
@@ -632,6 +636,8 @@ export default function implementation(__lib: RLLibrary): RLEnv {
       if (e.IsPlayer) {
         e.add(RecalculateFOV);
       }
+    } else {
+      log.add("That way is blocked.", "grey");
     }
   }
   const doMove = new RLSystem("doMove", code_doMove, [

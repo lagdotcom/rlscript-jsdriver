@@ -3349,8 +3349,12 @@
       const t = map.at(x, y);
       if (t && t.walkable) {
         const b = __lib.find(IsBlocker, mkPosition(x, y));
-        if (b && b.has("Fighter")) {
-          e.add(mkMeleeAction(b));
+        if (b) {
+          if (b.Fighter) {
+            e.add(mkMeleeAction(b));
+          } else {
+            log.add("That way is blocked.", "grey");
+          }
           return;
         }
         useTurn(e);
@@ -3360,6 +3364,8 @@
         if (e.IsPlayer) {
           e.add(RecalculateFOV);
         }
+      } else {
+        log.add("That way is blocked.", "grey");
       }
     }
     const doMove = new RLSystem("doMove", code_doMove, [
