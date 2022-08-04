@@ -2496,14 +2496,18 @@
       return this.messages.slice(start, end).reverse();
     }
     render(term, x, y, width, height, offset = 0) {
+      this.dirty = false;
       term.fillRect(x, y, width, height, " ");
       let yOffset = height - 1;
       for (const msg of this.latest(height, offset)) {
-        const text = msg.fullText;
+        const text = wordWrap(msg.fullText, width).reverse();
         const fg = new TinyColor(msg.fg).toNumber() << 8;
-        term.drawString(x, y + yOffset--, text, fg, 0);
+        for (const line of text) {
+          term.drawString(x, y + yOffset--, line, fg, 0);
+          if (yOffset < 0)
+            return;
+        }
       }
-      this.dirty = false;
     }
   };
 
