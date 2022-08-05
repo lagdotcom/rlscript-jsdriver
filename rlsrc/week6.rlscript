@@ -25,6 +25,10 @@ component MeleeAction
   target: entity
 end
 
+component ItemAction
+  target: entity
+end
+
 component Actor
   energy: int
 end
@@ -34,6 +38,19 @@ component Fighter
   hp: int
   defence: int
   power: int
+end
+
+component Consumable
+  activate: fn
+  power: int
+end
+
+component Inventory
+  items: bag
+end
+
+component InventoryActionConfig
+  callback: fn
 end
 
 tag IsBlocker
@@ -46,10 +63,15 @@ tag BaseAI
 tag HostileEnemy
 tag WaitAction
 tag HistoryAction
+tag Item
+tag PickupAction
+tag InventoryAction
+tag DropAction
 
 enum Layer
   Nothing
   Corpse
+  Item
   Enemy
   Player
 end
@@ -60,6 +82,7 @@ template Player
   Appearance("player", '@', "white", "black", Layer.Player)
   Fighter(30, 30, 2, 5)
   Actor(100)
+  Inventory(bag(20))
   MyTurn
   RecalculateFOV
   RedrawUI
@@ -86,6 +109,39 @@ end
 template Corpse
   RedrawMe
   Appearance("corpse", '%', "red", "black", Layer.Corpse)
+end
+
+template HealingPotion
+  Appearance("healing potion", "!", "purple", "black", Layer.Item)
+  Item
+  Consumable(healingItem, 4)
+end
+
+fn healingItem(pc: entity, item: entity)
+  if not pc.Fighter
+    log.add("You can't use that.", "grey")
+    return false
+  end
+
+  if pc.Fighter.hp >= pc.Fighter.maxHp
+    log.add("You're already healthy.", "grey")
+    return false
+  end
+
+  local oldHp: int = pc.Fighter.hp
+  pc.Fighter.hp = clamp(oldHp + item.Consumable.power, 0, pc.Fighter.maxHp)
+
+  local gained: int = pc.Fighter.hp - oldHp
+  log.add(join(' ', "You healed for", gained, "hp"), "lime")
+  pc.add(RedrawUI)
+  return true
+end
+
+fn redrawEverything(e: entity)
+  clear()
+  e.add(RecalculateFOV)
+  e.add(RedrawUI)
+  log.dirty = true
 end
 
 tiletype Floor '.' walkable transparent end
@@ -130,6 +186,9 @@ fn getKey(k: str): str
     "KeyH"       = "left"
     "Period"     = "wait"
 
+    "KeyD"       = "drop"
+    "KeyG"       = "pickup"
+    "KeyI"       = "inventory"
     "KeyV"       = "history"
 
     else = k
@@ -165,13 +224,16 @@ end
 
 system onKeyInDungeon(e: entity, IsPlayer, k: KeyEvent)
   e.add(match getKey(k.key)
-    "up"      = MoveAction( 0, -1)
-    "right"   = MoveAction( 1,  0)
-    "down"    = MoveAction( 0,  1)
-    "left"    = MoveAction(-1,  0)
+    "up"        = MoveAction( 0, -1)
+    "right"     = MoveAction( 1,  0)
+    "down"      = MoveAction( 0,  1)
+    "left"      = MoveAction(-1,  0)
 
-    "wait"    = WaitAction
-    "history" = HistoryAction
+    "wait"      = WaitAction
+    "history"   = HistoryAction
+    "pickup"    = PickupAction
+    "inventory" = InventoryAction
+    "drop"      = DropAction
   end)
 end
 
@@ -314,10 +376,7 @@ system onKeyInHistory(e: entity, IsPlayer, k: KeyEvent)
   end
 
   if not change
-    clear()
-    e.add(RecalculateFOV)
-    e.add(RedrawUI)
-    log.dirty = true
+    redrawEverything(e)
     popKeyHandler()
     exit
   end
@@ -333,6 +392,130 @@ system doHistory(e: entity, HistoryAction, MyTurn)
   historyOffset = 0
   clear()
   showHistoryView()
+end
+
+system doItem(e: entity, ia: ItemAction, MyTurn)
+  e.remove(ia)
+
+  local item: entity = ia.target
+  if item.Consumable
+    if item.Consumable.activate(e)
+      remove(item)
+    end
+  else
+    log.add("Cannot use that.", "grey")
+  end
+end
+
+system doPickup(e: entity, p: Position, v: Inventory, PickupAction, MyTurn)
+  e.remove(PickupAction)
+
+  local matches: int = 0
+  local got: int = 0
+  local failed: bool = false
+
+  query (item: entity, ia: Appearance, ip: Position, Item)
+    if ip.x == p.x and ip.y == p.y
+      matches += 1
+
+      local key: char? = v.items.add(item)
+      if key
+        got += 1
+        log.add(join("", "You got the ", ia.name, " (", key, ')'))
+        item.remove(ip)
+      else
+        failed = true
+      end
+    end
+  end
+
+  if got
+    useTurn(e)
+  end
+
+  if failed
+    log.add("Can't carry any more.", "grey")
+  else
+    if not matches
+      log.add("Nothing here.", "grey")
+    end
+  end
+end
+
+fn getName(e: entity)
+  if e.Appearance
+    return e.Appearance.name
+  end
+
+  return "???"
+end
+
+fn openInventory(e: entity, v: Inventory, callback: fn, title: str)
+  if not v.items.count
+    log.add("You're not carrying anything.", "grey")
+    exit
+  end
+
+  e.add(InventoryActionConfig(callback))
+  pushKeyHandler(onKeyInInventory)
+
+  drawBag(v.items, title, getName, "white", "silver", "grey", "black")
+end
+
+fn icUse(e: entity, key: char, item: entity)
+  if not item.Consumable
+    log.add("You cannot use that.", "grey")
+    exit
+  end
+
+  if item.Consumable.activate(e, item)
+    if e.Inventory
+      e.Inventory.items.remove(key)
+    end
+
+    useTurn(e)
+  end
+end
+
+system doInventory(e: entity, v: Inventory, InventoryAction, MyTurn)
+  e.remove(InventoryAction)
+  openInventory(e, v, icUse, "Use what?")
+end
+
+fn icDrop(e: entity, key: char, item: entity)
+  if e.Inventory and e.Position
+    e.Inventory.items.remove(key)
+    item.add(Position(e.Position.x, e.Position.y))
+
+    useTurn(e)
+    if item.Appearance
+      log.add(join(' ', "You drop the", item.Appearance.name))
+    end
+  end
+end
+
+system doDrop(e: entity, v: Inventory, DropAction, MyTurn)
+  e.remove(DropAction)
+  openInventory(e, v, icDrop, "Drop what?")
+end
+
+system onKeyInInventory(e: entity, v: Inventory, config: InventoryActionConfig, k: KeyEvent)
+  local closing: bool = false
+
+  if k.key == "Escape"
+    closing = true
+  end
+
+  if v.items.has(k.char)
+    config.callback(e, k.char, v.items.get(k.char))
+    closing = true
+  end
+
+  if closing
+    e.remove(config)
+    popKeyHandler()
+    redrawEverything(e)
+  end
 end
 
 system fov(e: entity, p: Position, RecalculateFOV)
@@ -482,6 +665,7 @@ fn generateDungeon()
       if prev
         randomCorridor(prev.cx, prev.cy, room.cx, room.cy)
         addEnemies(room, taken)
+        addItems(room, taken)
       else
         spawn(Player, Position(room.cx, room.cy))
       end
@@ -506,6 +690,18 @@ fn addEnemies(r: rect, taken: grid)
       else
         spawn(Troll, Position(x, y))
       end
+    end
+  end
+end
+
+fn addItems(r: rect, taken: grid)
+  for z = 1 to randInt(0, 2)
+    local x: int = randInt(r.x + 1, r.x2 - 1)
+    local y: int = randInt(r.y + 1, r.y2 - 1)
+
+    if not taken.at(x, y)
+      taken.put(x, y, true)
+      spawn(HealingPotion, Position(x, y))
     end
   end
 end

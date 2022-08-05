@@ -1,15 +1,18 @@
 import { ComputeVisibility, ShadowCastingGrid } from "./RecursiveShadowCasting";
 
 import Game from "./Game";
-import MessageLog from "./MessageLog";
 import RL from "./RL";
+import RLBag from "./RLBag";
 import RLChar from "./RLChar";
 import { RLComponent } from "./implTypes";
 import RLEntity from "./RLEntity";
 import RLFloat from "./RLFloat";
+import RLFn from "./RLFn";
 import RLGrid from "./RLGrid";
 import RLInt from "./RLInt";
 import RLLibrary from "./RLLibrary";
+import RLMessages from "./RLMessages";
+import RLObject from "./RLObject";
 import RLStr from "./RLStr";
 import RLSystem from "./RLSystem";
 import RLTag from "./RLTag";
@@ -35,6 +38,10 @@ function pushKeyHandler(handler: RLSystem) {
   Game.instance.rl.keyHandlers.push(handler);
 }
 
+function getColour(s?: RLStr) {
+  return s ? new TinyColor(s.value).toNumber() << 8 : undefined;
+}
+
 function draw(
   { value: x }: RLInt,
   { value: y }: RLInt,
@@ -42,8 +49,8 @@ function draw(
   fg?: RLStr,
   bg?: RLStr
 ) {
-  const f = fg ? new TinyColor(fg.value).toNumber() << 8 : undefined;
-  const b = bg ? new TinyColor(bg.value).toNumber() << 8 : undefined;
+  const f = getColour(fg);
+  const b = getColour(bg);
 
   if (display.type === "char")
     Game.instance.terminal.drawChar(x, y, display.value, f, b);
@@ -209,8 +216,20 @@ function join(
     .join(glue);
 }
 
-function debug({ value: message }: RLStr) {
-  console.log(message);
+function debug(...args: RLObject[]) {
+  console.log(
+    ...args.map((arg) => {
+      if (
+        arg.type === "char" ||
+        arg.type === "float" ||
+        arg.type === "int" ||
+        arg.type === "str"
+      )
+        return arg.value;
+
+      return arg;
+    })
+  );
 }
 
 function remove(e: RLEntity) {
@@ -229,7 +248,7 @@ function repeat({ value: ch }: RLChar | RLStr, { value: count }: RLInt) {
 }
 
 function drawLog(
-  log: MessageLog,
+  log: RLMessages,
   { value: x }: RLInt,
   { value: y }: RLInt,
   { value: width }: RLInt,
@@ -270,6 +289,58 @@ function clear() {
   Game.instance.terminal.clear();
 }
 
+function drawBox(
+  { value: x }: RLInt,
+  { value: y }: RLInt,
+  { value: width }: RLInt,
+  { value: height }: RLInt,
+  fg?: RLStr,
+  bg?: RLStr
+) {
+  Game.instance.terminal.drawSingleBox(
+    x,
+    y,
+    width,
+    height,
+    getColour(fg),
+    getColour(bg)
+  );
+}
+
+function drawBag(
+  bag: RLBag,
+  { value: title }: RLStr,
+  getName: RLFn,
+  titleColour?: RLStr,
+  itemColour?: RLStr,
+  borderColour?: RLStr,
+  b?: RLStr
+) {
+  const items = Array.from(bag.items.entries())
+    .map(
+      ([key, e]) =>
+        `(${key}) ${getName.apply([{ type: "positional", value: e }])}`
+    )
+    .sort();
+  const width = Math.max(title.length, ...items.map((n) => n.length)) + 4;
+  const height = items.length + 4;
+
+  const x = Math.floor((Game.instance.width - width) / 2);
+  const y = Math.floor((Game.instance.height - height) / 2);
+
+  const tc = getColour(titleColour);
+  const ic = getColour(itemColour);
+  const bc = getColour(borderColour);
+  const bg = getColour(b);
+
+  const term = Game.instance.terminal;
+  term.drawSingleBox(x, y, width, height, bc, bg);
+  term.drawString(x + 2, y + 1, title, tc, bg);
+
+  for (let i = 0; i < items.length; i++)
+    term.drawString(x + 2, y + i + 3, items[i], ic, bg);
+}
+
 const lib: RLLibrary = {
   abs,
   add,
@@ -277,6 +348,8 @@ const lib: RLLibrary = {
   clear,
   debug,
   draw,
+  drawBag,
+  drawBox,
   drawLog,
   drawGrid,
   find,

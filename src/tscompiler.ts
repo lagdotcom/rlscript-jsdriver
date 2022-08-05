@@ -147,6 +147,7 @@ const templateType = asType("template");
 const tileType = asType("tile");
 
 const builtinTypes = new Set<string>([
+  "bag",
   "char",
   "component",
   "entity",
@@ -263,7 +264,11 @@ class KeyEventScope implements TSScope {
 
   constructor(public parent: TSScope) {
     this.name = "KeyEvent";
-    this.members = new Map<string, ASTType>([["key", strType]]);
+    this.members = new Map<string, ASTType>([
+      ["key", strType],
+      // TODO this isn't strictly true, it could be undefined
+      ["char", charType],
+    ]);
   }
 }
 
@@ -395,6 +400,24 @@ class MessagesScope implements TSScope {
   }
 }
 
+class BagScope implements TSScope {
+  members: Map<string, ASTType>;
+  name: "bag";
+
+  constructor(public parent: TSScope) {
+    this.name = "bag";
+    this.members = new Map<string, ASTType>([
+      ["capacity", intType],
+      ["count", intType],
+      ["add", fnType],
+      ["contains", fnType],
+      ["get", fnType],
+      ["has", fnType],
+      ["remove", fnType],
+    ]);
+  }
+}
+
 export default class TSCompiler implements TSScope {
   name: "global";
   members: Map<string, ASTType>;
@@ -493,6 +516,7 @@ export default class TSCompiler implements TSScope {
         matched = true;
       else if (accepted === "tag" && this.tagNames.includes(type.value))
         matched = true;
+      else if (accepted === "any") matched = true;
     }
 
     if (!matched)
@@ -569,7 +593,9 @@ export default class TSCompiler implements TSScope {
   }
 
   generateImplTypes() {
-    return `import RLEntity from "./RLEntity";
+    // TODO make these dynamic
+    return `import RLBag from "./RLBag";
+import RLEntity from "./RLEntity";
 
     ${this.components
       .map(
@@ -803,7 +829,7 @@ export default class TSCompiler implements TSScope {
 
           case "return":
             // TODO check expr type against containing function
-            return `return ${s.expr ? this.getExpr(s.expr) : ""}`;
+            return `return ${s.expr ? this.getExpr(s.expr) : ""};`;
 
           case "for":
             return `for (let ${s.name.value} = ${this.getExpr(s.start)}; ${
@@ -836,7 +862,7 @@ export default class TSCompiler implements TSScope {
     this.resolveTypeChain(q);
 
     // TODO this seems wildly wrong
-    return q.chain.map(fixName).join(".");
+    return q.chain.join(".");
   }
 
   getCall(x: ASTQName | ASTIdent, args: ASTExpr[]): string {
@@ -858,7 +884,8 @@ export default class TSCompiler implements TSScope {
       if (n === "grid") return `new RLGrid(${this.getArgs(args)})`;
       else if (n === "rect") return `new RLRect(${this.getArgs(args)})`;
       else if (n === "xy") return `new RLXY(${this.getArgs(args)})`;
-      else if (n === "messages") return `new MessageLog(${this.getArgs(args)})`;
+      else if (n === "messages") return `new RLMessages(${this.getArgs(args)})`;
+      else if (n === "bag") return `new RLBag(${this.getArgs(args)})`;
     }
 
     if (s.value === "fn") return `${fixName(n)}(${this.getArgs(args)})`;
@@ -886,9 +913,13 @@ export default class TSCompiler implements TSScope {
             const name = this.getQName(a);
 
             switch (type.value) {
-              case "template":
-                return "tm" + name;
+              case "fn":
+                return `fn_${name}`;
 
+              case "template":
+                return `tm${name}`;
+
+              case "bag":
               case "entity":
               case "grid":
               case "messages":
@@ -1057,21 +1088,25 @@ export default class TSCompiler implements TSScope {
       case "bool":
         return "boolean" + suffix;
 
-      case "messages":
-        return "MessageLog" + suffix;
+      case "fn":
+        return "CallableFunction" + suffix;
 
+      case "bag":
+        return "RLBag" + suffix;
       case "entity":
         return "RLEntity" + suffix;
       case "grid":
         return "RLGrid" + suffix;
+      case "KeyEvent":
+        return "RLKeyEvent" + suffix;
+      case "messages":
+        return "RLMessages" + suffix;
+      case "MouseEvent":
+        return "RLMouseEvent" + suffix;
       case "rect":
         return "RLRect" + suffix;
       case "tile":
         return "RLTile" + suffix;
-      case "KeyEvent":
-        return "RLKeyEvent" + suffix;
-      case "MouseEvent":
-        return "RLMouseEvent" + suffix;
       case "xy":
         return "RLXY" + suffix;
 
@@ -1223,8 +1258,7 @@ export default class TSCompiler implements TSScope {
     throw new CannotResolveError(name, topScope);
   }
 
-  resolveTypeChain(q: ASTQName) {
-    let scope = this.scopes.top;
+  resolveTypeChain(q: ASTQName, scope: TSScope | undefined = this.scopes.top) {
     let type: ASTType = asType("scope");
 
     for (const name of q.chain) {
@@ -1247,6 +1281,7 @@ export default class TSCompiler implements TSScope {
       else if (type.value === "tile") scope = new TileScope(scope, this);
       else if (type.value === "xy") scope = new XYScope(scope);
       else if (type.value === "messages") scope = new MessagesScope(scope);
+      else if (type.value === "bag") scope = new BagScope(scope);
       else if (type.value === "KeyEvent") scope = new KeyEventScope(scope);
       else if (type.value === "MouseEvent") scope = new MouseEventScope(scope);
       else if (this.componentNames.includes(type.value))

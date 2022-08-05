@@ -9,5 +9,6 @@ window.addEventListener("load", () => {
     throw new Error("Canvas #main not found.");
 
   const g = new Game(new RL(lib, impl(lib)), main as HTMLCanvasElement);
-  void g.init();
+  g.init();
+  void g.start();
 });

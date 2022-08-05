@@ -1,3 +1,4 @@
+import RLBag from "./RLBag";
 import RLChar from "./RLChar";
 import { RLComponent } from "./implTypes";
 import RLEntity from "./RLEntity";
@@ -6,6 +7,7 @@ import RLFn from "./RLFn";
 import RLGrid from "./RLGrid";
 import RLInt from "./RLInt";
 import RLKeyEvent from "./RLKeyEvent";
+import RLMessages from "./RLMessages";
 import RLMouseEvent from "./RLMouseEvent";
 import RLRect from "./RLRect";
 import RLStr from "./RLStr";
@@ -16,6 +18,7 @@ import RLTile from "./RLTile";
 import RLXY from "./RLXY";
 
 type RLObject =
+  | RLBag
   | RLChar
   | RLComponent
   | RLEntity
@@ -24,6 +27,7 @@ type RLObject =
   | RLInt
   | RLFloat
   | RLKeyEvent
+  | RLMessages
   | RLMouseEvent
   | RLRect
   | RLStr

@@ -1,3 +1,4 @@
+import RLBag from "./RLBag";
 import RLEntity from "./RLEntity";
 
 export type Appearance = {
@@ -32,6 +33,11 @@ export type MeleeAction = {
   typeName: "MeleeAction";
   target: RLEntity;
 };
+export type ItemAction = {
+  type: "component";
+  typeName: "ItemAction";
+  target: RLEntity;
+};
 export type Actor = {
   type: "component";
   typeName: "Actor";
@@ -45,14 +51,34 @@ export type Fighter = {
   defence: number;
   power: number;
 };
+export type Consumable = {
+  type: "component";
+  typeName: "Consumable";
+  activate: CallableFunction;
+  power: number;
+};
+export type Inventory = {
+  type: "component";
+  typeName: "Inventory";
+  items: RLBag;
+};
+export type InventoryActionConfig = {
+  type: "component";
+  typeName: "InventoryActionConfig";
+  callback: CallableFunction;
+};
 export type RLComponent =
   | Appearance
   | OldPosition
   | Position
   | MoveAction
   | MeleeAction
+  | ItemAction
   | Actor
-  | Fighter;
+  | Fighter
+  | Consumable
+  | Inventory
+  | InventoryActionConfig;
 export type RLComponentName = RLComponent["typeName"];
 export type RLTagName =
   | "IsBlocker"
@@ -64,4 +90,8 @@ export type RLTagName =
   | "BaseAI"
   | "HostileEnemy"
   | "WaitAction"
-  | "HistoryAction";
+  | "HistoryAction"
+  | "Item"
+  | "PickupAction"
+  | "InventoryAction"
+  | "DropAction";

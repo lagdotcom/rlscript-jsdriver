@@ -27,11 +27,13 @@ export default class Game {
     this.mouseY = NaN;
   }
 
-  async init() {
+  init() {
     this.rl.callNamedFunction("main");
     this.terminal = new Terminal(this.canvas, this.width, this.height);
     this.terminal.update = this.terminalUpdate.bind(this);
+  }
 
+  async start() {
     let count = 0;
     this.running = true;
     while (this.running) {

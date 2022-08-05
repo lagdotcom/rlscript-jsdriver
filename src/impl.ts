@@ -1,21 +1,28 @@
 import {
   Actor,
   Appearance,
+  Consumable,
   Fighter,
+  Inventory,
+  InventoryActionConfig,
+  ItemAction,
   MeleeAction,
   MoveAction,
   OldPosition,
   Position,
 } from "./implTypes";
 
-import MessageLog from "./MessageLog";
+// TODO make these dynamic
+
 import RL from "./RL";
+import RLBag from "./RLBag";
 import RLEntity from "./RLEntity";
 import RLEnv from "./RLEnv";
 import RLFn from "./RLFn";
 import RLGrid from "./RLGrid";
 import RLKeyEvent from "./RLKeyEvent";
 import RLLibrary from "./RLLibrary";
+import RLMessages from "./RLMessages";
 import RLMouseEvent from "./RLMouseEvent";
 import RLObject from "./RLObject";
 import RLQuery from "./RLQuery";
@@ -30,6 +37,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
   enum Layer {
     Nothing,
     Corpse,
+    Item,
     Enemy,
     Player,
   }
@@ -44,6 +52,10 @@ export default function implementation(__lib: RLLibrary): RLEnv {
   const HostileEnemy = new RLTag("HostileEnemy");
   const WaitAction = new RLTag("WaitAction");
   const HistoryAction = new RLTag("HistoryAction");
+  const Item = new RLTag("Item");
+  const PickupAction = new RLTag("PickupAction");
+  const InventoryAction = new RLTag("InventoryAction");
+  const DropAction = new RLTag("DropAction");
 
   const mkAppearance = (
     name: string,
@@ -83,6 +95,11 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     typeName: "MeleeAction",
     target,
   });
+  const mkItemAction = (target: RLEntity): ItemAction => ({
+    type: "component",
+    typeName: "ItemAction",
+    target,
+  });
   const mkActor = (energy: number): Actor => ({
     type: "component",
     typeName: "Actor",
@@ -101,6 +118,27 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     defence,
     power,
   });
+  const mkConsumable = (
+    activate: CallableFunction,
+    power: number
+  ): Consumable => ({
+    type: "component",
+    typeName: "Consumable",
+    activate,
+    power,
+  });
+  const mkInventory = (items: RLBag): Inventory => ({
+    type: "component",
+    typeName: "Inventory",
+    items,
+  });
+  const mkInventoryActionConfig = (
+    callback: CallableFunction
+  ): InventoryActionConfig => ({
+    type: "component",
+    typeName: "InventoryActionConfig",
+    callback,
+  });
 
   const tmPlayer: RLTemplate = {
     type: "template",
@@ -111,6 +149,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
       mkAppearance("player", "@", "white", "black", Layer.Player),
       mkFighter(30, 30, 2, 5),
       mkActor(100),
+      mkInventory(new RLBag(20)),
       MyTurn,
       RecalculateFOV,
       RedrawUI,
@@ -147,6 +186,15 @@ export default function implementation(__lib: RLLibrary): RLEnv {
       mkAppearance("corpse", "%", "red", "black", Layer.Corpse),
     ],
   };
+  const tmHealingPotion: RLTemplate = {
+    type: "template",
+    name: "HealingPotion",
+    get: () => [
+      mkAppearance("healing potion", "!", "purple", "black", Layer.Item),
+      Item,
+      mkConsumable(healingItem, 4),
+    ],
+  };
 
   const Floor = new RLTile(".", true, true);
   const Wall = new RLTile("#", false, false);
@@ -165,8 +213,51 @@ export default function implementation(__lib: RLLibrary): RLEnv {
   const map: RLGrid = new RLGrid(mapWidth, mapHeight, Wall);
   const explored: RLGrid = new RLGrid(mapWidth, mapHeight, false);
   const visible: RLGrid = new RLGrid(mapWidth, mapHeight, false);
-  const log: MessageLog = new MessageLog();
+  const log: RLMessages = new RLMessages();
   let historyOffset = 0;
+
+  function healingItem(pc: RLEntity, item: RLEntity) {
+    if (!pc.Fighter) {
+      log.add("You can't use that.", "grey");
+      return false;
+    }
+    if (pc.Fighter.hp >= pc.Fighter.maxHp) {
+      log.add("You're already healthy.", "grey");
+      return false;
+    }
+    const oldHp: number = pc.Fighter.hp;
+    pc.Fighter.hp = __lib.clamp(
+      { type: "int", value: oldHp + item.Consumable.power },
+      { type: "int", value: 0 },
+      { type: "int", value: pc.Fighter.maxHp }
+    );
+    const gained: number = pc.Fighter.hp - oldHp;
+    log.add(
+      __lib.join(
+        { type: "char", value: " " },
+        { type: "str", value: "You healed for" },
+        { type: "int", value: gained },
+        { type: "str", value: "hp" }
+      ),
+      "lime"
+    );
+    pc.add(RedrawUI);
+    return true;
+  }
+  const fn_healingItem = new RLFn("healingItem", healingItem, [
+    { type: "param", name: "pc", typeName: "entity" },
+    { type: "param", name: "item", typeName: "entity" },
+  ]);
+
+  function redrawEverything(e: RLEntity) {
+    __lib.clear();
+    e.add(RecalculateFOV);
+    e.add(RedrawUI);
+    log.dirty = true;
+  }
+  const fn_redrawEverything = new RLFn("redrawEverything", redrawEverything, [
+    { type: "param", name: "e", typeName: "entity" },
+  ]);
 
   function getKey(k: string) {
     return ((__match) => {
@@ -184,6 +275,9 @@ export default function implementation(__lib: RLLibrary): RLEnv {
       else if (__match === "KeyJ") return "down";
       else if (__match === "KeyH") return "left";
       else if (__match === "Period") return "wait";
+      else if (__match === "KeyD") return "drop";
+      else if (__match === "KeyG") return "pickup";
+      else if (__match === "KeyI") return "inventory";
       else if (__match === "KeyV") return "history";
       else return k;
     })(k);
@@ -293,6 +387,85 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     );
   }
   const fn_showHistoryView = new RLFn("showHistoryView", showHistoryView, []);
+
+  function getName(e: RLEntity) {
+    if (e.Appearance) {
+      return e.Appearance.name;
+    }
+    return "???";
+  }
+  const fn_getName = new RLFn("getName", getName, [
+    { type: "param", name: "e", typeName: "entity" },
+  ]);
+
+  function openInventory(
+    e: RLEntity,
+    v: Inventory,
+    callback: CallableFunction,
+    title: string
+  ) {
+    if (!v.items.count) {
+      log.add("You're not carrying anything.", "grey");
+      return;
+    }
+    e.add(mkInventoryActionConfig(callback));
+    __lib.pushKeyHandler(onKeyInInventory);
+    __lib.drawBag(
+      v.items,
+      { type: "str", value: title },
+      fn_getName,
+      { type: "str", value: "white" },
+      { type: "str", value: "silver" },
+      { type: "str", value: "grey" },
+      { type: "str", value: "black" }
+    );
+  }
+  const fn_openInventory = new RLFn("openInventory", openInventory, [
+    { type: "param", name: "e", typeName: "entity" },
+    { type: "param", name: "v", typeName: "Inventory" },
+    { type: "param", name: "callback", typeName: "fn" },
+    { type: "param", name: "title", typeName: "str" },
+  ]);
+
+  function icUse(e: RLEntity, key: string, item: RLEntity) {
+    if (!item.Consumable) {
+      log.add("You cannot use that.", "grey");
+      return;
+    }
+    if (item.Consumable.activate(e, item)) {
+      if (e.Inventory) {
+        e.Inventory.items.remove(key);
+      }
+      useTurn(e);
+    }
+  }
+  const fn_icUse = new RLFn("icUse", icUse, [
+    { type: "param", name: "e", typeName: "entity" },
+    { type: "param", name: "key", typeName: "char" },
+    { type: "param", name: "item", typeName: "entity" },
+  ]);
+
+  function icDrop(e: RLEntity, key: string, item: RLEntity) {
+    if (e.Inventory && e.Position) {
+      e.Inventory.items.remove(key);
+      item.add(mkPosition(e.Position.x, e.Position.y));
+      useTurn(e);
+      if (item.Appearance) {
+        log.add(
+          __lib.join(
+            { type: "char", value: " " },
+            { type: "str", value: "You drop the" },
+            { type: "str", value: item.Appearance.name }
+          )
+        );
+      }
+    }
+  }
+  const fn_icDrop = new RLFn("icDrop", icDrop, [
+    { type: "param", name: "e", typeName: "entity" },
+    { type: "param", name: "key", typeName: "char" },
+    { type: "param", name: "item", typeName: "entity" },
+  ]);
 
   function useTurn(e: RLEntity) {
     e.Actor.energy -= 100;
@@ -464,6 +637,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
         if (prev) {
           randomCorridor(prev.cx, prev.cy, room.cx, room.cy);
           addEnemies(room, taken);
+          addItems(room, taken);
         } else {
           __lib.spawn(tmPlayer, mkPosition(room.cx, room.cy));
         }
@@ -505,6 +679,31 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     }
   }
   const fn_addEnemies = new RLFn("addEnemies", addEnemies, [
+    { type: "param", name: "r", typeName: "rect" },
+    { type: "param", name: "taken", typeName: "grid" },
+  ]);
+
+  function addItems(r: RLRect, taken: RLGrid) {
+    for (
+      let z = 1;
+      z <= __lib.randInt({ type: "int", value: 0 }, { type: "int", value: 2 });
+      z++
+    ) {
+      const x: number = __lib.randInt(
+        { type: "int", value: r.x + 1 },
+        { type: "int", value: r.x2 - 1 }
+      );
+      const y: number = __lib.randInt(
+        { type: "int", value: r.y + 1 },
+        { type: "int", value: r.y2 - 1 }
+      );
+      if (!taken.at(x, y)) {
+        taken.put(x, y, true);
+        __lib.spawn(tmHealingPotion, mkPosition(x, y));
+      }
+    }
+  }
+  const fn_addItems = new RLFn("addItems", addItems, [
     { type: "param", name: "r", typeName: "rect" },
     { type: "param", name: "taken", typeName: "grid" },
   ]);
@@ -561,6 +760,9 @@ export default function implementation(__lib: RLLibrary): RLEnv {
         else if (__match === "left") return mkMoveAction(-1, 0);
         else if (__match === "wait") return WaitAction;
         else if (__match === "history") return HistoryAction;
+        else if (__match === "pickup") return PickupAction;
+        else if (__match === "inventory") return InventoryAction;
+        else if (__match === "drop") return DropAction;
       })(getKey(k.key))
     );
   }
@@ -722,10 +924,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
       else return 0;
     })(getKey(k.key));
     if (!change) {
-      __lib.clear();
-      e.add(RecalculateFOV);
-      e.add(RedrawUI);
-      log.dirty = true;
+      redrawEverything(e);
       __lib.popKeyHandler();
       return;
     }
@@ -754,6 +953,127 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     { type: "constraint", typeName: "HistoryAction" },
     { type: "constraint", typeName: "MyTurn" },
   ]);
+
+  function code_doItem(e: RLEntity, ia: ItemAction) {
+    e.remove(ia);
+    const item: RLEntity = ia.target;
+    if (item.Consumable) {
+      if (item.Consumable.activate(e)) {
+        __lib.remove(item);
+      }
+    } else {
+      log.add("Cannot use that.", "grey");
+    }
+  }
+  const doItem = new RLSystem("doItem", code_doItem, [
+    { type: "param", name: "e", typeName: "entity" },
+    { type: "param", name: "ia", typeName: "ItemAction" },
+    { type: "constraint", typeName: "MyTurn" },
+  ]);
+
+  function code_doPickup(e: RLEntity, p: Position, v: Inventory) {
+    e.remove(PickupAction);
+    let matches = 0;
+    let got = 0;
+    let failed = false;
+    for (const item of new RLQuery(RL.instance, [
+      "Appearance",
+      "Position",
+      "Item",
+    ]).get()) {
+      const { Appearance: ia, Position: ip } = item;
+      if (ip.x == p.x && ip.y == p.y) {
+        matches += 1;
+        const key: string | undefined = v.items.add(item);
+        if (key) {
+          got += 1;
+          log.add(
+            __lib.join(
+              { type: "str", value: "" },
+              { type: "str", value: "You got the " },
+              { type: "str", value: ia.name },
+              { type: "str", value: " (" },
+              { type: "char", value: key },
+              { type: "char", value: ")" }
+            )
+          );
+          item.remove(ip);
+        } else {
+          failed = true;
+        }
+      }
+    }
+    if (got) {
+      useTurn(e);
+    }
+    if (failed) {
+      log.add("Can't carry any more.", "grey");
+    } else {
+      if (!matches) {
+        log.add("Nothing here.", "grey");
+      }
+    }
+  }
+  const doPickup = new RLSystem("doPickup", code_doPickup, [
+    { type: "param", name: "e", typeName: "entity" },
+    { type: "param", name: "p", typeName: "Position" },
+    { type: "param", name: "v", typeName: "Inventory" },
+    { type: "constraint", typeName: "PickupAction" },
+    { type: "constraint", typeName: "MyTurn" },
+  ]);
+
+  function code_doInventory(e: RLEntity, v: Inventory) {
+    e.remove(InventoryAction);
+    openInventory(e, v, icUse, "Use what?");
+  }
+  const doInventory = new RLSystem("doInventory", code_doInventory, [
+    { type: "param", name: "e", typeName: "entity" },
+    { type: "param", name: "v", typeName: "Inventory" },
+    { type: "constraint", typeName: "InventoryAction" },
+    { type: "constraint", typeName: "MyTurn" },
+  ]);
+
+  function code_doDrop(e: RLEntity, v: Inventory) {
+    e.remove(DropAction);
+    openInventory(e, v, icDrop, "Drop what?");
+  }
+  const doDrop = new RLSystem("doDrop", code_doDrop, [
+    { type: "param", name: "e", typeName: "entity" },
+    { type: "param", name: "v", typeName: "Inventory" },
+    { type: "constraint", typeName: "DropAction" },
+    { type: "constraint", typeName: "MyTurn" },
+  ]);
+
+  function code_onKeyInInventory(
+    e: RLEntity,
+    v: Inventory,
+    config: InventoryActionConfig,
+    k: RLKeyEvent
+  ) {
+    let closing = false;
+    if (k.key == "Escape") {
+      closing = true;
+    }
+    if (v.items.has(k.char)) {
+      config.callback(e, k.char, v.items.get(k.char));
+      closing = true;
+    }
+    if (closing) {
+      e.remove(config);
+      __lib.popKeyHandler();
+      redrawEverything(e);
+    }
+  }
+  const onKeyInInventory = new RLSystem(
+    "onKeyInInventory",
+    code_onKeyInInventory,
+    [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "param", name: "v", typeName: "Inventory" },
+      { type: "param", name: "config", typeName: "InventoryActionConfig" },
+      { type: "param", name: "k", typeName: "KeyEvent" },
+    ]
+  );
 
   function code_fov(e: RLEntity, p: Position) {
     __lib.getFOV(
@@ -859,11 +1179,17 @@ export default function implementation(__lib: RLLibrary): RLEnv {
   const showLog = new RLSystem("showLog", code_showLog, []);
 
   return new Map<string, RLObject>([
+    ["healingItem", fn_healingItem],
+    ["redrawEverything", fn_redrawEverything],
     ["getKey", fn_getKey],
     ["getNamesAtLocation", fn_getNamesAtLocation],
     ["getBlockingMap", fn_getBlockingMap],
     ["hurt", fn_hurt],
     ["showHistoryView", fn_showHistoryView],
+    ["getName", fn_getName],
+    ["openInventory", fn_openInventory],
+    ["icUse", fn_icUse],
+    ["icDrop", fn_icDrop],
     ["useTurn", fn_useTurn],
     ["drawTileAt", fn_drawTileAt],
     ["drawEntity", fn_drawEntity],
@@ -872,6 +1198,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     ["randomCorridor", fn_randomCorridor],
     ["generateDungeon", fn_generateDungeon],
     ["addEnemies", fn_addEnemies],
+    ["addItems", fn_addItems],
     ["main", fn_main],
     ["onMouseInDungeon", onMouseInDungeon],
     ["onKeyInDungeon", onKeyInDungeon],
@@ -882,6 +1209,11 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     ["doWait", doWait],
     ["onKeyInHistory", onKeyInHistory],
     ["doHistory", doHistory],
+    ["doItem", doItem],
+    ["doPickup", doPickup],
+    ["doInventory", doInventory],
+    ["doDrop", doDrop],
+    ["onKeyInInventory", onKeyInInventory],
     ["fov", fov],
     ["drawUnderTile", drawUnderTile],
     ["RedrawMeEntity", RedrawMeEntity],
@@ -898,10 +1230,15 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     ["HostileEnemy", HostileEnemy],
     ["WaitAction", WaitAction],
     ["HistoryAction", HistoryAction],
+    ["Item", Item],
+    ["PickupAction", PickupAction],
+    ["InventoryAction", InventoryAction],
+    ["DropAction", DropAction],
     ["Player", tmPlayer],
     ["Enemy", tmEnemy],
     ["Orc", tmOrc],
     ["Troll", tmTroll],
     ["Corpse", tmCorpse],
+    ["HealingPotion", tmHealingPotion],
   ]);
 }

@@ -11,10 +11,12 @@ class Message {
   }
 }
 
-export default class MessageLog {
+export default class RLMessages {
   dirty: boolean;
+  type: "messages";
   constructor(private messages: Message[] = []) {
     this.dirty = false;
+    this.type = "messages";
   }
 
   get length() {

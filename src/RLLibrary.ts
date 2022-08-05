@@ -1,10 +1,13 @@
-import MessageLog from "./MessageLog";
+import RLBag from "./RLBag";
 import RLChar from "./RLChar";
 import { RLComponent } from "./implTypes";
 import RLEntity from "./RLEntity";
 import RLFloat from "./RLFloat";
+import RLFn from "./RLFn";
 import RLGrid from "./RLGrid";
 import RLInt from "./RLInt";
+import RLMessages from "./RLMessages";
+import RLObject from "./RLObject";
 import RLStr from "./RLStr";
 import RLSystem from "./RLSystem";
 import RLTag from "./RLTag";
@@ -17,10 +20,27 @@ type RLLibrary = {
   add(...args: (RLComponent | RLTag)[]): void;
   clamp(value: RLInt, min: RLInt, max: RLInt): number;
   clear(): void;
-  debug(message: RLStr): void;
+  debug(...args: RLObject[]): void;
   draw(x: RLInt, y: RLInt, s: RLChar | RLStr, fg?: RLStr, bg?: RLStr): void;
+  drawBag(
+    bag: RLBag,
+    title: RLStr,
+    getName: RLFn,
+    titleColour?: RLStr,
+    itemColour?: RLStr,
+    borderColour?: RLStr,
+    bg?: RLStr
+  ): void;
+  drawBox(
+    x: RLInt,
+    y: RLInt,
+    width: RLInt,
+    height: RLInt,
+    fg?: RLStr,
+    bg?: RLStr
+  ): void;
   drawLog(
-    log: MessageLog,
+    log: RLMessages,
     x: RLInt,
     y: RLInt,
     width: RLInt,

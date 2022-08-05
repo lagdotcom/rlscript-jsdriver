@@ -1,4 +1,6 @@
 export type LibFunctionType =
+  | "any"
+  | "bag"
   | "bool"
   | "char"
   | "component"
@@ -54,6 +56,7 @@ const v = (
 
 const library = [
   // constructors
+  f("bag", [p("capacity", "int")], p("bag", "bag")),
   f(
     "grid",
     [p("width", "int"), p("height", "int"), p("empty", "bool", "int", "tile")],
@@ -80,11 +83,28 @@ const library = [
     ],
     p("value", "int", "float")
   ),
-  f("debug", [p("message", "str")]),
+  v("debug", [], p("arg", "any")),
   f("draw", [
     p("x", "int"),
     p("y", "int"),
     p("s", "char", "str"),
+    o("fg", "str"),
+    o("bg", "str"),
+  ]),
+  f("drawBag", [
+    p("bag", "bag"),
+    p("title", "str"),
+    p("getName", "fn"),
+    o("titleColour", "str"),
+    o("itemColour", "str"),
+    o("borderColour", "str"),
+    o("bg", "str"),
+  ]),
+  f("drawBox", [
+    p("x", "int"),
+    p("y", "int"),
+    p("width", "int"),
+    p("height", "int"),
     o("fg", "str"),
     o("bg", "str"),
   ]),

@@ -1,13 +1,16 @@
 //#IMPLTYPES
 
-import MessageLog from "./MessageLog";
+// TODO make these dynamic
+
 import RL from "./RL";
+import RLBag from "./RLBag";
 import RLEntity from "./RLEntity";
 import RLEnv from "./RLEnv";
 import RLFn from "./RLFn";
 import RLGrid from "./RLGrid";
 import RLKeyEvent from "./RLKeyEvent";
 import RLLibrary from "./RLLibrary";
+import RLMessages from "./RLMessages";
 import RLMouseEvent from "./RLMouseEvent";
 import RLObject from "./RLObject";
 import RLQuery from "./RLQuery";

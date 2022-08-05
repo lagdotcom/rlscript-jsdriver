@@ -7,8 +7,12 @@ export default function isConstraint(p: RLSystemParam) {
     "Position",
     "MoveAction",
     "MeleeAction",
+    "ItemAction",
     "Actor",
     "Fighter",
+    "Consumable",
+    "Inventory",
+    "InventoryActionConfig",
     "IsBlocker",
     "IsPlayer",
     "RecalculateFOV",
@@ -19,5 +23,9 @@ export default function isConstraint(p: RLSystemParam) {
     "HostileEnemy",
     "WaitAction",
     "HistoryAction",
+    "Item",
+    "PickupAction",
+    "InventoryAction",
+    "DropAction",
   ].includes(p.typeName);
 }

@@ -84,10 +84,40 @@
   });
 
   // src/RLKeyEvent.ts
+  var keyChars = {
+    KeyA: "A",
+    KeyB: "B",
+    KeyC: "C",
+    KeyD: "D",
+    KeyE: "E",
+    KeyF: "F",
+    KeyG: "G",
+    KeyH: "H",
+    KeyI: "I",
+    KeyJ: "J",
+    KeyK: "K",
+    KeyL: "L",
+    KeyM: "M",
+    KeyN: "N",
+    KeyO: "O",
+    KeyP: "P",
+    KeyQ: "Q",
+    KeyR: "R",
+    KeyS: "S",
+    KeyT: "T",
+    KeyU: "U",
+    KeyV: "V",
+    KeyW: "W",
+    KeyX: "X",
+    KeyY: "Y",
+    KeyZ: "Z"
+  };
   var RLKeyEvent = class {
     constructor(key) {
       this.key = key;
       this.type = "KeyEvent";
+      if (keyChars[key])
+        this.char = keyChars[key];
     }
   };
   RLKeyEvent.type = "KeyEvent";
@@ -1407,10 +1437,12 @@
       this.mouseY = NaN;
     }
     init() {
+      this.rl.callNamedFunction("main");
+      this.terminal = new Terminal(this.canvas, this.width, this.height);
+      this.terminal.update = this.terminalUpdate.bind(this);
+    }
+    start() {
       return __async(this, null, function* () {
-        this.rl.callNamedFunction("main");
-        this.terminal = new Terminal(this.canvas, this.width, this.height);
-        this.terminal.update = this.terminalUpdate.bind(this);
         let count = 0;
         this.running = true;
         while (this.running) {
@@ -1578,6 +1610,196 @@
       return sys.apply(args);
     }
   };
+
+  // src/RLBag.ts
+  var RLBag = class {
+    constructor(capacity) {
+      this.capacity = capacity;
+      this.type = "bag";
+      this.items = /* @__PURE__ */ new Map();
+    }
+    get count() {
+      return this.items.size;
+    }
+    getKeyByIndex(i) {
+      return String.fromCharCode(i + 65);
+    }
+    getFreeKey() {
+      for (let i = 0; i < this.capacity; i++) {
+        const key = this.getKeyByIndex(i);
+        if (!this.items.has(key))
+          return key;
+      }
+    }
+    add(item) {
+      const key = this.getFreeKey();
+      if (key)
+        this.items.set(key, item);
+      return key;
+    }
+    get(key) {
+      return this.items.get(key);
+    }
+    has(key) {
+      return this.items.has(key);
+    }
+    contains(item) {
+      return Array.from(this.items.values()).includes(item);
+    }
+    remove(key) {
+      this.items.delete(key);
+    }
+  };
+
+  // src/getParam.ts
+  function getParam(params, predicate) {
+    const i = params.findIndex(predicate);
+    return [i, i < 0 ? void 0 : params[i]];
+  }
+
+  // src/isAssignableToAny.ts
+  function isAssignableToAny(o, types) {
+    for (const type of types) {
+      if (isAssignableTo(o, type))
+        return true;
+    }
+    return false;
+  }
+
+  // src/resolveArgs.ts
+  function resolveArgs(args, params, variadic) {
+    var _a;
+    const results = params.map((p) => p.default);
+    const filled = /* @__PURE__ */ new Set();
+    const get = (predicate) => getParam(params, predicate);
+    const set = (i, value) => {
+      if (filled.has(i))
+        throw new Error(`Param #${i} set twice`);
+      if (i >= results.length) {
+        if (variadic.length === 0)
+          throw new Error(`Function only has ${results.length} params`);
+        if (!isAssignableToAny(value, variadic))
+          throw new Error(
+            `Function variadic type is '${variadic.join("|")}', got ${value.type}`
+          );
+      } else if (!isAssignableTo(value, params[i].typeName))
+        throw new Error(
+          `Param #${i} expects type '${params[i].typeName}', got ${value.type}`
+        );
+      results[i] = value;
+      filled.add(i);
+    };
+    let pos = 0;
+    for (const a of args) {
+      switch (a.type) {
+        case "typed": {
+          const [i, p] = get((p2) => p2.typeName === a.typeName);
+          if (!p)
+            throw new Error(`No param of type ${a.typeName}`);
+          set(i, a.value);
+          break;
+        }
+        case "named": {
+          const [i, p] = get((p2) => p2.name === a.name);
+          if (!p)
+            throw new Error(`No param with name ${a.name}`);
+          set(i, a.value);
+          break;
+        }
+        case "positional": {
+          set(pos, a.value);
+          pos++;
+          break;
+        }
+      }
+    }
+    const entity = (_a = args.find((p) => p.value.type === "entity")) == null ? void 0 : _a.value;
+    for (let i = 0; i < results.length; i++) {
+      if (typeof results[i] === "undefined") {
+        if (entity && entity.has(params[i].typeName)) {
+          results[i] = entity.get(params[i].typeName);
+          continue;
+        }
+        throw new Error(`Param #${i} not filled`);
+      }
+    }
+    return results;
+  }
+
+  // src/RLFn.ts
+  var RLFn = class {
+    constructor(name, code, params, variadic = []) {
+      this.name = name;
+      this.code = code;
+      this.params = params;
+      this.variadic = variadic;
+      this.type = "fn";
+    }
+    apply(args) {
+      const resolved = resolveArgs(args, this.params, this.variadic);
+      return this.code(...resolved);
+    }
+  };
+  RLFn.type = "fn";
+
+  // src/RLGrid.ts
+  var import_bresenham = __toESM(require_bresenham());
+  var RLGrid = class {
+    constructor(width, height, empty) {
+      this.width = width;
+      this.height = height;
+      this.empty = empty;
+      this.type = "grid";
+      this.contents = /* @__PURE__ */ new Map();
+    }
+    tag(x, y) {
+      return `${x},${y}`;
+    }
+    at(x, y) {
+      return this.atOr(x, y, this.empty);
+    }
+    atOr(x, y, empty) {
+      const tag = this.tag(x, y);
+      const item = this.contents.get(tag);
+      return typeof item === "undefined" ? empty : item;
+    }
+    put(x, y, item) {
+      const tag = this.tag(x, y);
+      if (item === this.empty)
+        this.contents.delete(tag);
+      else
+        this.contents.set(this.tag(x, y), item);
+    }
+    clear() {
+      this.contents.clear();
+    }
+    fill(item) {
+      this.rect(0, 0, this.width - 1, this.height - 1, item);
+    }
+    rect(sx, sy, ex, ey, item) {
+      for (let y = sy; y <= ey; y++) {
+        for (let x = sx; x <= ex; x++) {
+          this.put(x, y, item);
+        }
+      }
+    }
+    findInRegion(region, item) {
+      for (let y = region.y; y <= region.y2; y++) {
+        for (let x = region.x; x <= region.x2; x++) {
+          if (this.at(x, y) === item)
+            return true;
+        }
+      }
+      return false;
+    }
+    line(x1, y1, x2, y2, item) {
+      (0, import_bresenham.default)(x1, y1, x2, y2, (x, y) => this.put(x, y, item));
+    }
+    draw() {
+      RL.instance.lib.drawGrid(this);
+    }
+  };
+  RLGrid.type = "grid";
 
   // node_modules/tinycolor-ts/dist/module/util.js
   function bound01(n, max) {
@@ -2461,7 +2683,7 @@
     return TinyColor2;
   }();
 
-  // src/MessageLog.ts
+  // src/RLMessages.ts
   var Message3 = class {
     constructor(text, fg, count = 1) {
       this.text = text;
@@ -2474,10 +2696,11 @@
       return this.text;
     }
   };
-  var MessageLog = class {
+  var RLMessages = class {
     constructor(messages = []) {
       this.messages = messages;
       this.dirty = false;
+      this.type = "messages";
     }
     get length() {
       return this.messages.length;
@@ -2510,156 +2733,6 @@
       }
     }
   };
-
-  // src/getParam.ts
-  function getParam(params, predicate) {
-    const i = params.findIndex(predicate);
-    return [i, i < 0 ? void 0 : params[i]];
-  }
-
-  // src/isAssignableToAny.ts
-  function isAssignableToAny(o, types) {
-    for (const type of types) {
-      if (isAssignableTo(o, type))
-        return true;
-    }
-    return false;
-  }
-
-  // src/resolveArgs.ts
-  function resolveArgs(args, params, variadic) {
-    var _a;
-    const results = params.map((p) => p.default);
-    const filled = /* @__PURE__ */ new Set();
-    const get = (predicate) => getParam(params, predicate);
-    const set = (i, value) => {
-      if (filled.has(i))
-        throw new Error(`Param #${i} set twice`);
-      if (i >= results.length) {
-        if (variadic.length === 0)
-          throw new Error(`Function only has ${results.length} params`);
-        if (!isAssignableToAny(value, variadic))
-          throw new Error(
-            `Function variadic type is '${variadic.join("|")}', got ${value.type}`
-          );
-      } else if (!isAssignableTo(value, params[i].typeName))
-        throw new Error(
-          `Param #${i} expects type '${params[i].typeName}', got ${value.type}`
-        );
-      results[i] = value;
-      filled.add(i);
-    };
-    let pos = 0;
-    for (const a of args) {
-      switch (a.type) {
-        case "typed": {
-          const [i, p] = get((p2) => p2.typeName === a.typeName);
-          if (!p)
-            throw new Error(`No param of type ${a.typeName}`);
-          set(i, a.value);
-          break;
-        }
-        case "named": {
-          const [i, p] = get((p2) => p2.name === a.name);
-          if (!p)
-            throw new Error(`No param with name ${a.name}`);
-          set(i, a.value);
-          break;
-        }
-        case "positional": {
-          set(pos, a.value);
-          pos++;
-          break;
-        }
-      }
-    }
-    const entity = (_a = args.find((p) => p.value.type === "entity")) == null ? void 0 : _a.value;
-    for (let i = 0; i < results.length; i++) {
-      if (typeof results[i] === "undefined") {
-        if (entity && entity.has(params[i].typeName)) {
-          results[i] = entity.get(params[i].typeName);
-          continue;
-        }
-        throw new Error(`Param #${i} not filled`);
-      }
-    }
-    return results;
-  }
-
-  // src/RLFn.ts
-  var RLFn = class {
-    constructor(name, code, params, variadic = []) {
-      this.name = name;
-      this.code = code;
-      this.params = params;
-      this.variadic = variadic;
-      this.type = "fn";
-    }
-    apply(args) {
-      const resolved = resolveArgs(args, this.params, this.variadic);
-      return this.code(...resolved);
-    }
-  };
-  RLFn.type = "fn";
-
-  // src/RLGrid.ts
-  var import_bresenham = __toESM(require_bresenham());
-  var RLGrid = class {
-    constructor(width, height, empty) {
-      this.width = width;
-      this.height = height;
-      this.empty = empty;
-      this.type = "grid";
-      this.contents = /* @__PURE__ */ new Map();
-    }
-    tag(x, y) {
-      return `${x},${y}`;
-    }
-    at(x, y) {
-      return this.atOr(x, y, this.empty);
-    }
-    atOr(x, y, empty) {
-      const tag = this.tag(x, y);
-      const item = this.contents.get(tag);
-      return typeof item === "undefined" ? empty : item;
-    }
-    put(x, y, item) {
-      const tag = this.tag(x, y);
-      if (item === this.empty)
-        this.contents.delete(tag);
-      else
-        this.contents.set(this.tag(x, y), item);
-    }
-    clear() {
-      this.contents.clear();
-    }
-    fill(item) {
-      this.rect(0, 0, this.width - 1, this.height - 1, item);
-    }
-    rect(sx, sy, ex, ey, item) {
-      for (let y = sy; y <= ey; y++) {
-        for (let x = sx; x <= ex; x++) {
-          this.put(x, y, item);
-        }
-      }
-    }
-    findInRegion(region, item) {
-      for (let y = region.y; y <= region.y2; y++) {
-        for (let x = region.x; x <= region.x2; x++) {
-          if (this.at(x, y) === item)
-            return true;
-        }
-      }
-      return false;
-    }
-    line(x1, y1, x2, y2, item) {
-      (0, import_bresenham.default)(x1, y1, x2, y2, (x, y) => this.put(x, y, item));
-    }
-    draw() {
-      RL.instance.lib.drawGrid(this);
-    }
-  };
-  RLGrid.type = "grid";
 
   // src/RLRect.ts
   var RLRect = class {
@@ -2696,8 +2769,12 @@
       "Position",
       "MoveAction",
       "MeleeAction",
+      "ItemAction",
       "Actor",
       "Fighter",
+      "Consumable",
+      "Inventory",
+      "InventoryActionConfig",
       "IsBlocker",
       "IsPlayer",
       "RecalculateFOV",
@@ -2707,7 +2784,11 @@
       "BaseAI",
       "HostileEnemy",
       "WaitAction",
-      "HistoryAction"
+      "HistoryAction",
+      "Item",
+      "PickupAction",
+      "InventoryAction",
+      "DropAction"
     ].includes(p.typeName);
   }
 
@@ -2784,8 +2865,9 @@
     ((Layer2) => {
       Layer2[Layer2["Nothing"] = 0] = "Nothing";
       Layer2[Layer2["Corpse"] = 1] = "Corpse";
-      Layer2[Layer2["Enemy"] = 2] = "Enemy";
-      Layer2[Layer2["Player"] = 3] = "Player";
+      Layer2[Layer2["Item"] = 2] = "Item";
+      Layer2[Layer2["Enemy"] = 3] = "Enemy";
+      Layer2[Layer2["Player"] = 4] = "Player";
     })(Layer || (Layer = {}));
     const IsBlocker = new RLTag("IsBlocker");
     const IsPlayer = new RLTag("IsPlayer");
@@ -2797,6 +2879,10 @@
     const HostileEnemy = new RLTag("HostileEnemy");
     const WaitAction = new RLTag("WaitAction");
     const HistoryAction = new RLTag("HistoryAction");
+    const Item = new RLTag("Item");
+    const PickupAction = new RLTag("PickupAction");
+    const InventoryAction = new RLTag("InventoryAction");
+    const DropAction = new RLTag("DropAction");
     const mkAppearance = (name, ch, fg, bg, layer) => ({
       type: "component",
       typeName: "Appearance",
@@ -2829,6 +2915,11 @@
       typeName: "MeleeAction",
       target
     });
+    const mkItemAction = (target) => ({
+      type: "component",
+      typeName: "ItemAction",
+      target
+    });
     const mkActor = (energy) => ({
       type: "component",
       typeName: "Actor",
@@ -2842,15 +2933,32 @@
       defence,
       power
     });
+    const mkConsumable = (activate, power) => ({
+      type: "component",
+      typeName: "Consumable",
+      activate,
+      power
+    });
+    const mkInventory = (items) => ({
+      type: "component",
+      typeName: "Inventory",
+      items
+    });
+    const mkInventoryActionConfig = (callback) => ({
+      type: "component",
+      typeName: "InventoryActionConfig",
+      callback
+    });
     const tmPlayer = {
       type: "template",
       name: "Player",
       get: () => [
         IsBlocker,
         IsPlayer,
-        mkAppearance("player", "@", "white", "black", 3 /* Player */),
+        mkAppearance("player", "@", "white", "black", 4 /* Player */),
         mkFighter(30, 30, 2, 5),
         mkActor(100),
+        mkInventory(new RLBag(20)),
         MyTurn,
         RecalculateFOV,
         RedrawUI
@@ -2866,7 +2974,7 @@
       name: "Orc",
       get: () => [
         tmEnemy,
-        mkAppearance("orc", "o", "green", "black", 2 /* Enemy */),
+        mkAppearance("orc", "o", "green", "black", 3 /* Enemy */),
         mkFighter(10, 10, 0, 3)
       ]
     };
@@ -2875,7 +2983,7 @@
       name: "Troll",
       get: () => [
         tmEnemy,
-        mkAppearance("troll", "T", "lime", "black", 2 /* Enemy */),
+        mkAppearance("troll", "T", "lime", "black", 3 /* Enemy */),
         mkFighter(16, 16, 1, 4)
       ]
     };
@@ -2885,6 +2993,15 @@
       get: () => [
         RedrawMe,
         mkAppearance("corpse", "%", "red", "black", 1 /* Corpse */)
+      ]
+    };
+    const tmHealingPotion = {
+      type: "template",
+      name: "HealingPotion",
+      get: () => [
+        mkAppearance("healing potion", "!", "purple", "black", 2 /* Item */),
+        Item,
+        mkConsumable(healingItem, 4)
       ]
     };
     const Floor = new RLTile(".", true, true);
@@ -2903,8 +3020,49 @@
     const map = new RLGrid(mapWidth, mapHeight, Wall);
     const explored = new RLGrid(mapWidth, mapHeight, false);
     const visible = new RLGrid(mapWidth, mapHeight, false);
-    const log = new MessageLog();
+    const log = new RLMessages();
     let historyOffset = 0;
+    function healingItem(pc, item) {
+      if (!pc.Fighter) {
+        log.add("You can't use that.", "grey");
+        return false;
+      }
+      if (pc.Fighter.hp >= pc.Fighter.maxHp) {
+        log.add("You're already healthy.", "grey");
+        return false;
+      }
+      const oldHp = pc.Fighter.hp;
+      pc.Fighter.hp = __lib.clamp(
+        { type: "int", value: oldHp + item.Consumable.power },
+        { type: "int", value: 0 },
+        { type: "int", value: pc.Fighter.maxHp }
+      );
+      const gained = pc.Fighter.hp - oldHp;
+      log.add(
+        __lib.join(
+          { type: "char", value: " " },
+          { type: "str", value: "You healed for" },
+          { type: "int", value: gained },
+          { type: "str", value: "hp" }
+        ),
+        "lime"
+      );
+      pc.add(RedrawUI);
+      return true;
+    }
+    const fn_healingItem = new RLFn("healingItem", healingItem, [
+      { type: "param", name: "pc", typeName: "entity" },
+      { type: "param", name: "item", typeName: "entity" }
+    ]);
+    function redrawEverything(e) {
+      __lib.clear();
+      e.add(RecalculateFOV);
+      e.add(RedrawUI);
+      log.dirty = true;
+    }
+    const fn_redrawEverything = new RLFn("redrawEverything", redrawEverything, [
+      { type: "param", name: "e", typeName: "entity" }
+    ]);
     function getKey(k) {
       return ((__match) => {
         if (__match === "ArrowUp")
@@ -2935,6 +3093,12 @@
           return "left";
         else if (__match === "Period")
           return "wait";
+        else if (__match === "KeyD")
+          return "drop";
+        else if (__match === "KeyG")
+          return "pickup";
+        else if (__match === "KeyI")
+          return "inventory";
         else if (__match === "KeyV")
           return "history";
         else
@@ -3044,6 +3208,76 @@
       );
     }
     const fn_showHistoryView = new RLFn("showHistoryView", showHistoryView, []);
+    function getName(e) {
+      if (e.Appearance) {
+        return e.Appearance.name;
+      }
+      return "???";
+    }
+    const fn_getName = new RLFn("getName", getName, [
+      { type: "param", name: "e", typeName: "entity" }
+    ]);
+    function openInventory(e, v, callback, title) {
+      if (!v.items.count) {
+        log.add("You're not carrying anything.", "grey");
+        return;
+      }
+      e.add(mkInventoryActionConfig(callback));
+      __lib.pushKeyHandler(onKeyInInventory);
+      __lib.drawBag(
+        v.items,
+        { type: "str", value: title },
+        fn_getName,
+        { type: "str", value: "white" },
+        { type: "str", value: "silver" },
+        { type: "str", value: "grey" },
+        { type: "str", value: "black" }
+      );
+    }
+    const fn_openInventory = new RLFn("openInventory", openInventory, [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "param", name: "v", typeName: "Inventory" },
+      { type: "param", name: "callback", typeName: "fn" },
+      { type: "param", name: "title", typeName: "str" }
+    ]);
+    function icUse(e, key, item) {
+      if (!item.Consumable) {
+        log.add("You cannot use that.", "grey");
+        return;
+      }
+      if (item.Consumable.activate(e, item)) {
+        if (e.Inventory) {
+          e.Inventory.items.remove(key);
+        }
+        useTurn(e);
+      }
+    }
+    const fn_icUse = new RLFn("icUse", icUse, [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "param", name: "key", typeName: "char" },
+      { type: "param", name: "item", typeName: "entity" }
+    ]);
+    function icDrop(e, key, item) {
+      if (e.Inventory && e.Position) {
+        e.Inventory.items.remove(key);
+        item.add(mkPosition(e.Position.x, e.Position.y));
+        useTurn(e);
+        if (item.Appearance) {
+          log.add(
+            __lib.join(
+              { type: "char", value: " " },
+              { type: "str", value: "You drop the" },
+              { type: "str", value: item.Appearance.name }
+            )
+          );
+        }
+      }
+    }
+    const fn_icDrop = new RLFn("icDrop", icDrop, [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "param", name: "key", typeName: "char" },
+      { type: "param", name: "item", typeName: "entity" }
+    ]);
     function useTurn(e) {
       e.Actor.energy -= 100;
       e.remove(MyTurn);
@@ -3200,6 +3434,7 @@
           if (prev) {
             randomCorridor(prev.cx, prev.cy, room.cx, room.cy);
             addEnemies(room, taken);
+            addItems(room, taken);
           } else {
             __lib.spawn(tmPlayer, mkPosition(room.cx, room.cy));
           }
@@ -3234,6 +3469,26 @@
       }
     }
     const fn_addEnemies = new RLFn("addEnemies", addEnemies, [
+      { type: "param", name: "r", typeName: "rect" },
+      { type: "param", name: "taken", typeName: "grid" }
+    ]);
+    function addItems(r, taken) {
+      for (let z = 1; z <= __lib.randInt({ type: "int", value: 0 }, { type: "int", value: 2 }); z++) {
+        const x = __lib.randInt(
+          { type: "int", value: r.x + 1 },
+          { type: "int", value: r.x2 - 1 }
+        );
+        const y = __lib.randInt(
+          { type: "int", value: r.y + 1 },
+          { type: "int", value: r.y2 - 1 }
+        );
+        if (!taken.at(x, y)) {
+          taken.put(x, y, true);
+          __lib.spawn(tmHealingPotion, mkPosition(x, y));
+        }
+      }
+    }
+    const fn_addItems = new RLFn("addItems", addItems, [
       { type: "param", name: "r", typeName: "rect" },
       { type: "param", name: "taken", typeName: "grid" }
     ]);
@@ -3293,6 +3548,12 @@
             return WaitAction;
           else if (__match === "history")
             return HistoryAction;
+          else if (__match === "pickup")
+            return PickupAction;
+          else if (__match === "inventory")
+            return InventoryAction;
+          else if (__match === "drop")
+            return DropAction;
         })(getKey(k.key))
       );
     }
@@ -3451,10 +3712,7 @@
           return 0;
       })(getKey(k.key));
       if (!change) {
-        __lib.clear();
-        e.add(RecalculateFOV);
-        e.add(RedrawUI);
-        log.dirty = true;
+        redrawEverything(e);
         __lib.popKeyHandler();
         return;
       }
@@ -3482,6 +3740,117 @@
       { type: "constraint", typeName: "HistoryAction" },
       { type: "constraint", typeName: "MyTurn" }
     ]);
+    function code_doItem(e, ia) {
+      e.remove(ia);
+      const item = ia.target;
+      if (item.Consumable) {
+        if (item.Consumable.activate(e)) {
+          __lib.remove(item);
+        }
+      } else {
+        log.add("Cannot use that.", "grey");
+      }
+    }
+    const doItem = new RLSystem("doItem", code_doItem, [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "param", name: "ia", typeName: "ItemAction" },
+      { type: "constraint", typeName: "MyTurn" }
+    ]);
+    function code_doPickup(e, p, v) {
+      e.remove(PickupAction);
+      let matches = 0;
+      let got = 0;
+      let failed = false;
+      for (const item of new RLQuery(RL.instance, [
+        "Appearance",
+        "Position",
+        "Item"
+      ]).get()) {
+        const { Appearance: ia, Position: ip } = item;
+        if (ip.x == p.x && ip.y == p.y) {
+          matches += 1;
+          const key = v.items.add(item);
+          if (key) {
+            got += 1;
+            log.add(
+              __lib.join(
+                { type: "str", value: "" },
+                { type: "str", value: "You got the " },
+                { type: "str", value: ia.name },
+                { type: "str", value: " (" },
+                { type: "char", value: key },
+                { type: "char", value: ")" }
+              )
+            );
+            item.remove(ip);
+          } else {
+            failed = true;
+          }
+        }
+      }
+      if (got) {
+        useTurn(e);
+      }
+      if (failed) {
+        log.add("Can't carry any more.", "grey");
+      } else {
+        if (!matches) {
+          log.add("Nothing here.", "grey");
+        }
+      }
+    }
+    const doPickup = new RLSystem("doPickup", code_doPickup, [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "param", name: "p", typeName: "Position" },
+      { type: "param", name: "v", typeName: "Inventory" },
+      { type: "constraint", typeName: "PickupAction" },
+      { type: "constraint", typeName: "MyTurn" }
+    ]);
+    function code_doInventory(e, v) {
+      e.remove(InventoryAction);
+      openInventory(e, v, icUse, "Use what?");
+    }
+    const doInventory = new RLSystem("doInventory", code_doInventory, [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "param", name: "v", typeName: "Inventory" },
+      { type: "constraint", typeName: "InventoryAction" },
+      { type: "constraint", typeName: "MyTurn" }
+    ]);
+    function code_doDrop(e, v) {
+      e.remove(DropAction);
+      openInventory(e, v, icDrop, "Drop what?");
+    }
+    const doDrop = new RLSystem("doDrop", code_doDrop, [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "param", name: "v", typeName: "Inventory" },
+      { type: "constraint", typeName: "DropAction" },
+      { type: "constraint", typeName: "MyTurn" }
+    ]);
+    function code_onKeyInInventory(e, v, config, k) {
+      let closing = false;
+      if (k.key == "Escape") {
+        closing = true;
+      }
+      if (v.items.has(k.char)) {
+        config.callback(e, k.char, v.items.get(k.char));
+        closing = true;
+      }
+      if (closing) {
+        e.remove(config);
+        __lib.popKeyHandler();
+        redrawEverything(e);
+      }
+    }
+    const onKeyInInventory = new RLSystem(
+      "onKeyInInventory",
+      code_onKeyInInventory,
+      [
+        { type: "param", name: "e", typeName: "entity" },
+        { type: "param", name: "v", typeName: "Inventory" },
+        { type: "param", name: "config", typeName: "InventoryActionConfig" },
+        { type: "param", name: "k", typeName: "KeyEvent" }
+      ]
+    );
     function code_fov(e, p) {
       __lib.getFOV(
         map,
@@ -3580,11 +3949,17 @@
     }
     const showLog = new RLSystem("showLog", code_showLog, []);
     return /* @__PURE__ */ new Map([
+      ["healingItem", fn_healingItem],
+      ["redrawEverything", fn_redrawEverything],
       ["getKey", fn_getKey],
       ["getNamesAtLocation", fn_getNamesAtLocation],
       ["getBlockingMap", fn_getBlockingMap],
       ["hurt", fn_hurt],
       ["showHistoryView", fn_showHistoryView],
+      ["getName", fn_getName],
+      ["openInventory", fn_openInventory],
+      ["icUse", fn_icUse],
+      ["icDrop", fn_icDrop],
       ["useTurn", fn_useTurn],
       ["drawTileAt", fn_drawTileAt],
       ["drawEntity", fn_drawEntity],
@@ -3593,6 +3968,7 @@
       ["randomCorridor", fn_randomCorridor],
       ["generateDungeon", fn_generateDungeon],
       ["addEnemies", fn_addEnemies],
+      ["addItems", fn_addItems],
       ["main", fn_main],
       ["onMouseInDungeon", onMouseInDungeon],
       ["onKeyInDungeon", onKeyInDungeon],
@@ -3603,6 +3979,11 @@
       ["doWait", doWait],
       ["onKeyInHistory", onKeyInHistory],
       ["doHistory", doHistory],
+      ["doItem", doItem],
+      ["doPickup", doPickup],
+      ["doInventory", doInventory],
+      ["doDrop", doDrop],
+      ["onKeyInInventory", onKeyInInventory],
       ["fov", fov],
       ["drawUnderTile", drawUnderTile],
       ["RedrawMeEntity", RedrawMeEntity],
@@ -3619,11 +4000,16 @@
       ["HostileEnemy", HostileEnemy],
       ["WaitAction", WaitAction],
       ["HistoryAction", HistoryAction],
+      ["Item", Item],
+      ["PickupAction", PickupAction],
+      ["InventoryAction", InventoryAction],
+      ["DropAction", DropAction],
       ["Player", tmPlayer],
       ["Enemy", tmEnemy],
       ["Orc", tmOrc],
       ["Troll", tmTroll],
-      ["Corpse", tmCorpse]
+      ["Corpse", tmCorpse],
+      ["HealingPotion", tmHealingPotion]
     ]);
   }
 
@@ -3752,6 +4138,10 @@
       this.HostileEnemy = false;
       this.WaitAction = false;
       this.HistoryAction = false;
+      this.Item = false;
+      this.PickupAction = false;
+      this.InventoryAction = false;
+      this.DropAction = false;
     }
     toString() {
       return `#${this.id} (${Array.from(this.templates.values()).join(" ")})`;
@@ -3809,9 +4199,12 @@
   function pushKeyHandler(handler) {
     Game.instance.rl.keyHandlers.push(handler);
   }
+  function getColour(s) {
+    return s ? new TinyColor(s.value).toNumber() << 8 : void 0;
+  }
   function draw({ value: x }, { value: y }, display, fg, bg) {
-    const f = fg ? new TinyColor(fg.value).toNumber() << 8 : void 0;
-    const b = bg ? new TinyColor(bg.value).toNumber() << 8 : void 0;
+    const f = getColour(fg);
+    const b = getColour(bg);
     if (display.type === "char")
       Game.instance.terminal.drawChar(x, y, display.value, f, b);
     else
@@ -3941,8 +4334,14 @@
       }
     }).join(glue);
   }
-  function debug({ value: message }) {
-    console.log(message);
+  function debug(...args) {
+    console.log(
+      ...args.map((arg) => {
+        if (arg.type === "char" || arg.type === "float" || arg.type === "int" || arg.type === "str")
+          return arg.value;
+        return arg;
+      })
+    );
   }
   function remove(e) {
     RL.instance.entities.delete(e.id);
@@ -3981,6 +4380,34 @@
   function clear() {
     Game.instance.terminal.clear();
   }
+  function drawBox({ value: x }, { value: y }, { value: width }, { value: height }, fg, bg) {
+    Game.instance.terminal.drawSingleBox(
+      x,
+      y,
+      width,
+      height,
+      getColour(fg),
+      getColour(bg)
+    );
+  }
+  function drawBag(bag, { value: title }, getName, titleColour, itemColour, borderColour, b) {
+    const items = Array.from(bag.items.entries()).map(
+      ([key, e]) => `(${key}) ${getName.apply([{ type: "positional", value: e }])}`
+    ).sort();
+    const width = Math.max(title.length, ...items.map((n) => n.length)) + 4;
+    const height = items.length + 4;
+    const x = Math.floor((Game.instance.width - width) / 2);
+    const y = Math.floor((Game.instance.height - height) / 2);
+    const tc = getColour(titleColour);
+    const ic = getColour(itemColour);
+    const bc = getColour(borderColour);
+    const bg = getColour(b);
+    const term = Game.instance.terminal;
+    term.drawSingleBox(x, y, width, height, bc, bg);
+    term.drawString(x + 2, y + 1, title, tc, bg);
+    for (let i = 0; i < items.length; i++)
+      term.drawString(x + 2, y + i + 3, items[i], ic, bg);
+  }
   var lib = {
     abs,
     add,
@@ -3988,6 +4415,8 @@
     clear,
     debug,
     draw,
+    drawBag,
+    drawBox,
     drawLog,
     drawGrid,
     find,
@@ -4013,7 +4442,8 @@
     if (!main || main.tagName !== "CANVAS")
       throw new Error("Canvas #main not found.");
     const g = new Game(new RL(lib_default, implementation(lib_default)), main);
-    void g.init();
+    g.init();
+    void g.start();
   });
 })();
 //# sourceMappingURL=build.js.map

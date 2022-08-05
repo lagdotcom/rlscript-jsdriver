@@ -1,7 +1,11 @@
 import {
   Actor,
   Appearance,
+  Consumable,
   Fighter,
+  Inventory,
+  InventoryActionConfig,
+  ItemAction,
   MeleeAction,
   MoveAction,
   OldPosition,
@@ -27,8 +31,12 @@ export default class RLEntity {
   Position?: Position;
   MoveAction?: MoveAction;
   MeleeAction?: MeleeAction;
+  ItemAction?: ItemAction;
   Actor?: Actor;
   Fighter?: Fighter;
+  Consumable?: Consumable;
+  Inventory?: Inventory;
+  InventoryActionConfig?: InventoryActionConfig;
   IsBlocker: boolean;
   IsPlayer: boolean;
   RecalculateFOV: boolean;
@@ -39,6 +47,10 @@ export default class RLEntity {
   HostileEnemy: boolean;
   WaitAction: boolean;
   HistoryAction: boolean;
+  Item: boolean;
+  PickupAction: boolean;
+  InventoryAction: boolean;
+  DropAction: boolean;
   constructor() {
     this.type = "entity";
     this.id = nanoid();
@@ -54,6 +66,10 @@ export default class RLEntity {
     this.HostileEnemy = false;
     this.WaitAction = false;
     this.HistoryAction = false;
+    this.Item = false;
+    this.PickupAction = false;
+    this.InventoryAction = false;
+    this.DropAction = false;
   }
 
   toString() {
