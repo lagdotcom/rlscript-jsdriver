@@ -13,6 +13,7 @@ export default function isConstraint(p: RLSystemParam) {
     "Consumable",
     "Inventory",
     "InventoryActionConfig",
+    "TargetingActionConfig",
     "IsBlocker",
     "IsPlayer",
     "RecalculateFOV",
@@ -27,5 +28,6 @@ export default function isConstraint(p: RLSystemParam) {
     "PickupAction",
     "InventoryAction",
     "DropAction",
+    "LookAction",
   ].includes(p.typeName);
 }

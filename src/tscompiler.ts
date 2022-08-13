@@ -268,6 +268,9 @@ class KeyEventScope implements TSScope {
       ["key", strType],
       // TODO this isn't strictly true, it could be undefined
       ["char", charType],
+      ["shift", boolType],
+      ["ctrl", boolType],
+      ["alt", boolType],
     ]);
   }
 }
@@ -338,8 +341,8 @@ class XYScope implements TSScope {
     this.members = new Map<string, ASTType>([
       ["x", intType],
       ["y", intType],
-      ["equals", fnType],
-      ["plus", fnType],
+      ["equals", builtinType],
+      ["plus", builtinType],
     ]);
   }
 }
@@ -380,8 +383,8 @@ class SystemScope implements TSScope {
     this.name = `system[${source.name}]`;
     this.members = new Map<string, ASTType>([
       ["enabled", boolType],
-      ["enable", fnType],
-      ["disable", fnType],
+      ["enable", builtinType],
+      ["disable", builtinType],
     ]);
   }
 }
@@ -395,7 +398,7 @@ class MessagesScope implements TSScope {
     this.members = new Map<string, ASTType>([
       ["dirty", boolType],
       ["length", intType],
-      ["add", fnType],
+      ["add", builtinType],
     ]);
   }
 }
@@ -409,11 +412,11 @@ class BagScope implements TSScope {
     this.members = new Map<string, ASTType>([
       ["capacity", intType],
       ["count", intType],
-      ["add", fnType],
-      ["contains", fnType],
-      ["get", fnType],
-      ["has", fnType],
-      ["remove", fnType],
+      ["add", builtinType],
+      ["contains", builtinType],
+      ["get", builtinType],
+      ["has", builtinType],
+      ["remove", builtinType],
     ]);
   }
 }
@@ -888,7 +891,13 @@ import RLEntity from "./RLEntity";
       else if (n === "bag") return `new RLBag(${this.getArgs(args)})`;
     }
 
-    if (s.value === "fn") return `${fixName(n)}(${this.getArgs(args)})`;
+    if (s.value === "fn") {
+      const fn = this.functions.find((fn) => fn.name === n);
+      if (fn) this.checkFnCall(fn, args);
+      // TODO else console.warn(`Cannot check fn call for ${n}`);
+
+      return `${fixName(n)}(${this.getArgs(args)})`;
+    }
 
     return `__lib.${n}(${this.getWrappedArgs(args)})`;
   }
@@ -1060,6 +1069,9 @@ import RLEntity from "./RLEntity";
     switch (s) {
       case "and":
         return "&&";
+      case "or":
+        return "||";
+
       case "not":
         return "!";
 
@@ -1174,6 +1186,9 @@ import RLEntity from "./RLEntity";
       case "tag":
         return `__match.has(${this.getExpr(e)}.typeName)`;
 
+      case "bool":
+      case "int":
+      case "char":
       case "str":
       case "template":
         return `__match === ${this.getExpr(e)}`;
@@ -1195,6 +1210,21 @@ import RLEntity from "./RLEntity";
 
       case "qname":
         return this.resolveTypeChain(e);
+
+      case "unary":
+        switch (e.op) {
+          case "-": {
+            const right = this.getExprType(e.value, scope);
+            if (right.value === "int" || right.value === "float") return right;
+            throw new Error(`Cannot negate a ${right.value}`);
+          }
+
+          case "not":
+            return boolType;
+
+          default:
+            throw new Error(`Invalid unary operator: ${JSON.stringify(e)}`);
+        }
 
       case "binary": {
         const left = this.getExprType(e.left, scope);

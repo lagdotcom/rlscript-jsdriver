@@ -10,6 +10,7 @@ import {
   MoveAction,
   OldPosition,
   Position,
+  TargetingActionConfig,
 } from "./implTypes";
 
 // TODO make these dynamic
@@ -56,6 +57,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
   const PickupAction = new RLTag("PickupAction");
   const InventoryAction = new RLTag("InventoryAction");
   const DropAction = new RLTag("DropAction");
+  const LookAction = new RLTag("LookAction");
 
   const mkAppearance = (
     name: string,
@@ -139,6 +141,13 @@ export default function implementation(__lib: RLLibrary): RLEnv {
   ): InventoryActionConfig => ({
     type: "component",
     typeName: "InventoryActionConfig",
+    callback,
+  });
+  const mkTargetingActionConfig = (
+    callback: CallableFunction
+  ): TargetingActionConfig => ({
+    type: "component",
+    typeName: "TargetingActionConfig",
     callback,
   });
 
@@ -236,6 +245,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
   const explored: RLGrid = new RLGrid(mapWidth, mapHeight, false);
   const visible: RLGrid = new RLGrid(mapWidth, mapHeight, false);
   const log: RLMessages = new RLMessages();
+  let targetAt: RLXY = new RLXY(-1, -1);
   let historyOffset = 0;
 
   function distance(a: RLXY, b: RLXY) {
@@ -287,7 +297,10 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     for (const t of new RLQuery(RL.instance, ["Position", "Fighter"]).get()) {
       const { Position: p } = t;
       if (t != pc && visible.at(p.x, p.y)) {
-        const d: number = distance(pc.Position, p);
+        const d: number = distance(
+          new RLXY(pc.Position.x, pc.Position.y),
+          new RLXY(p.x, p.y)
+        );
         if (d < closest) {
           closest = d;
           target = t;
@@ -346,6 +359,10 @@ export default function implementation(__lib: RLLibrary): RLEnv {
       else if (__match === "KeyG") return "pickup";
       else if (__match === "KeyI") return "inventory";
       else if (__match === "KeyV") return "history";
+      else if (__match === "Slash") return "look";
+      else if (__match === "Enter") return "confirm";
+      else if (__match === "NumpadEnter") return "confirm";
+      else if (__match === "Escape") return "cancel";
       else return k;
     })(k);
   }
@@ -382,6 +399,37 @@ export default function implementation(__lib: RLLibrary): RLEnv {
       { type: "param", name: "y", typeName: "int" },
     ]
   );
+
+  function showNamesAt(x: number, y: number) {
+    __lib.draw(
+      { type: "int", value: hoverX },
+      { type: "int", value: hoverY },
+      {
+        type: "str",
+        value: __lib.repeat(
+          { type: "char", value: " " },
+          { type: "int", value: gameWidth }
+        ),
+      },
+      { type: "str", value: "white" },
+      { type: "str", value: "black" }
+    );
+    if (visible.at(x, y)) {
+      const names: string = getNamesAtLocation(x, y);
+      if (names) {
+        __lib.draw(
+          { type: "int", value: hoverX },
+          { type: "int", value: hoverY },
+          { type: "str", value: names },
+          { type: "str", value: "white" }
+        );
+      }
+    }
+  }
+  const fn_showNamesAt = new RLFn("showNamesAt", showNamesAt, [
+    { type: "param", name: "x", typeName: "int" },
+    { type: "param", name: "y", typeName: "int" },
+  ]);
 
   function getBlockingMap() {
     const blocked: RLGrid = new RLGrid(mapWidth, mapHeight, false);
@@ -428,7 +476,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
         e.add(RedrawUI);
         e.remove("Actor");
         hostileAI.disable();
-        __lib.pushKeyHandler(onKeyWhenDead);
+        __lib.pushKeyHandler(dead_onKey);
       } else {
         __lib.remove(e);
       }
@@ -476,7 +524,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
       return;
     }
     e.add(mkInventoryActionConfig(callback));
-    __lib.pushKeyHandler(onKeyInInventory);
+    __lib.pushKeyHandler(inventory_onKey);
     __lib.drawBag(
       v.items,
       { type: "str", value: title },
@@ -534,6 +582,42 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     { type: "param", name: "item", typeName: "entity" },
   ]);
 
+  function setTargetTo(x: number, y: number) {
+    const oldX: number = targetAt.x;
+    const oldY: number = targetAt.y;
+    targetAt = new RLXY(x, y);
+    drawTileAt(oldX, oldY);
+    drawTileAt(x, y);
+    showNamesAt(x, y);
+  }
+  const fn_setTargetTo = new RLFn("setTargetTo", setTargetTo, [
+    { type: "param", name: "x", typeName: "int" },
+    { type: "param", name: "y", typeName: "int" },
+  ]);
+
+  function startTargeting(e: RLEntity, callback: CallableFunction) {
+    e.add(mkTargetingActionConfig(callback));
+    if (e.Position) {
+      setTargetTo(e.Position.x, e.Position.y);
+    }
+    __lib.pushKeyHandler(targeting_onKey);
+    __lib.pushMouseHandler(targeting_onMouse);
+  }
+  const fn_startTargeting = new RLFn("startTargeting", startTargeting, [
+    { type: "param", name: "e", typeName: "entity" },
+    { type: "param", name: "callback", typeName: "fn" },
+  ]);
+
+  function stopTargeting(e: RLEntity) {
+    setTargetTo(-1, -1);
+    __lib.popKeyHandler();
+    __lib.popMouseHandler();
+    redrawEverything(e);
+  }
+  const fn_stopTargeting = new RLFn("stopTargeting", stopTargeting, [
+    { type: "param", name: "e", typeName: "entity" },
+  ]);
+
   function useTurn(e: RLEntity) {
     e.Actor.energy -= 100;
     e.remove(MyTurn);
@@ -543,6 +627,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
   ]);
 
   function drawTileAt(x: number, y: number) {
+    const highlight: boolean = targetAt.equals(new RLXY(x, y));
     let ch = " ";
     let fg = "white";
     let bg = "black";
@@ -571,6 +656,9 @@ export default function implementation(__lib: RLLibrary): RLEnv {
           fg = "#444";
         }
       }
+    }
+    if (highlight) {
+      bg = "yellow";
     }
     __lib.draw(
       { type: "int", value: x },
@@ -740,7 +828,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
           __lib.randInt(
             { type: "int", value: 1 },
             { type: "int", value: 100 }
-          ) < 80
+          ) <= 80
         ) {
           __lib.spawn(tmOrc, mkPosition(x, y));
         } else {
@@ -778,7 +866,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
           { type: "int", value: 1 },
           { type: "int", value: 100 }
         );
-        if (index < 70) {
+        if (index <= 70) {
           __lib.spawn(tmHealingPotion, mkPosition(x, y));
         } else {
           __lib.spawn(tmLightningScroll, mkPosition(x, y));
@@ -797,51 +885,19 @@ export default function implementation(__lib: RLLibrary): RLEnv {
       { type: "int", value: gameHeight }
     );
     generateDungeon();
-    __lib.pushKeyHandler(onKeyInDungeon);
-    __lib.pushMouseHandler(onMouseInDungeon);
+    __lib.pushKeyHandler(main_onKey);
+    __lib.pushMouseHandler(main_onMouse);
   }
   const fn_main = new RLFn("main", main, []);
 
-  function code_onMouseInDungeon(m: RLMouseEvent) {
-    __lib.draw(
-      { type: "int", value: hoverX },
-      { type: "int", value: hoverY },
-      {
-        type: "str",
-        value: __lib.repeat(
-          { type: "char", value: " " },
-          { type: "int", value: gameWidth }
-        ),
-      },
-      { type: "str", value: "white" },
-      { type: "str", value: "black" }
-    );
-    if (visible.at(m.x, m.y)) {
-      const names: string = getNamesAtLocation(m.x, m.y);
-      if (names) {
-        __lib.draw(
-          { type: "int", value: hoverX },
-          { type: "int", value: hoverY },
-          { type: "str", value: names },
-          { type: "str", value: "white" }
-        );
-      }
-    }
+  function code_main_onMouse(m: RLMouseEvent) {
+    showNamesAt(m.x, m.y);
   }
-  const onMouseInDungeon = new RLSystem(
-    "onMouseInDungeon",
-    code_onMouseInDungeon,
-    [{ type: "param", name: "m", typeName: "MouseEvent" }]
-  );
+  const main_onMouse = new RLSystem("main_onMouse", code_main_onMouse, [
+    { type: "param", name: "m", typeName: "MouseEvent" },
+  ]);
 
-  function code_onMouseInHistory(m: RLMouseEvent) {}
-  const onMouseInHistory = new RLSystem(
-    "onMouseInHistory",
-    code_onMouseInHistory,
-    [{ type: "param", name: "m", typeName: "MouseEvent" }]
-  );
-
-  function code_onKeyInDungeon(e: RLEntity, k: RLKeyEvent) {
+  function code_main_onKey(e: RLEntity, k: RLKeyEvent) {
     e.add(
       ((__match) => {
         if (__match === "up") return mkMoveAction(0, -1);
@@ -853,17 +909,18 @@ export default function implementation(__lib: RLLibrary): RLEnv {
         else if (__match === "pickup") return PickupAction;
         else if (__match === "inventory") return InventoryAction;
         else if (__match === "drop") return DropAction;
+        else if (__match === "look") return LookAction;
       })(getKey(k.key))
     );
   }
-  const onKeyInDungeon = new RLSystem("onKeyInDungeon", code_onKeyInDungeon, [
+  const main_onKey = new RLSystem("main_onKey", code_main_onKey, [
     { type: "param", name: "e", typeName: "entity" },
     { type: "constraint", typeName: "IsPlayer" },
     { type: "param", name: "k", typeName: "KeyEvent" },
   ]);
 
-  function code_onKeyWhenDead(e: RLEntity, k: RLKeyEvent) {}
-  const onKeyWhenDead = new RLSystem("onKeyWhenDead", code_onKeyWhenDead, [
+  function code_dead_onKey(e: RLEntity, k: RLKeyEvent) {}
+  const dead_onKey = new RLSystem("dead_onKey", code_dead_onKey, [
     { type: "param", name: "e", typeName: "entity" },
     { type: "constraint", typeName: "IsPlayer" },
     { type: "param", name: "k", typeName: "KeyEvent" },
@@ -1000,7 +1057,14 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     { type: "constraint", typeName: "MyTurn" },
   ]);
 
-  function code_onKeyInHistory(e: RLEntity, k: RLKeyEvent) {
+  function code_history_onMouse(m: RLMouseEvent) {}
+  const history_onMouse = new RLSystem(
+    "history_onMouse",
+    code_history_onMouse,
+    [{ type: "param", name: "m", typeName: "MouseEvent" }]
+  );
+
+  function code_history_onKey(e: RLEntity, k: RLKeyEvent) {
     if (k.key == "KeyV") {
       return;
     }
@@ -1026,7 +1090,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     );
     showHistoryView();
   }
-  const onKeyInHistory = new RLSystem("onKeyInHistory", code_onKeyInHistory, [
+  const history_onKey = new RLSystem("history_onKey", code_history_onKey, [
     { type: "param", name: "e", typeName: "entity" },
     { type: "constraint", typeName: "IsPlayer" },
     { type: "param", name: "k", typeName: "KeyEvent" },
@@ -1034,8 +1098,8 @@ export default function implementation(__lib: RLLibrary): RLEnv {
 
   function code_doHistory(e: RLEntity) {
     e.remove(HistoryAction);
-    __lib.pushKeyHandler(onKeyInHistory);
-    __lib.pushMouseHandler(onMouseInHistory);
+    __lib.pushKeyHandler(history_onKey);
+    __lib.pushMouseHandler(history_onMouse);
     historyOffset = 0;
     __lib.clear();
     __lib.draw(
@@ -1148,7 +1212,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     { type: "constraint", typeName: "MyTurn" },
   ]);
 
-  function code_onKeyInInventory(
+  function code_inventory_onKey(
     e: RLEntity,
     v: Inventory,
     config: InventoryActionConfig,
@@ -1168,9 +1232,9 @@ export default function implementation(__lib: RLLibrary): RLEnv {
       redrawEverything(e);
     }
   }
-  const onKeyInInventory = new RLSystem(
-    "onKeyInInventory",
-    code_onKeyInInventory,
+  const inventory_onKey = new RLSystem(
+    "inventory_onKey",
+    code_inventory_onKey,
     [
       { type: "param", name: "e", typeName: "entity" },
       { type: "param", name: "v", typeName: "Inventory" },
@@ -1178,6 +1242,91 @@ export default function implementation(__lib: RLLibrary): RLEnv {
       { type: "param", name: "k", typeName: "KeyEvent" },
     ]
   );
+
+  function code_targeting_onKey(
+    e: RLEntity,
+    config: TargetingActionConfig,
+    k: RLKeyEvent
+  ) {
+    let mul = 1;
+    const key: string = getKey(k.key);
+    const move: RLXY | undefined = ((__match) => {
+      if (__match === "up") return new RLXY(0, -1);
+      else if (__match === "right") return new RLXY(1, 0);
+      else if (__match === "down") return new RLXY(0, 1);
+      else if (__match === "left") return new RLXY(-1, 0);
+    })(key);
+    if (move) {
+      if (k.shift) {
+        mul *= 5;
+      }
+      if (k.ctrl) {
+        mul *= 10;
+      }
+      if (k.alt) {
+        mul *= 20;
+      }
+      const x: number = targetAt.x + move.x * mul;
+      const y: number = targetAt.y + move.y * mul;
+      setTargetTo(
+        __lib.clamp(
+          { type: "int", value: x },
+          { type: "int", value: 0 },
+          { type: "int", value: mapWidth - 1 }
+        ),
+        __lib.clamp(
+          { type: "int", value: y },
+          { type: "int", value: 0 },
+          { type: "int", value: mapHeight - 1 }
+        )
+      );
+      return;
+    }
+    if (key == "confirm") {
+      stopTargeting(e);
+    }
+    if (key == "cancel") {
+      stopTargeting(e);
+    }
+  }
+  const targeting_onKey = new RLSystem(
+    "targeting_onKey",
+    code_targeting_onKey,
+    [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "param", name: "config", typeName: "TargetingActionConfig" },
+      { type: "param", name: "k", typeName: "KeyEvent" },
+    ]
+  );
+
+  function code_targeting_onMouse(
+    e: RLEntity,
+    config: TargetingActionConfig,
+    m: RLMouseEvent
+  ) {
+    setTargetTo(m.x, m.y);
+    if (m.button == 1) {
+    }
+  }
+  const targeting_onMouse = new RLSystem(
+    "targeting_onMouse",
+    code_targeting_onMouse,
+    [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "param", name: "config", typeName: "TargetingActionConfig" },
+      { type: "param", name: "m", typeName: "MouseEvent" },
+    ]
+  );
+
+  function code_doLook(e: RLEntity) {
+    e.remove(LookAction);
+    startTargeting(e, stopTargeting);
+  }
+  const doLook = new RLSystem("doLook", code_doLook, [
+    { type: "param", name: "e", typeName: "entity" },
+    { type: "constraint", typeName: "LookAction" },
+    { type: "constraint", typeName: "MyTurn" },
+  ]);
 
   function code_fov(e: RLEntity, p: Position) {
     __lib.getFOV(
@@ -1289,6 +1438,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     ["redrawEverything", fn_redrawEverything],
     ["getKey", fn_getKey],
     ["getNamesAtLocation", fn_getNamesAtLocation],
+    ["showNamesAt", fn_showNamesAt],
     ["getBlockingMap", fn_getBlockingMap],
     ["hurt", fn_hurt],
     ["showHistoryView", fn_showHistoryView],
@@ -1296,6 +1446,9 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     ["openInventory", fn_openInventory],
     ["icUse", fn_icUse],
     ["icDrop", fn_icDrop],
+    ["setTargetTo", fn_setTargetTo],
+    ["startTargeting", fn_startTargeting],
+    ["stopTargeting", fn_stopTargeting],
     ["useTurn", fn_useTurn],
     ["drawTileAt", fn_drawTileAt],
     ["drawEntity", fn_drawEntity],
@@ -1306,21 +1459,24 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     ["addEnemies", fn_addEnemies],
     ["addItems", fn_addItems],
     ["main", fn_main],
-    ["onMouseInDungeon", onMouseInDungeon],
-    ["onMouseInHistory", onMouseInHistory],
-    ["onKeyInDungeon", onKeyInDungeon],
-    ["onKeyWhenDead", onKeyWhenDead],
+    ["main_onMouse", main_onMouse],
+    ["main_onKey", main_onKey],
+    ["dead_onKey", dead_onKey],
     ["hostileAI", hostileAI],
     ["doMove", doMove],
     ["doMelee", doMelee],
     ["doWait", doWait],
-    ["onKeyInHistory", onKeyInHistory],
+    ["history_onMouse", history_onMouse],
+    ["history_onKey", history_onKey],
     ["doHistory", doHistory],
     ["doItem", doItem],
     ["doPickup", doPickup],
     ["doInventory", doInventory],
     ["doDrop", doDrop],
-    ["onKeyInInventory", onKeyInInventory],
+    ["inventory_onKey", inventory_onKey],
+    ["targeting_onKey", targeting_onKey],
+    ["targeting_onMouse", targeting_onMouse],
+    ["doLook", doLook],
     ["fov", fov],
     ["drawUnderTile", drawUnderTile],
     ["RedrawMeEntity", RedrawMeEntity],
@@ -1341,6 +1497,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     ["PickupAction", PickupAction],
     ["InventoryAction", InventoryAction],
     ["DropAction", DropAction],
+    ["LookAction", LookAction],
     ["Player", tmPlayer],
     ["Enemy", tmEnemy],
     ["Orc", tmOrc],

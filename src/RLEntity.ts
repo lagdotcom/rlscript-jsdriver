@@ -12,6 +12,7 @@ import {
   Position,
   RLComponent,
   RLComponentName,
+  TargetingActionConfig,
 } from "./implTypes";
 
 import RLObjectType from "./RLObjectType";
@@ -37,6 +38,7 @@ export default class RLEntity {
   Consumable?: Consumable;
   Inventory?: Inventory;
   InventoryActionConfig?: InventoryActionConfig;
+  TargetingActionConfig?: TargetingActionConfig;
   IsBlocker: boolean;
   IsPlayer: boolean;
   RecalculateFOV: boolean;
@@ -51,6 +53,7 @@ export default class RLEntity {
   PickupAction: boolean;
   InventoryAction: boolean;
   DropAction: boolean;
+  LookAction: boolean;
   constructor() {
     this.type = "entity";
     this.id = nanoid();
@@ -70,6 +73,7 @@ export default class RLEntity {
     this.PickupAction = false;
     this.InventoryAction = false;
     this.DropAction = false;
+    this.LookAction = false;
   }
 
   toString() {

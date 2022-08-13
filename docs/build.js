@@ -83,57 +83,6 @@
     }
   });
 
-  // src/RLKeyEvent.ts
-  var keyChars = {
-    KeyA: "A",
-    KeyB: "B",
-    KeyC: "C",
-    KeyD: "D",
-    KeyE: "E",
-    KeyF: "F",
-    KeyG: "G",
-    KeyH: "H",
-    KeyI: "I",
-    KeyJ: "J",
-    KeyK: "K",
-    KeyL: "L",
-    KeyM: "M",
-    KeyN: "N",
-    KeyO: "O",
-    KeyP: "P",
-    KeyQ: "Q",
-    KeyR: "R",
-    KeyS: "S",
-    KeyT: "T",
-    KeyU: "U",
-    KeyV: "V",
-    KeyW: "W",
-    KeyX: "X",
-    KeyY: "Y",
-    KeyZ: "Z"
-  };
-  var RLKeyEvent = class {
-    constructor(key) {
-      this.key = key;
-      this.type = "KeyEvent";
-      if (keyChars[key])
-        this.char = keyChars[key];
-    }
-  };
-  RLKeyEvent.type = "KeyEvent";
-
-  // src/RLMouseEvent.ts
-  var RLMouseEvent = class {
-    constructor(event, x, y, button = NaN) {
-      this.event = event;
-      this.x = x;
-      this.y = y;
-      this.button = button;
-      this.type = "MouseEvent";
-    }
-  };
-  RLMouseEvent.type = "MouseEvent";
-
   // node_modules/wglt/dist/esm/index.js
   var BlendMode;
   (function(BlendMode2) {
@@ -1616,6 +1565,60 @@ void main() {
     }
   };
 
+  // src/RLKeyEvent.ts
+  var keyChars = {
+    [Key.VK_A]: "A",
+    [Key.VK_B]: "B",
+    [Key.VK_C]: "C",
+    [Key.VK_D]: "D",
+    [Key.VK_E]: "E",
+    [Key.VK_F]: "F",
+    [Key.VK_G]: "G",
+    [Key.VK_H]: "H",
+    [Key.VK_I]: "I",
+    [Key.VK_J]: "J",
+    [Key.VK_K]: "K",
+    [Key.VK_L]: "L",
+    [Key.VK_M]: "M",
+    [Key.VK_N]: "N",
+    [Key.VK_O]: "O",
+    [Key.VK_P]: "P",
+    [Key.VK_Q]: "Q",
+    [Key.VK_R]: "R",
+    [Key.VK_S]: "S",
+    [Key.VK_T]: "T",
+    [Key.VK_U]: "U",
+    [Key.VK_V]: "V",
+    [Key.VK_W]: "W",
+    [Key.VK_X]: "X",
+    [Key.VK_Y]: "Y",
+    [Key.VK_Z]: "Z"
+  };
+  var RLKeyEvent = class {
+    constructor(key, shift = false, ctrl = false, alt = false) {
+      this.key = key;
+      this.shift = shift;
+      this.ctrl = ctrl;
+      this.alt = alt;
+      this.type = "KeyEvent";
+      if (keyChars[key])
+        this.char = keyChars[key];
+    }
+  };
+  RLKeyEvent.type = "KeyEvent";
+
+  // src/RLMouseEvent.ts
+  var RLMouseEvent = class {
+    constructor(event, x, y, button = NaN) {
+      this.event = event;
+      this.x = x;
+      this.y = y;
+      this.button = button;
+      this.type = "MouseEvent";
+    }
+  };
+  RLMouseEvent.type = "MouseEvent";
+
   // src/isAssignableTo.ts
   function isAssignableTo(o, type) {
     if (o.type === type)
@@ -1628,6 +1631,14 @@ void main() {
   }
 
   // src/Game.ts
+  var metaKeys = [
+    Key.VK_CONTROL_LEFT,
+    Key.VK_CONTROL_RIGHT,
+    Key.VK_SHIFT_LEFT,
+    Key.VK_SHIFT_RIGHT,
+    Key.VK_ALT_LEFT,
+    Key.VK_ALT_RIGHT
+  ];
   var Game = class {
     constructor(rl, canvas) {
       this.rl = rl;
@@ -1727,9 +1738,14 @@ void main() {
       return __async(this, null, function* () {
         return new Promise((resolve) => {
           const handler = () => {
+            const shift = this.terminal.isKeyDown(Key.VK_SHIFT_LEFT);
+            const ctrl = this.terminal.isKeyDown(Key.VK_CONTROL_LEFT);
+            const alt = this.terminal.isKeyDown(Key.VK_ALT_LEFT);
             for (const [key, input] of this.terminal.keys.keys.inputs) {
+              if (metaKeys.includes(key))
+                continue;
               if (input.isPressed())
-                return resolve(new RLKeyEvent(key));
+                return resolve(new RLKeyEvent(key, shift, ctrl, alt));
             }
             requestAnimationFrame(handler);
           };
@@ -2981,6 +2997,7 @@ void main() {
       "Consumable",
       "Inventory",
       "InventoryActionConfig",
+      "TargetingActionConfig",
       "IsBlocker",
       "IsPlayer",
       "RecalculateFOV",
@@ -2994,7 +3011,8 @@ void main() {
       "Item",
       "PickupAction",
       "InventoryAction",
-      "DropAction"
+      "DropAction",
+      "LookAction"
     ].includes(p.typeName);
   }
 
@@ -3089,6 +3107,7 @@ void main() {
     const PickupAction = new RLTag("PickupAction");
     const InventoryAction = new RLTag("InventoryAction");
     const DropAction = new RLTag("DropAction");
+    const LookAction = new RLTag("LookAction");
     const mkAppearance = (name, ch, fg, bg, layer) => ({
       type: "component",
       typeName: "Appearance",
@@ -3154,6 +3173,11 @@ void main() {
     const mkInventoryActionConfig = (callback) => ({
       type: "component",
       typeName: "InventoryActionConfig",
+      callback
+    });
+    const mkTargetingActionConfig = (callback) => ({
+      type: "component",
+      typeName: "TargetingActionConfig",
       callback
     });
     const tmPlayer = {
@@ -3248,6 +3272,7 @@ void main() {
     const explored = new RLGrid(mapWidth, mapHeight, false);
     const visible = new RLGrid(mapWidth, mapHeight, false);
     const log = new RLMessages();
+    let targetAt = new RLXY(-1, -1);
     let historyOffset = 0;
     function distance(a, b) {
       const dx = a.x - b.x;
@@ -3296,7 +3321,10 @@ void main() {
       for (const t of new RLQuery(RL.instance, ["Position", "Fighter"]).get()) {
         const { Position: p } = t;
         if (t != pc && visible.at(p.x, p.y)) {
-          const d = distance(pc.Position, p);
+          const d = distance(
+            new RLXY(pc.Position.x, pc.Position.y),
+            new RLXY(p.x, p.y)
+          );
           if (d < closest) {
             closest = d;
             target = t;
@@ -3371,6 +3399,14 @@ void main() {
           return "inventory";
         else if (__match === "KeyV")
           return "history";
+        else if (__match === "Slash")
+          return "look";
+        else if (__match === "Enter")
+          return "confirm";
+        else if (__match === "NumpadEnter")
+          return "confirm";
+        else if (__match === "Escape")
+          return "cancel";
         else
           return k;
       })(k);
@@ -3407,6 +3443,36 @@ void main() {
         { type: "param", name: "y", typeName: "int" }
       ]
     );
+    function showNamesAt(x, y) {
+      __lib.draw(
+        { type: "int", value: hoverX },
+        { type: "int", value: hoverY },
+        {
+          type: "str",
+          value: __lib.repeat(
+            { type: "char", value: " " },
+            { type: "int", value: gameWidth }
+          )
+        },
+        { type: "str", value: "white" },
+        { type: "str", value: "black" }
+      );
+      if (visible.at(x, y)) {
+        const names2 = getNamesAtLocation(x, y);
+        if (names2) {
+          __lib.draw(
+            { type: "int", value: hoverX },
+            { type: "int", value: hoverY },
+            { type: "str", value: names2 },
+            { type: "str", value: "white" }
+          );
+        }
+      }
+    }
+    const fn_showNamesAt = new RLFn("showNamesAt", showNamesAt, [
+      { type: "param", name: "x", typeName: "int" },
+      { type: "param", name: "y", typeName: "int" }
+    ]);
     function getBlockingMap() {
       const blocked = new RLGrid(mapWidth, mapHeight, false);
       for (const _entity of new RLQuery(RL.instance, [
@@ -3453,7 +3519,7 @@ void main() {
           e.add(RedrawUI);
           e.remove("Actor");
           hostileAI.disable();
-          __lib.pushKeyHandler(onKeyWhenDead);
+          __lib.pushKeyHandler(dead_onKey);
         } else {
           __lib.remove(e);
         }
@@ -3493,7 +3559,7 @@ void main() {
         return;
       }
       e.add(mkInventoryActionConfig(callback));
-      __lib.pushKeyHandler(onKeyInInventory);
+      __lib.pushKeyHandler(inventory_onKey);
       __lib.drawBag(
         v.items,
         { type: "str", value: title },
@@ -3548,6 +3614,39 @@ void main() {
       { type: "param", name: "key", typeName: "char" },
       { type: "param", name: "item", typeName: "entity" }
     ]);
+    function setTargetTo(x, y) {
+      const oldX = targetAt.x;
+      const oldY = targetAt.y;
+      targetAt = new RLXY(x, y);
+      drawTileAt(oldX, oldY);
+      drawTileAt(x, y);
+      showNamesAt(x, y);
+    }
+    const fn_setTargetTo = new RLFn("setTargetTo", setTargetTo, [
+      { type: "param", name: "x", typeName: "int" },
+      { type: "param", name: "y", typeName: "int" }
+    ]);
+    function startTargeting(e, callback) {
+      e.add(mkTargetingActionConfig(callback));
+      if (e.Position) {
+        setTargetTo(e.Position.x, e.Position.y);
+      }
+      __lib.pushKeyHandler(targeting_onKey);
+      __lib.pushMouseHandler(targeting_onMouse);
+    }
+    const fn_startTargeting = new RLFn("startTargeting", startTargeting, [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "param", name: "callback", typeName: "fn" }
+    ]);
+    function stopTargeting(e) {
+      setTargetTo(-1, -1);
+      __lib.popKeyHandler();
+      __lib.popMouseHandler();
+      redrawEverything(e);
+    }
+    const fn_stopTargeting = new RLFn("stopTargeting", stopTargeting, [
+      { type: "param", name: "e", typeName: "entity" }
+    ]);
     function useTurn(e) {
       e.Actor.energy -= 100;
       e.remove(MyTurn);
@@ -3556,6 +3655,7 @@ void main() {
       { type: "param", name: "e", typeName: "entity" }
     ]);
     function drawTileAt(x, y) {
+      const highlight = targetAt.equals(new RLXY(x, y));
       let ch = " ";
       let fg = "white";
       let bg = "black";
@@ -3584,6 +3684,9 @@ void main() {
             fg = "#444";
           }
         }
+      }
+      if (highlight) {
+        bg = "yellow";
       }
       __lib.draw(
         { type: "int", value: x },
@@ -3733,7 +3836,7 @@ void main() {
           if (__lib.randInt(
             { type: "int", value: 1 },
             { type: "int", value: 100 }
-          ) < 80) {
+          ) <= 80) {
             __lib.spawn(tmOrc, mkPosition(x, y));
           } else {
             __lib.spawn(tmTroll, mkPosition(x, y));
@@ -3764,7 +3867,7 @@ void main() {
             { type: "int", value: 1 },
             { type: "int", value: 100 }
           );
-          if (index < 70) {
+          if (index <= 70) {
             __lib.spawn(tmHealingPotion, mkPosition(x, y));
           } else {
             __lib.spawn(tmLightningScroll, mkPosition(x, y));
@@ -3782,49 +3885,17 @@ void main() {
         { type: "int", value: gameHeight }
       );
       generateDungeon();
-      __lib.pushKeyHandler(onKeyInDungeon);
-      __lib.pushMouseHandler(onMouseInDungeon);
+      __lib.pushKeyHandler(main_onKey);
+      __lib.pushMouseHandler(main_onMouse);
     }
     const fn_main = new RLFn("main", main, []);
-    function code_onMouseInDungeon(m) {
-      __lib.draw(
-        { type: "int", value: hoverX },
-        { type: "int", value: hoverY },
-        {
-          type: "str",
-          value: __lib.repeat(
-            { type: "char", value: " " },
-            { type: "int", value: gameWidth }
-          )
-        },
-        { type: "str", value: "white" },
-        { type: "str", value: "black" }
-      );
-      if (visible.at(m.x, m.y)) {
-        const names2 = getNamesAtLocation(m.x, m.y);
-        if (names2) {
-          __lib.draw(
-            { type: "int", value: hoverX },
-            { type: "int", value: hoverY },
-            { type: "str", value: names2 },
-            { type: "str", value: "white" }
-          );
-        }
-      }
+    function code_main_onMouse(m) {
+      showNamesAt(m.x, m.y);
     }
-    const onMouseInDungeon = new RLSystem(
-      "onMouseInDungeon",
-      code_onMouseInDungeon,
-      [{ type: "param", name: "m", typeName: "MouseEvent" }]
-    );
-    function code_onMouseInHistory(m) {
-    }
-    const onMouseInHistory = new RLSystem(
-      "onMouseInHistory",
-      code_onMouseInHistory,
-      [{ type: "param", name: "m", typeName: "MouseEvent" }]
-    );
-    function code_onKeyInDungeon(e, k) {
+    const main_onMouse = new RLSystem("main_onMouse", code_main_onMouse, [
+      { type: "param", name: "m", typeName: "MouseEvent" }
+    ]);
+    function code_main_onKey(e, k) {
       e.add(
         ((__match) => {
           if (__match === "up")
@@ -3845,17 +3916,19 @@ void main() {
             return InventoryAction;
           else if (__match === "drop")
             return DropAction;
+          else if (__match === "look")
+            return LookAction;
         })(getKey(k.key))
       );
     }
-    const onKeyInDungeon = new RLSystem("onKeyInDungeon", code_onKeyInDungeon, [
+    const main_onKey = new RLSystem("main_onKey", code_main_onKey, [
       { type: "param", name: "e", typeName: "entity" },
       { type: "constraint", typeName: "IsPlayer" },
       { type: "param", name: "k", typeName: "KeyEvent" }
     ]);
-    function code_onKeyWhenDead(e, k) {
+    function code_dead_onKey(e, k) {
     }
-    const onKeyWhenDead = new RLSystem("onKeyWhenDead", code_onKeyWhenDead, [
+    const dead_onKey = new RLSystem("dead_onKey", code_dead_onKey, [
       { type: "param", name: "e", typeName: "entity" },
       { type: "constraint", typeName: "IsPlayer" },
       { type: "param", name: "k", typeName: "KeyEvent" }
@@ -3982,7 +4055,14 @@ void main() {
       { type: "constraint", typeName: "WaitAction" },
       { type: "constraint", typeName: "MyTurn" }
     ]);
-    function code_onKeyInHistory(e, k) {
+    function code_history_onMouse(m) {
+    }
+    const history_onMouse = new RLSystem(
+      "history_onMouse",
+      code_history_onMouse,
+      [{ type: "param", name: "m", typeName: "MouseEvent" }]
+    );
+    function code_history_onKey(e, k) {
       if (k.key == "KeyV") {
         return;
       }
@@ -4015,15 +4095,15 @@ void main() {
       );
       showHistoryView();
     }
-    const onKeyInHistory = new RLSystem("onKeyInHistory", code_onKeyInHistory, [
+    const history_onKey = new RLSystem("history_onKey", code_history_onKey, [
       { type: "param", name: "e", typeName: "entity" },
       { type: "constraint", typeName: "IsPlayer" },
       { type: "param", name: "k", typeName: "KeyEvent" }
     ]);
     function code_doHistory(e) {
       e.remove(HistoryAction);
-      __lib.pushKeyHandler(onKeyInHistory);
-      __lib.pushMouseHandler(onMouseInHistory);
+      __lib.pushKeyHandler(history_onKey);
+      __lib.pushMouseHandler(history_onMouse);
       historyOffset = 0;
       __lib.clear();
       __lib.draw(
@@ -4131,7 +4211,7 @@ void main() {
       { type: "constraint", typeName: "DropAction" },
       { type: "constraint", typeName: "MyTurn" }
     ]);
-    function code_onKeyInInventory(e, v, config, k) {
+    function code_inventory_onKey(e, v, config, k) {
       let closing = false;
       if (k.key == "Escape") {
         closing = true;
@@ -4146,9 +4226,9 @@ void main() {
         redrawEverything(e);
       }
     }
-    const onKeyInInventory = new RLSystem(
-      "onKeyInInventory",
-      code_onKeyInInventory,
+    const inventory_onKey = new RLSystem(
+      "inventory_onKey",
+      code_inventory_onKey,
       [
         { type: "param", name: "e", typeName: "entity" },
         { type: "param", name: "v", typeName: "Inventory" },
@@ -4156,6 +4236,84 @@ void main() {
         { type: "param", name: "k", typeName: "KeyEvent" }
       ]
     );
+    function code_targeting_onKey(e, config, k) {
+      let mul = 1;
+      const key = getKey(k.key);
+      const move = ((__match) => {
+        if (__match === "up")
+          return new RLXY(0, -1);
+        else if (__match === "right")
+          return new RLXY(1, 0);
+        else if (__match === "down")
+          return new RLXY(0, 1);
+        else if (__match === "left")
+          return new RLXY(-1, 0);
+      })(key);
+      if (move) {
+        if (k.shift) {
+          mul *= 5;
+        }
+        if (k.ctrl) {
+          mul *= 10;
+        }
+        if (k.alt) {
+          mul *= 20;
+        }
+        const x = targetAt.x + move.x * mul;
+        const y = targetAt.y + move.y * mul;
+        setTargetTo(
+          __lib.clamp(
+            { type: "int", value: x },
+            { type: "int", value: 0 },
+            { type: "int", value: mapWidth - 1 }
+          ),
+          __lib.clamp(
+            { type: "int", value: y },
+            { type: "int", value: 0 },
+            { type: "int", value: mapHeight - 1 }
+          )
+        );
+        return;
+      }
+      if (key == "confirm") {
+        stopTargeting(e);
+      }
+      if (key == "cancel") {
+        stopTargeting(e);
+      }
+    }
+    const targeting_onKey = new RLSystem(
+      "targeting_onKey",
+      code_targeting_onKey,
+      [
+        { type: "param", name: "e", typeName: "entity" },
+        { type: "param", name: "config", typeName: "TargetingActionConfig" },
+        { type: "param", name: "k", typeName: "KeyEvent" }
+      ]
+    );
+    function code_targeting_onMouse(e, config, m) {
+      setTargetTo(m.x, m.y);
+      if (m.button == 1) {
+      }
+    }
+    const targeting_onMouse = new RLSystem(
+      "targeting_onMouse",
+      code_targeting_onMouse,
+      [
+        { type: "param", name: "e", typeName: "entity" },
+        { type: "param", name: "config", typeName: "TargetingActionConfig" },
+        { type: "param", name: "m", typeName: "MouseEvent" }
+      ]
+    );
+    function code_doLook(e) {
+      e.remove(LookAction);
+      startTargeting(e, stopTargeting);
+    }
+    const doLook = new RLSystem("doLook", code_doLook, [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "constraint", typeName: "LookAction" },
+      { type: "constraint", typeName: "MyTurn" }
+    ]);
     function code_fov(e, p) {
       __lib.getFOV(
         map,
@@ -4260,6 +4418,7 @@ void main() {
       ["redrawEverything", fn_redrawEverything],
       ["getKey", fn_getKey],
       ["getNamesAtLocation", fn_getNamesAtLocation],
+      ["showNamesAt", fn_showNamesAt],
       ["getBlockingMap", fn_getBlockingMap],
       ["hurt", fn_hurt],
       ["showHistoryView", fn_showHistoryView],
@@ -4267,6 +4426,9 @@ void main() {
       ["openInventory", fn_openInventory],
       ["icUse", fn_icUse],
       ["icDrop", fn_icDrop],
+      ["setTargetTo", fn_setTargetTo],
+      ["startTargeting", fn_startTargeting],
+      ["stopTargeting", fn_stopTargeting],
       ["useTurn", fn_useTurn],
       ["drawTileAt", fn_drawTileAt],
       ["drawEntity", fn_drawEntity],
@@ -4277,21 +4439,24 @@ void main() {
       ["addEnemies", fn_addEnemies],
       ["addItems", fn_addItems],
       ["main", fn_main],
-      ["onMouseInDungeon", onMouseInDungeon],
-      ["onMouseInHistory", onMouseInHistory],
-      ["onKeyInDungeon", onKeyInDungeon],
-      ["onKeyWhenDead", onKeyWhenDead],
+      ["main_onMouse", main_onMouse],
+      ["main_onKey", main_onKey],
+      ["dead_onKey", dead_onKey],
       ["hostileAI", hostileAI],
       ["doMove", doMove],
       ["doMelee", doMelee],
       ["doWait", doWait],
-      ["onKeyInHistory", onKeyInHistory],
+      ["history_onMouse", history_onMouse],
+      ["history_onKey", history_onKey],
       ["doHistory", doHistory],
       ["doItem", doItem],
       ["doPickup", doPickup],
       ["doInventory", doInventory],
       ["doDrop", doDrop],
-      ["onKeyInInventory", onKeyInInventory],
+      ["inventory_onKey", inventory_onKey],
+      ["targeting_onKey", targeting_onKey],
+      ["targeting_onMouse", targeting_onMouse],
+      ["doLook", doLook],
       ["fov", fov],
       ["drawUnderTile", drawUnderTile],
       ["RedrawMeEntity", RedrawMeEntity],
@@ -4312,6 +4477,7 @@ void main() {
       ["PickupAction", PickupAction],
       ["InventoryAction", InventoryAction],
       ["DropAction", DropAction],
+      ["LookAction", LookAction],
       ["Player", tmPlayer],
       ["Enemy", tmEnemy],
       ["Orc", tmOrc],
@@ -4451,6 +4617,7 @@ void main() {
       this.PickupAction = false;
       this.InventoryAction = false;
       this.DropAction = false;
+      this.LookAction = false;
     }
     toString() {
       return `#${this.id} (${Array.from(this.templates.values()).join(" ")})`;

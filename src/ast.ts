@@ -131,7 +131,7 @@ export type ASTBinary = {
   right: ASTExpr;
 };
 export type ASTArithOp = "+" | "-" | "*" | "/" | "^";
-export type ASTLogicOp = "and";
+export type ASTLogicOp = "and" | "or";
 export type ASTCondOp = ">" | ">=" | "<" | "<=" | "==" | "!=";
 export type ASTBinaryOp = ASTArithOp | ASTLogicOp | ASTCondOp;
 

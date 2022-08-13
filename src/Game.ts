@@ -1,10 +1,20 @@
+import { Key, Terminal } from "wglt";
+
 import RL from "./RL";
 import RLArg from "./RLArg";
 import RLKeyEvent from "./RLKeyEvent";
 import RLMouseEvent from "./RLMouseEvent";
 import RLSystem from "./RLSystem";
-import { Terminal } from "wglt";
 import isAssignableTo from "./isAssignableTo";
+
+const metaKeys = [
+  Key.VK_CONTROL_LEFT,
+  Key.VK_CONTROL_RIGHT,
+  Key.VK_SHIFT_LEFT,
+  Key.VK_SHIFT_RIGHT,
+  Key.VK_ALT_LEFT,
+  Key.VK_ALT_RIGHT,
+];
 
 export default class Game {
   static instance: Game;
@@ -135,8 +145,15 @@ export default class Game {
   async getKey(): Promise<RLKeyEvent> {
     return new Promise<RLKeyEvent>((resolve) => {
       const handler = () => {
+        const shift = this.terminal.isKeyDown(Key.VK_SHIFT_LEFT);
+        const ctrl = this.terminal.isKeyDown(Key.VK_CONTROL_LEFT);
+        const alt = this.terminal.isKeyDown(Key.VK_ALT_LEFT);
+
         for (const [key, input] of this.terminal.keys.keys.inputs) {
-          if (input.isPressed()) return resolve(new RLKeyEvent(key));
+          if (metaKeys.includes(key)) continue;
+
+          if (input.isPressed())
+            return resolve(new RLKeyEvent(key, shift, ctrl, alt));
         }
 
         requestAnimationFrame(handler);

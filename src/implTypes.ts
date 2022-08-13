@@ -68,6 +68,11 @@ export type InventoryActionConfig = {
   typeName: "InventoryActionConfig";
   callback: CallableFunction;
 };
+export type TargetingActionConfig = {
+  type: "component";
+  typeName: "TargetingActionConfig";
+  callback: CallableFunction;
+};
 export type RLComponent =
   | Appearance
   | OldPosition
@@ -79,7 +84,8 @@ export type RLComponent =
   | Fighter
   | Consumable
   | Inventory
-  | InventoryActionConfig;
+  | InventoryActionConfig
+  | TargetingActionConfig;
 export type RLComponentName = RLComponent["typeName"];
 export type RLTagName =
   | "IsBlocker"
@@ -95,4 +101,5 @@ export type RLTagName =
   | "Item"
   | "PickupAction"
   | "InventoryAction"
-  | "DropAction";
+  | "DropAction"
+  | "LookAction";

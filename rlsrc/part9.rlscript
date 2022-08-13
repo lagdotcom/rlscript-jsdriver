@@ -54,6 +54,12 @@ component InventoryActionConfig
   callback: fn
 end
 
+component TargetingActionConfig
+  ;; centre: xy
+  ;; range: int
+  callback: fn
+end
+
 tag IsBlocker
 tag IsPlayer
 tag RecalculateFOV
@@ -68,6 +74,7 @@ tag Item
 tag PickupAction
 tag InventoryAction
 tag DropAction
+tag LookAction
 
 global impossible: str = "#808080"
 global healed: str = "#00ff00"
@@ -167,7 +174,7 @@ fn zapItem(pc: entity, item: entity)
 
   query (t: entity, p: Position, Fighter)
     if t != pc and visible.at(p.x, p.y)
-      local d: float = distance(pc.Position, p)
+      local d: float = distance(xy(pc.Position.x, pc.Position.y), xy(p.x, p.y))
       if d < closest
         closest = d
         target = t
@@ -214,6 +221,7 @@ global map: grid = grid(mapWidth, mapHeight, Wall)
 global explored: grid = grid(mapWidth, mapHeight, false)
 global visible: grid = grid(mapWidth, mapHeight, false)
 global log: messages = messages()
+global targetAt: xy = xy(-1, -1)
 
 fn getKey(k: str): str
   return match k
@@ -241,6 +249,12 @@ fn getKey(k: str): str
     "KeyG"       = "pickup"
     "KeyI"       = "inventory"
     "KeyV"       = "history"
+    "Slash"      = "look"
+
+    "Enter" = "confirm"
+    "NumpadEnter" = "confirm"
+
+    "Escape" = "cancel"
 
     else = k
   end
@@ -262,21 +276,22 @@ fn getNamesAtLocation(x: int, y: int): str
   return total
 end
 
-system onMouseInDungeon(m: MouseEvent)
+fn showNamesAt(x: int, y: int)
   draw(hoverX, hoverY, repeat(' ', gameWidth), "white", "black")
 
-  if visible.at(m.x, m.y)
-    local names: str = getNamesAtLocation(m.x, m.y)
+  if visible.at(x, y)
+    local names: str = getNamesAtLocation(x, y)
     if names
       draw(hoverX, hoverY, names, "white")
     end
   end
 end
 
-system onMouseInHistory(m: MouseEvent)
+system main_onMouse(m: MouseEvent)
+  showNamesAt(m.x, m.y)
 end
 
-system onKeyInDungeon(e: entity, IsPlayer, k: KeyEvent)
+system main_onKey(e: entity, IsPlayer, k: KeyEvent)
   e.add(match getKey(k.key)
     "up"        = MoveAction( 0, -1)
     "right"     = MoveAction( 1,  0)
@@ -288,10 +303,11 @@ system onKeyInDungeon(e: entity, IsPlayer, k: KeyEvent)
     "pickup"    = PickupAction
     "inventory" = InventoryAction
     "drop"      = DropAction
+    "look"      = LookAction
   end)
 end
 
-system onKeyWhenDead(e: entity, IsPlayer, k: KeyEvent)
+system dead_onKey(e: entity, IsPlayer, k: KeyEvent)
   ;; TODO
 end
 
@@ -376,7 +392,7 @@ fn hurt(e: entity, damage: int)
       e.add(RedrawUI)
       e.remove(Actor)
       hostileAI.disable()
-      pushKeyHandler(onKeyWhenDead)
+      pushKeyHandler(dead_onKey)
     else
       remove(e)
     end
@@ -413,7 +429,8 @@ fn showHistoryView()
   drawLog(log, 0, 0, gameWidth, gameHeight, historyOffset)
 end
 
-system onKeyInHistory(e: entity, IsPlayer, k: KeyEvent)
+system history_onMouse(m: MouseEvent) end
+system history_onKey(e: entity, IsPlayer, k: KeyEvent)
   if k.key == "KeyV"
     ;; forgive a long keypress
     exit
@@ -443,8 +460,8 @@ end
 system doHistory(e: entity, HistoryAction, MyTurn)
   e.remove(HistoryAction)
 
-  pushKeyHandler(onKeyInHistory)
-  pushMouseHandler(onMouseInHistory)
+  pushKeyHandler(history_onKey)
+  pushMouseHandler(history_onMouse)
   historyOffset = 0
   clear()
   draw(hpX, hpY, repeat(' ', hpWidth), "white", "black")    ;; specifically clear the HP bar...
@@ -514,7 +531,8 @@ fn openInventory(e: entity, v: Inventory, callback: fn, title: str)
   end
 
   e.add(InventoryActionConfig(callback))
-  pushKeyHandler(onKeyInInventory)
+  pushKeyHandler(inventory_onKey)
+  ;; TODO mouse handler too?
 
   drawBag(v.items, title, getName, "white", "silver", "grey", "black")
 end
@@ -556,7 +574,7 @@ system doDrop(e: entity, v: Inventory, DropAction, MyTurn)
   openInventory(e, v, icDrop, "Drop what?")
 end
 
-system onKeyInInventory(e: entity, v: Inventory, config: InventoryActionConfig, k: KeyEvent)
+system inventory_onKey(e: entity, v: Inventory, config: InventoryActionConfig, k: KeyEvent)
   local closing: bool = false
 
   if k.key == "Escape"
@@ -573,6 +591,80 @@ system onKeyInInventory(e: entity, v: Inventory, config: InventoryActionConfig, 
     popKeyHandler()
     redrawEverything(e)
   end
+end
+
+fn setTargetTo(x: int, y: int)
+  local oldX: int = targetAt.x
+  local oldY: int = targetAt.y
+  targetAt = xy(x, y)
+
+  drawTileAt(oldX, oldY)
+  drawTileAt(x, y)
+  showNamesAt(x, y)
+end
+
+system targeting_onKey(e: entity, config: TargetingActionConfig, k: KeyEvent)
+  local mul: int = 1
+  local key: str = getKey(k.key)
+  local move: xy? = match key
+    "up"    = xy(0, -1)
+    "right" = xy(1, 0)
+    "down"  = xy(0, 1)
+    "left"  = xy(-1, 0)
+  end
+
+  if move
+    if k.shift mul *= 5 end
+    if k.ctrl  mul *= 10 end
+    if k.alt   mul *= 20 end
+
+    local x: int = targetAt.x + move.x * mul
+    local y: int = targetAt.y + move.y * mul
+    setTargetTo(clamp(x, 0, mapWidth - 1), clamp(y, 0, mapHeight - 1))
+    exit
+  end
+
+  if key == "confirm"
+    ;; TODO
+    stopTargeting(e)
+  end
+
+  if key == "cancel"
+    stopTargeting(e)
+  end
+end
+
+system targeting_onMouse(e: entity, config: TargetingActionConfig, m: MouseEvent)
+  setTargetTo(m.x, m.y)
+
+  if m.button == 1
+    ;; TODO
+  end
+end
+
+fn startTargeting(e: entity, callback: fn)
+  e.add(TargetingActionConfig(callback))
+
+  if e.Position
+    setTargetTo(e.Position.x, e.Position.y)
+  end
+
+  pushKeyHandler(targeting_onKey)
+  pushMouseHandler(targeting_onMouse)
+end
+
+fn stopTargeting(e: entity)
+  setTargetTo(-1, -1)
+
+  popKeyHandler()
+  popMouseHandler()
+
+  redrawEverything(e)
+end
+
+system doLook(e: entity, LookAction, MyTurn)
+  e.remove(LookAction)
+  startTargeting(e, stopTargeting)
 end
 
 system fov(e: entity, p: Position, RecalculateFOV)
@@ -593,6 +685,7 @@ fn useTurn(e: entity)
 end
 
 fn drawTileAt(x: int, y: int)
+  local highlight: bool = targetAt.equals(xy(x, y))
   local ch: char = ' '
   local fg: str = "white"
   local bg: str = "black"
@@ -621,6 +714,7 @@ fn drawTileAt(x: int, y: int)
     end
   end
 
+  if highlight bg = "yellow" end
   draw(x, y, ch, fg, bg)
 end
 
@@ -772,6 +866,6 @@ end
 fn main()
   setSize(gameWidth, gameHeight)
   generateDungeon()
-  pushKeyHandler(onKeyInDungeon)
-  pushMouseHandler(onMouseInDungeon)
+  pushKeyHandler(main_onKey)
+  pushMouseHandler(main_onMouse)
 end

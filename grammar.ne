@@ -152,6 +152,7 @@ unary   -> "-" value {% ([op,value]) => ({ _: 'unary', op: op.value, value }) %}
          | value {% id %}
 
 logicop -> "and" {% val %}
+         | "or" {% val %}
 boolop  -> ">" {% id %}
          | ">=" {% id %}
          | "<" {% id %}

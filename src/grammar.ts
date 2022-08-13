@@ -180,6 +180,7 @@ const grammar: Grammar = {
     {"name": "unary", "symbols": [{"literal":"not"}, "_", "value"], "postprocess": ([op,,value]) => ({ _: 'unary', op: op.value, value })},
     {"name": "unary", "symbols": ["value"], "postprocess": id},
     {"name": "logicop", "symbols": [{"literal":"and"}], "postprocess": val},
+    {"name": "logicop", "symbols": [{"literal":"or"}], "postprocess": val},
     {"name": "boolop", "symbols": [{"literal":">"}], "postprocess": id},
     {"name": "boolop", "symbols": [{"literal":">="}], "postprocess": id},
     {"name": "boolop", "symbols": [{"literal":"<"}], "postprocess": id},
