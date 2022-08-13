@@ -1,10 +1,13 @@
 import {
+  ASTArg,
+  ASTBinaryCase,
   ASTBinaryOp,
   ASTCall,
   ASTCode,
   ASTComponentDecl,
   ASTEnumDecl,
   ASTExpr,
+  ASTExprCase,
   ASTFnDecl,
   ASTGlobalDecl,
   ASTIdent,
@@ -140,6 +143,7 @@ const enumType = asType("enum");
 const fnType = asType("fn");
 const globalType = asType("global");
 const intType = asType("int");
+const floatType = asType("float");
 const strType = asType("str");
 const systemType = asType("system");
 const tagType = asType("tag");
@@ -502,35 +506,37 @@ export default class TSCompiler implements TSScope {
 
   checkArgumentMatch(
     i: number,
-    type: ASTType,
+    types: ASTType[],
     optional: boolean,
-    types: string[]
+    valid: string[]
   ) {
-    if (type.optional && optional)
-      throw new Error(`arg #${i} might be optional`);
+    for (const type of types) {
+      if (type.optional && optional)
+        throw new Error(`arg #${i} might be optional`);
 
-    let matched = false;
-    for (const accepted of types) {
-      if (accepted === type.value) matched = true;
-      else if (
-        accepted === "component" &&
-        this.componentNames.includes(type.value)
-      )
-        matched = true;
-      else if (accepted === "tag" && this.tagNames.includes(type.value))
-        matched = true;
-      else if (accepted === "any") matched = true;
+      let matched = false;
+      for (const accepted of valid) {
+        if (accepted === type.value) matched = true;
+        else if (
+          accepted === "component" &&
+          this.componentNames.includes(type.value)
+        )
+          matched = true;
+        else if (accepted === "tag" && this.tagNames.includes(type.value))
+          matched = true;
+        else if (accepted === "any") matched = true;
+      }
+
+      if (!matched)
+        throw new Error(
+          `arg #${i} is ${type.value}${
+            type.optional ? "?" : ""
+          }, does not match ${valid.join("|")}${optional ? "?" : ""}`
+        );
     }
-
-    if (!matched)
-      throw new Error(
-        `arg #${i} is ${type.value}${
-          type.optional ? "?" : ""
-        }, does not match ${types.join("|")}${optional ? "?" : ""}`
-      );
   }
 
-  checkLibraryCall(fn: LibFunction, args: ASTExpr[]) {
+  checkLibraryCall(fn: LibFunction, args: ASTArg[]) {
     const minArgs = fn.params.filter((p) => !p.optional).length;
     const maxArgs = fn.params.length + (fn.variadic ? Infinity : 0);
 
@@ -544,12 +550,12 @@ export default class TSCompiler implements TSScope {
         i >= fn.params.length ? fn.variadic : fn.params[i]
       ) as LibFunctionParam;
 
-      const type = this.getExprType(arg);
-      this.checkArgumentMatch(i, type, param.optional || false, param.types);
+      const types = this.getExprTypes(arg);
+      this.checkArgumentMatch(i, types, param.optional || false, param.types);
     }
   }
 
-  checkFnCall(fn: ASTFnDecl, args: ASTExpr[]) {
+  checkFnCall(fn: ASTFnDecl, args: ASTArg[]) {
     const minArgs = fn.params.length;
     const maxArgs = fn.params.length;
 
@@ -561,8 +567,8 @@ export default class TSCompiler implements TSScope {
       const arg = args[i];
       const match = fn.params[i];
 
-      const type = this.getExprType(arg);
-      this.checkArgumentMatch(i, type, match.type.optional || false, [
+      const types = this.getExprTypes(arg);
+      this.checkArgumentMatch(i, types, match.type.optional || false, [
         match.type.value,
       ]);
     }
@@ -599,6 +605,7 @@ export default class TSCompiler implements TSScope {
     // TODO make these dynamic
     return `import RLBag from "./RLBag";
 import RLEntity from "./RLEntity";
+import RLTag from "./RLTag";
 
     ${this.components
       .map(
@@ -677,7 +684,7 @@ import RLEntity from "./RLEntity";
   }
 
   getImplImport(meta = false) {
-    return `import { ${this.componentNames.join(", ")}${
+    return `import type { ${this.componentNames.join(", ")}${
       meta ? ", RLComponent, RLComponentName" : ""
     } } from "./implTypes";`;
   }
@@ -868,7 +875,7 @@ import RLEntity from "./RLEntity";
     return q.chain.join(".");
   }
 
-  getCall(x: ASTQName | ASTIdent, args: ASTExpr[]): string {
+  getCall(x: ASTQName | ASTIdent, args: ASTArg[]): string {
     const s =
       x._ === "id" ? this.resolveType(x.value) : this.resolveTypeChain(x);
     const n = x._ === "id" ? x.value : this.getQName(x);
@@ -902,72 +909,85 @@ import RLEntity from "./RLEntity";
     return `__lib.${n}(${this.getWrappedArgs(args)})`;
   }
 
-  getArgs(args: ASTExpr[]) {
+  getArgs(args: ASTArg[]) {
     return args.map((a) => this.getExpr(a)).join(", ");
   }
 
-  getWrappedArgs(args: ASTExpr[]): string {
-    return args
-      .map((a) => {
-        switch (a._) {
-          case "char":
-            return `{ type: "char", value: "${a.value}" }`;
-          case "str":
-            return `{ type: "str", value: "${a.value}" }`;
-          case "int":
-            return `{ type: "int", value: ${a.value} }`;
+  getWrappedArgs(args: ASTArg[]): string {
+    return args.map((a) => this.getWrappedArg(a)).join(",\n");
+  }
 
-          case "qname": {
-            const type = this.resolveTypeChain(a);
-            const name = this.getQName(a);
+  getWrappedArg(e: ASTExpr): string {
+    switch (e._) {
+      case "char":
+        return `{ type: "char", value: "${e.value}" }`;
+      case "str":
+        return `{ type: "str", value: "${e.value}" }`;
+      case "int":
+        return `{ type: "int", value: ${e.value} }`;
 
-            switch (type.value) {
-              case "fn":
-                return `fn_${name}`;
+      case "qname": {
+        const type = this.resolveTypeChain(e);
+        const name = this.getQName(e);
 
-              case "template":
-                return `tm${name}`;
+        switch (type.value) {
+          case "fn":
+            return `fn_${name}`;
 
-              case "bag":
-              case "entity":
-              case "grid":
-              case "messages":
-              case "system":
-              case "tag":
-              case "tile":
-              case "xy":
-                return fixName(name);
-            }
+          case "template":
+            return `tm${name}`;
 
-            if (this.componentNames.includes(type.value)) return fixName(name);
-
-            return `{ type: "${type.value}", value: ${name} }`;
-          }
-
-          case "call": {
-            const type = this.getExprType(a);
-            const value = this.getCall(a.name, a.args);
-
-            if (
-              this.componentNames.includes(type.value) ||
-              this.tagNames.includes(type.value) ||
-              ["grid", "xy"].includes(type.value)
-            )
-              return value;
-
-            return `{ type: "${type.value}", value: ${value} }`;
-          }
-
-          case "binary": {
-            const type = this.getExprType(a);
-            return `{ type: "${type.value}", value: ${this.getExpr(a)} }`;
-          }
-
-          default:
-            throw new Error(`Cannot unwrap: ${JSON.stringify(a)}`);
+          case "bag":
+          case "entity":
+          case "grid":
+          case "messages":
+          case "system":
+          case "tag":
+          case "tile":
+          case "xy":
+            return fixName(name);
         }
-      })
-      .join(",\n");
+
+        if (this.componentNames.includes(type.value)) return `"${type.value}"`;
+
+        return `{ type: "${type.value}", value: ${name} }`;
+      }
+
+      case "call": {
+        const type = this.getExprType(e);
+        const value = this.getCall(e.name, e.args);
+
+        if (
+          this.componentNames.includes(type.value) ||
+          this.tagNames.includes(type.value) ||
+          ["grid", "xy"].includes(type.value)
+        )
+          return value;
+
+        return `{ type: "${type.value}", value: ${value} }`;
+      }
+
+      case "binary": {
+        const type = this.getExprType(e);
+        return `{ type: "${type.value}", value: ${this.getExpr(e)} }`;
+      }
+
+      case "match":
+        return `((__match) => {
+        ${e.matches
+          .map((m) =>
+            m._ === "else"
+              ? `return ${this.getWrappedArg(m.value)}`
+              : `if (${this.getMatchCase(m)}) return ${this.getWrappedArg(
+                  m.value
+                )};`
+          )
+          .join("\n else ")}
+      })(${this.getExpr(e.expr)})`;
+
+      default:
+        throw new Error(`Cannot unwrap: ${JSON.stringify(e)}`);
+    }
   }
 
   getParams(x: ASTFnDecl | ASTSystemDecl) {
@@ -1117,6 +1137,8 @@ import RLEntity from "./RLEntity";
         return "RLMouseEvent" + suffix;
       case "rect":
         return "RLRect" + suffix;
+      case "tag":
+        return "RLTag" + suffix;
       case "tile":
         return "RLTile" + suffix;
       case "xy":
@@ -1165,9 +1187,9 @@ import RLEntity from "./RLEntity";
         return `((__match) => {
             ${e.matches
               .map((m) =>
-                m.expr === "else"
+                m._ === "else"
                   ? `return ${this.getExpr(m.value)}`
-                  : `if (${this.getMatchCase(m.expr)}) return ${this.getExpr(
+                  : `if (${this.getMatchCase(m)}) return ${this.getExpr(
                       m.value
                     )};`
               )
@@ -1179,64 +1201,114 @@ import RLEntity from "./RLEntity";
     }
   }
 
-  getMatchCase(e: ASTExpr) {
-    const type = this.getExprType(e);
+  getMatchCase(e: ASTExprCase | ASTBinaryCase) {
+    const type = this.getExprType(e.expr);
+
+    if (e._ === "binary") {
+      return `__match ${this.getTSOp(e.op)} ${this.getExpr(e.expr)}`;
+    }
 
     switch (type.value) {
       case "tag":
-        return `__match.has(${this.getExpr(e)}.typeName)`;
+        return `__match.has(${this.getExpr(e.expr)}.typeName)`;
 
       case "bool":
       case "int":
       case "char":
       case "str":
       case "template":
-        return `__match === ${this.getExpr(e)}`;
+        return `__match === ${this.getExpr(e.expr)}`;
     }
 
     throw new Error(`Unknown case type: ${JSON.stringify(e)}`);
   }
 
-  getExprType(
+  coerce(op: ASTBinaryOp, left: ASTType, right: ASTType): ASTType | undefined {
+    switch (op) {
+      case "+":
+      case "-":
+      case "*":
+      case "/":
+        if (left.optional || right.optional) return;
+
+        if (left.value === "int" && right.value === "int") return intType;
+        if (left.value === "float" && right.value === "int") return floatType;
+        if (left.value === "int" && right.value === "float") return floatType;
+        if (left.value === "float" && right.value === "float") return floatType;
+        return;
+
+      case "<":
+      case "<=":
+      case ">":
+      case ">=":
+        if (left.optional || right.optional) return;
+
+        if (left.value !== "int" && left.value !== "float") return;
+        if (right.value !== "int" && right.value !== "float") return;
+        return boolType;
+    }
+  }
+
+  getExprType(e: ASTExpr, scope: TSScope | undefined = this.scopes.top) {
+    const types = this.getExprTypes(e, scope);
+    if (types.length > 1) throw new Error(`cannot accept multiple types here`);
+
+    return types[0];
+  }
+
+  getExprTypes(
     e: ASTExpr,
     scope: TSScope | undefined = this.scopes.top
-  ): ASTType {
+  ): ASTType[] {
     switch (e._) {
       case "bool":
       case "char":
       case "int":
       case "str":
-        return asType(e._);
+        return [asType(e._)];
 
       case "qname":
-        return this.resolveTypeChain(e);
+        return [this.resolveTypeChain(e)];
 
       case "unary":
         switch (e.op) {
           case "-": {
-            const right = this.getExprType(e.value, scope);
-            if (right.value === "int" || right.value === "float") return right;
-            throw new Error(`Cannot negate a ${right.value}`);
+            const right = this.getExprTypes(e.value, scope);
+
+            for (const type of right) {
+              if (type.value !== "int" && type.value !== "float")
+                throw new Error(`Cannot negate a ${type.value}`);
+            }
+
+            return right;
           }
 
           case "not":
-            return boolType;
+            return [boolType];
 
           default:
             throw new Error(`Invalid unary operator: ${JSON.stringify(e)}`);
         }
 
       case "binary": {
-        const left = this.getExprType(e.left, scope);
-        const right = this.getExprType(e.right, scope);
+        const lefts = this.getExprTypes(e.left, scope);
+        const rights = this.getExprTypes(e.right, scope);
+        const types: ASTType[] = [];
 
-        if (left.value !== right.value || left.optional !== right.optional)
-          throw new Error(
-            `Cannot apply operator ${e.op} to types "${left.value}${
-              left.optional ? "?" : ""
-            }" and "${right.value}${right.optional ? "?" : ""}"`
-          );
-        return left;
+        for (const left of lefts) {
+          for (const right of rights) {
+            const type = this.coerce(e.op, left, right);
+            if (!type)
+              throw new Error(
+                `Cannot apply operator ${e.op} to types "${left.value}${
+                  left.optional ? "?" : ""
+                }" and "${right.value}${right.optional ? "?" : ""}"`
+              );
+            types.push(type);
+          }
+        }
+
+        return types;
       }
 
       case "call": {
@@ -1252,19 +1324,35 @@ import RLEntity from "./RLEntity";
           this.checkLibraryCall(lib, e.args);
           if (!lib.returns) throw new Error(`${name} does not return a value`);
 
-          // TODO
-          return asType(lib.returns.types[0]);
+          // TODO hax detected
+          if (lib.name === "clamp") {
+            let hasFloat = false;
+            for (const arg of e.args) {
+              const types = this.getExprTypes(arg, scope);
+              if (types.find((t) => t.value === "float")) {
+                hasFloat = true;
+                break;
+              }
+            }
+
+            return hasFloat ? [floatType] : [intType];
+          }
+
+          return lib.returns.types.map(asType);
         } else if (type.value === "fn") {
           const fn = this.functions.find((fn) => fn.name === name);
           if (!fn) throw new Error(`Invalid fn entry for ${name}`);
           this.checkFnCall(fn, e.args);
           if (!fn.type) throw new Error(`${name} does not return a value`);
 
-          return fn.type;
-        } else if (this.componentNames.includes(name)) return type;
+          return [fn.type];
+        } else if (this.componentNames.includes(name)) return [type];
 
         throw new Error(`Cannot determine type: ${JSON.stringify(e)}`);
       }
+
+      case "match":
+        return e.matches.flatMap((m) => this.getExprTypes(m.value, scope));
 
       default:
         throw new Error(`Cannot determine type: ${JSON.stringify(e)}`);

@@ -183,7 +183,8 @@ matchexpr -> "match" __ expr _ matchlist _ "end" {% ([,,expr,,matches]) => ({ _:
 matchlist -> match
            | matchlist _ match {% ([matches,,match]) => matches.concat(match) %}
 match -> expr _ "=" _ expr {% ([expr,,,,value]) => ({ _: 'case', expr, value }) %}
-       | "else" _ "=" _ expr {% ([,,,,value]) => ({ _: 'case', expr: "else", value }) %}
+       | "else" _ "=" _ expr {% ([,,,,value]) => ({ _: 'else', value }) %}
+       | boolop _ sum _ "=" _ expr {% ([op,,expr,,,,value]) => ({ _: 'binary', op: op.value, expr, value}) %}
 
 qname -> name {% ([name]) => ({ _: 'qname', chain: [name.value] }) %}
        | qname "." name {% ([qname,,name]) => ({ ...qname, chain: qname.chain.concat(name.value) }) %}

@@ -1,6 +1,7 @@
+import { RLComponent, RLComponentName } from "./implTypes";
+
 import RLBag from "./RLBag";
 import RLChar from "./RLChar";
-import { RLComponent } from "./implTypes";
 import RLEntity from "./RLEntity";
 import RLFloat from "./RLFloat";
 import RLFn from "./RLFn";
@@ -52,7 +53,9 @@ type RLLibrary = {
     offset?: RLInt
   ): void;
   drawGrid(g: RLGrid<RLTile>): void;
-  find(...args: (RLComponent | RLTag)[]): RLEntity | undefined;
+  find(
+    ...args: (RLComponent | RLComponentName | RLTag)[]
+  ): RLEntity | undefined;
   floor(x: RLInt | RLFloat): number;
   getFOV(
     tiles: RLGrid<RLTile>,

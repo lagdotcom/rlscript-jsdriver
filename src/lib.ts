@@ -1,10 +1,10 @@
 import { ComputeVisibility, ShadowCastingGrid } from "./RecursiveShadowCasting";
+import { RLComponent, RLComponentName } from "./implTypes";
 
 import Game from "./Game";
 import RL from "./RL";
 import RLBag from "./RLBag";
 import RLChar from "./RLChar";
-import { RLComponent } from "./implTypes";
 import RLEntity from "./RLEntity";
 import RLFloat from "./RLFloat";
 import RLFn from "./RLFn";
@@ -105,12 +105,20 @@ function add(...args: (RLComponent | RLTag)[]) {
   }
 }
 
-// TODO support "having a component" as a query part
-function find(...args: (RLComponent | RLTag)[]) {
+function find(...args: (RLComponent | RLComponentName | RLTag)[]) {
   for (const e of RL.instance.entities.values()) {
     let success = true;
 
     for (const a of args) {
+      if (typeof a === "string") {
+        if (!e.has(a)) {
+          success = false;
+          break;
+        }
+
+        continue;
+      }
+
       if (!e.has(a.typeName)) {
         success = false;
         break;

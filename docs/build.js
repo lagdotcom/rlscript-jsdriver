@@ -2991,20 +2991,20 @@ void main() {
       "Position",
       "MoveAction",
       "MeleeAction",
-      "ItemAction",
       "Actor",
       "Fighter",
       "Consumable",
       "Inventory",
       "InventoryActionConfig",
       "TargetingActionConfig",
+      "TargetingItemConfig",
+      "ConfusedEnemy",
       "IsBlocker",
       "IsPlayer",
       "RecalculateFOV",
       "RedrawMe",
       "RedrawUI",
       "MyTurn",
-      "BaseAI",
       "HostileEnemy",
       "WaitAction",
       "HistoryAction",
@@ -3099,7 +3099,6 @@ void main() {
     const RedrawMe = new RLTag("RedrawMe");
     const RedrawUI = new RLTag("RedrawUI");
     const MyTurn = new RLTag("MyTurn");
-    const BaseAI = new RLTag("BaseAI");
     const HostileEnemy = new RLTag("HostileEnemy");
     const WaitAction = new RLTag("WaitAction");
     const HistoryAction = new RLTag("HistoryAction");
@@ -3140,11 +3139,6 @@ void main() {
       typeName: "MeleeAction",
       target
     });
-    const mkItemAction = (target) => ({
-      type: "component",
-      typeName: "ItemAction",
-      target
-    });
     const mkActor = (energy) => ({
       type: "component",
       typeName: "Actor",
@@ -3158,12 +3152,13 @@ void main() {
       defence,
       power
     });
-    const mkConsumable = (activate, power, range) => ({
+    const mkConsumable = (activate, power, range, targeted) => ({
       type: "component",
       typeName: "Consumable",
       activate,
       power,
-      range
+      range,
+      targeted
     });
     const mkInventory = (items) => ({
       type: "component",
@@ -3179,6 +3174,18 @@ void main() {
       type: "component",
       typeName: "TargetingActionConfig",
       callback
+    });
+    const mkTargetingItemConfig = (key, item) => ({
+      type: "component",
+      typeName: "TargetingItemConfig",
+      key,
+      item
+    });
+    const mkConfusedEnemy = (duration, old) => ({
+      type: "component",
+      typeName: "ConfusedEnemy",
+      duration,
+      old
     });
     const tmPlayer = {
       type: "template",
@@ -3232,7 +3239,7 @@ void main() {
       get: () => [
         Item,
         mkAppearance("healing potion", "!", "purple", "black", 2 /* Item */),
-        mkConsumable(healingItem, 4, 0)
+        mkConsumable(healingItem, 4, 0, false)
       ]
     };
     const tmLightningScroll = {
@@ -3241,7 +3248,16 @@ void main() {
       get: () => [
         Item,
         mkAppearance("lightning scroll", "~", "cyan", "black", 2 /* Item */),
-        mkConsumable(zapItem, 20, 5)
+        mkConsumable(zapItem, 20, 5, false)
+      ]
+    };
+    const tmConfusionScroll = {
+      type: "template",
+      name: "ConfusionScroll",
+      get: () => [
+        Item,
+        mkAppearance("confusion scroll", "~", "#cf3fff", "black", 2 /* Item */),
+        mkConsumable(confuseItem, 10, 100, true)
       ]
     };
     const Floor = new RLTile(".", true, true);
@@ -3351,6 +3367,49 @@ void main() {
     const fn_zapItem = new RLFn("zapItem", zapItem, [
       { type: "param", name: "pc", typeName: "entity" },
       { type: "param", name: "item", typeName: "entity" }
+    ]);
+    function confuseItem(pc, item, target) {
+      if (!visible.at(target.x, target.y)) {
+        log.add("Cannot target there.", impossible);
+        return false;
+      }
+      const victim = __lib.find(
+        "Actor",
+        mkPosition(target.x, target.y)
+      );
+      if (!victim) {
+        log.add("No target.", impossible);
+        return false;
+      }
+      if (victim == pc) {
+        log.add("Cannot confuse yourself!", impossible);
+        return false;
+      }
+      const ai = ((__match) => {
+        if (__match.has(HostileEnemy.typeName))
+          return HostileEnemy;
+      })(victim);
+      if (!ai) {
+        log.add("Cannot be confused.", impossible);
+        return false;
+      }
+      log.add(
+        __lib.join(
+          { type: "char", value: " " },
+          { type: "str", value: "The eyes of the" },
+          { type: "str", value: getName(victim) },
+          { type: "str", value: "look vacant." }
+        ),
+        statusApplied
+      );
+      victim.add(mkConfusedEnemy(item.Consumable.power, ai));
+      victim.remove(ai);
+      return true;
+    }
+    const fn_confuseItem = new RLFn("confuseItem", confuseItem, [
+      { type: "param", name: "pc", typeName: "entity" },
+      { type: "param", name: "item", typeName: "entity" },
+      { type: "param", name: "target", typeName: "xy" }
     ]);
     function redrawEverything(e) {
       __lib.clear();
@@ -3485,6 +3544,19 @@ void main() {
       return blocked;
     }
     const fn_getBlockingMap = new RLFn("getBlockingMap", getBlockingMap, []);
+    function getRandomMove() {
+      return ((__match) => {
+        if (__match === 1)
+          return mkMoveAction(0, -1);
+        else if (__match === 2)
+          return mkMoveAction(1, 0);
+        else if (__match === 3)
+          return mkMoveAction(0, 1);
+        else if (__match === 4)
+          return mkMoveAction(-1, 0);
+      })(__lib.randInt({ type: "int", value: 1 }, { type: "int", value: 4 }));
+    }
+    const fn_getRandomMove = new RLFn("getRandomMove", getRandomMove, []);
     function hurt(e, damage) {
       e.Fighter.hp -= damage;
       if (e.Fighter.hp < 1) {
@@ -3576,9 +3648,32 @@ void main() {
       { type: "param", name: "callback", typeName: "fn" },
       { type: "param", name: "title", typeName: "str" }
     ]);
+    function tcUseItem(e, target) {
+      const config = e.TargetingItemConfig;
+      if (config) {
+        e.remove(config);
+        const item = config.item;
+        if (item.Consumable.activate(e, item, target)) {
+          if (e.Inventory) {
+            e.Inventory.items.remove(config.key);
+          }
+          useTurn(e);
+        }
+      }
+    }
+    const fn_tcUseItem = new RLFn("tcUseItem", tcUseItem, [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "param", name: "target", typeName: "xy" }
+    ]);
     function icUse(e, key, item) {
       if (!item.Consumable) {
         log.add("You cannot use that.", impossible);
+        return;
+      }
+      if (item.Consumable.targeted) {
+        log.add("Select a target.", needsTarget);
+        e.add(mkTargetingItemConfig(key, item));
+        startTargeting(e, tcUseItem);
         return;
       }
       if (item.Consumable.activate(e, item)) {
@@ -3833,14 +3928,20 @@ void main() {
         );
         if (!taken.at(x, y)) {
           taken.put(x, y, true);
-          if (__lib.randInt(
-            { type: "int", value: 1 },
-            { type: "int", value: 100 }
-          ) <= 80) {
-            __lib.spawn(tmOrc, mkPosition(x, y));
-          } else {
-            __lib.spawn(tmTroll, mkPosition(x, y));
-          }
+          __lib.spawn(
+            ((__match) => {
+              if (__match <= 80)
+                return tmOrc;
+              else
+                return tmTroll;
+            })(
+              __lib.randInt(
+                { type: "int", value: 1 },
+                { type: "int", value: 100 }
+              )
+            ),
+            mkPosition(x, y)
+          );
         }
       }
     }
@@ -3863,15 +3964,22 @@ void main() {
         );
         if (!taken.at(x, y)) {
           taken.put(x, y, true);
-          const index = __lib.randInt(
-            { type: "int", value: 1 },
-            { type: "int", value: 100 }
+          __lib.spawn(
+            ((__match) => {
+              if (__match <= 70)
+                return tmHealingPotion;
+              else if (__match <= 90)
+                return tmConfusionScroll;
+              else
+                return tmLightningScroll;
+            })(
+              __lib.randInt(
+                { type: "int", value: 1 },
+                { type: "int", value: 100 }
+              )
+            ),
+            mkPosition(x, y)
           );
-          if (index <= 70) {
-            __lib.spawn(tmHealingPotion, mkPosition(x, y));
-          } else {
-            __lib.spawn(tmLightningScroll, mkPosition(x, y));
-          }
         }
       }
     }
@@ -3933,6 +4041,29 @@ void main() {
       { type: "constraint", typeName: "IsPlayer" },
       { type: "param", name: "k", typeName: "KeyEvent" }
     ]);
+    function code_confusedAI(e, a, c) {
+      if (c.duration <= 0) {
+        log.add(
+          __lib.join(
+            { type: "char", value: " " },
+            { type: "str", value: "The" },
+            { type: "str", value: a.name },
+            { type: "str", value: "is no longer confused." }
+          )
+        );
+        e.remove(c);
+        e.add(c.old);
+        return;
+      }
+      c.duration -= 1;
+      e.add(getRandomMove());
+    }
+    const confusedAI = new RLSystem("confusedAI", code_confusedAI, [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "param", name: "a", typeName: "Appearance" },
+      { type: "param", name: "c", typeName: "ConfusedEnemy" },
+      { type: "constraint", typeName: "MyTurn" }
+    ]);
     function code_hostileAI(e, p) {
       if (visible.at(p.x, p.y)) {
         for (const target of new RLQuery(RL.instance, [
@@ -3990,6 +4121,19 @@ void main() {
           e.add(RecalculateFOV);
         }
       } else {
+        if (e.ConfusedEnemy) {
+          if (visible.at(p.x, p.y)) {
+            log.add(
+              __lib.join(
+                { type: "char", value: " " },
+                { type: "str", value: getName(e) },
+                { type: "str", value: "thumps into a wall." }
+              )
+            );
+          }
+          useTurn(e);
+          return;
+        }
         log.add("That way is blocked.", impossible);
       }
     }
@@ -4126,22 +4270,6 @@ void main() {
       { type: "constraint", typeName: "HistoryAction" },
       { type: "constraint", typeName: "MyTurn" }
     ]);
-    function code_doItem(e, ia) {
-      e.remove(ia);
-      const item = ia.target;
-      if (item.Consumable) {
-        if (item.Consumable.activate(e)) {
-          __lib.remove(item);
-        }
-      } else {
-        log.add("Cannot use that.", impossible);
-      }
-    }
-    const doItem = new RLSystem("doItem", code_doItem, [
-      { type: "param", name: "e", typeName: "entity" },
-      { type: "param", name: "ia", typeName: "ItemAction" },
-      { type: "constraint", typeName: "MyTurn" }
-    ]);
     function code_doPickup(e, p, v) {
       e.remove(PickupAction);
       let matches = 0;
@@ -4213,17 +4341,21 @@ void main() {
     ]);
     function code_inventory_onKey(e, v, config, k) {
       let closing = false;
+      let firing = false;
       if (k.key == "Escape") {
         closing = true;
       }
       if (v.items.has(k.char)) {
-        config.callback(e, k.char, v.items.get(k.char));
+        firing = true;
         closing = true;
       }
       if (closing) {
         e.remove(config);
         __lib.popKeyHandler();
         redrawEverything(e);
+      }
+      if (firing) {
+        config.callback(e, k.char, v.items.get(k.char));
       }
     }
     const inventory_onKey = new RLSystem(
@@ -4276,6 +4408,7 @@ void main() {
         return;
       }
       if (key == "confirm") {
+        config.callback(e, targetAt);
         stopTargeting(e);
       }
       if (key == "cancel") {
@@ -4294,6 +4427,8 @@ void main() {
     function code_targeting_onMouse(e, config, m) {
       setTargetTo(m.x, m.y);
       if (m.button == 1) {
+        config.callback(e, targetAt);
+        stopTargeting(e);
       }
     }
     const targeting_onMouse = new RLSystem(
@@ -4415,15 +4550,18 @@ void main() {
       ["distance", fn_distance],
       ["healingItem", fn_healingItem],
       ["zapItem", fn_zapItem],
+      ["confuseItem", fn_confuseItem],
       ["redrawEverything", fn_redrawEverything],
       ["getKey", fn_getKey],
       ["getNamesAtLocation", fn_getNamesAtLocation],
       ["showNamesAt", fn_showNamesAt],
       ["getBlockingMap", fn_getBlockingMap],
+      ["getRandomMove", fn_getRandomMove],
       ["hurt", fn_hurt],
       ["showHistoryView", fn_showHistoryView],
       ["getName", fn_getName],
       ["openInventory", fn_openInventory],
+      ["tcUseItem", fn_tcUseItem],
       ["icUse", fn_icUse],
       ["icDrop", fn_icDrop],
       ["setTargetTo", fn_setTargetTo],
@@ -4442,6 +4580,7 @@ void main() {
       ["main_onMouse", main_onMouse],
       ["main_onKey", main_onKey],
       ["dead_onKey", dead_onKey],
+      ["confusedAI", confusedAI],
       ["hostileAI", hostileAI],
       ["doMove", doMove],
       ["doMelee", doMelee],
@@ -4449,7 +4588,6 @@ void main() {
       ["history_onMouse", history_onMouse],
       ["history_onKey", history_onKey],
       ["doHistory", doHistory],
-      ["doItem", doItem],
       ["doPickup", doPickup],
       ["doInventory", doInventory],
       ["doDrop", doDrop],
@@ -4469,7 +4607,6 @@ void main() {
       ["RedrawMe", RedrawMe],
       ["RedrawUI", RedrawUI],
       ["MyTurn", MyTurn],
-      ["BaseAI", BaseAI],
       ["HostileEnemy", HostileEnemy],
       ["WaitAction", WaitAction],
       ["HistoryAction", HistoryAction],
@@ -4484,7 +4621,8 @@ void main() {
       ["Troll", tmTroll],
       ["Corpse", tmCorpse],
       ["HealingPotion", tmHealingPotion],
-      ["LightningScroll", tmLightningScroll]
+      ["LightningScroll", tmLightningScroll],
+      ["ConfusionScroll", tmConfusionScroll]
     ]);
   }
 
@@ -4609,7 +4747,6 @@ void main() {
       this.RedrawMe = false;
       this.RedrawUI = false;
       this.MyTurn = false;
-      this.BaseAI = false;
       this.HostileEnemy = false;
       this.WaitAction = false;
       this.HistoryAction = false;
@@ -4729,6 +4866,13 @@ void main() {
     for (const e of RL.instance.entities.values()) {
       let success = true;
       for (const a of args) {
+        if (typeof a === "string") {
+          if (!e.has(a)) {
+            success = false;
+            break;
+          }
+          continue;
+        }
         if (!e.has(a.typeName)) {
           success = false;
           break;

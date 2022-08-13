@@ -1,11 +1,11 @@
-import {
+import type {
   Actor,
   Appearance,
+  ConfusedEnemy,
   Consumable,
   Fighter,
   Inventory,
   InventoryActionConfig,
-  ItemAction,
   MeleeAction,
   MoveAction,
   OldPosition,
@@ -13,6 +13,7 @@ import {
   RLComponent,
   RLComponentName,
   TargetingActionConfig,
+  TargetingItemConfig,
 } from "./implTypes";
 
 import RLObjectType from "./RLObjectType";
@@ -32,20 +33,20 @@ export default class RLEntity {
   Position?: Position;
   MoveAction?: MoveAction;
   MeleeAction?: MeleeAction;
-  ItemAction?: ItemAction;
   Actor?: Actor;
   Fighter?: Fighter;
   Consumable?: Consumable;
   Inventory?: Inventory;
   InventoryActionConfig?: InventoryActionConfig;
   TargetingActionConfig?: TargetingActionConfig;
+  TargetingItemConfig?: TargetingItemConfig;
+  ConfusedEnemy?: ConfusedEnemy;
   IsBlocker: boolean;
   IsPlayer: boolean;
   RecalculateFOV: boolean;
   RedrawMe: boolean;
   RedrawUI: boolean;
   MyTurn: boolean;
-  BaseAI: boolean;
   HostileEnemy: boolean;
   WaitAction: boolean;
   HistoryAction: boolean;
@@ -65,7 +66,6 @@ export default class RLEntity {
     this.RedrawMe = false;
     this.RedrawUI = false;
     this.MyTurn = false;
-    this.BaseAI = false;
     this.HostileEnemy = false;
     this.WaitAction = false;
     this.HistoryAction = false;

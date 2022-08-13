@@ -1,16 +1,17 @@
-import {
+import type {
   Actor,
   Appearance,
+  ConfusedEnemy,
   Consumable,
   Fighter,
   Inventory,
   InventoryActionConfig,
-  ItemAction,
   MeleeAction,
   MoveAction,
   OldPosition,
   Position,
   TargetingActionConfig,
+  TargetingItemConfig,
 } from "./implTypes";
 
 // TODO make these dynamic
@@ -49,7 +50,6 @@ export default function implementation(__lib: RLLibrary): RLEnv {
   const RedrawMe = new RLTag("RedrawMe");
   const RedrawUI = new RLTag("RedrawUI");
   const MyTurn = new RLTag("MyTurn");
-  const BaseAI = new RLTag("BaseAI");
   const HostileEnemy = new RLTag("HostileEnemy");
   const WaitAction = new RLTag("WaitAction");
   const HistoryAction = new RLTag("HistoryAction");
@@ -97,11 +97,6 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     typeName: "MeleeAction",
     target,
   });
-  const mkItemAction = (target: RLEntity): ItemAction => ({
-    type: "component",
-    typeName: "ItemAction",
-    target,
-  });
   const mkActor = (energy: number): Actor => ({
     type: "component",
     typeName: "Actor",
@@ -123,13 +118,15 @@ export default function implementation(__lib: RLLibrary): RLEnv {
   const mkConsumable = (
     activate: CallableFunction,
     power: number,
-    range: number
+    range: number,
+    targeted: boolean
   ): Consumable => ({
     type: "component",
     typeName: "Consumable",
     activate,
     power,
     range,
+    targeted,
   });
   const mkInventory = (items: RLBag): Inventory => ({
     type: "component",
@@ -149,6 +146,21 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     type: "component",
     typeName: "TargetingActionConfig",
     callback,
+  });
+  const mkTargetingItemConfig = (
+    key: string,
+    item: RLEntity
+  ): TargetingItemConfig => ({
+    type: "component",
+    typeName: "TargetingItemConfig",
+    key,
+    item,
+  });
+  const mkConfusedEnemy = (duration: number, old: RLTag): ConfusedEnemy => ({
+    type: "component",
+    typeName: "ConfusedEnemy",
+    duration,
+    old,
   });
 
   const tmPlayer: RLTemplate = {
@@ -203,7 +215,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     get: () => [
       Item,
       mkAppearance("healing potion", "!", "purple", "black", Layer.Item),
-      mkConsumable(healingItem, 4, 0),
+      mkConsumable(healingItem, 4, 0, false),
     ],
   };
   const tmLightningScroll: RLTemplate = {
@@ -212,7 +224,16 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     get: () => [
       Item,
       mkAppearance("lightning scroll", "~", "cyan", "black", Layer.Item),
-      mkConsumable(zapItem, 20, 5),
+      mkConsumable(zapItem, 20, 5, false),
+    ],
+  };
+  const tmConfusionScroll: RLTemplate = {
+    type: "template",
+    name: "ConfusionScroll",
+    get: () => [
+      Item,
+      mkAppearance("confusion scroll", "~", "#cf3fff", "black", Layer.Item),
+      mkConsumable(confuseItem, 10, 100, true),
     ],
   };
 
@@ -327,6 +348,49 @@ export default function implementation(__lib: RLLibrary): RLEnv {
   const fn_zapItem = new RLFn("zapItem", zapItem, [
     { type: "param", name: "pc", typeName: "entity" },
     { type: "param", name: "item", typeName: "entity" },
+  ]);
+
+  function confuseItem(pc: RLEntity, item: RLEntity, target: RLXY) {
+    if (!visible.at(target.x, target.y)) {
+      log.add("Cannot target there.", impossible);
+      return false;
+    }
+    const victim: RLEntity | undefined = __lib.find(
+      "Actor",
+      mkPosition(target.x, target.y)
+    );
+    if (!victim) {
+      log.add("No target.", impossible);
+      return false;
+    }
+    if (victim == pc) {
+      log.add("Cannot confuse yourself!", impossible);
+      return false;
+    }
+    const ai: RLTag | undefined = ((__match) => {
+      if (__match.has(HostileEnemy.typeName)) return HostileEnemy;
+    })(victim);
+    if (!ai) {
+      log.add("Cannot be confused.", impossible);
+      return false;
+    }
+    log.add(
+      __lib.join(
+        { type: "char", value: " " },
+        { type: "str", value: "The eyes of the" },
+        { type: "str", value: getName(victim) },
+        { type: "str", value: "look vacant." }
+      ),
+      statusApplied
+    );
+    victim.add(mkConfusedEnemy(item.Consumable.power, ai));
+    victim.remove(ai);
+    return true;
+  }
+  const fn_confuseItem = new RLFn("confuseItem", confuseItem, [
+    { type: "param", name: "pc", typeName: "entity" },
+    { type: "param", name: "item", typeName: "entity" },
+    { type: "param", name: "target", typeName: "xy" },
   ]);
 
   function redrawEverything(e: RLEntity) {
@@ -444,6 +508,16 @@ export default function implementation(__lib: RLLibrary): RLEnv {
   }
   const fn_getBlockingMap = new RLFn("getBlockingMap", getBlockingMap, []);
 
+  function getRandomMove() {
+    return ((__match) => {
+      if (__match === 1) return mkMoveAction(0, -1);
+      else if (__match === 2) return mkMoveAction(1, 0);
+      else if (__match === 3) return mkMoveAction(0, 1);
+      else if (__match === 4) return mkMoveAction(-1, 0);
+    })(__lib.randInt({ type: "int", value: 1 }, { type: "int", value: 4 }));
+  }
+  const fn_getRandomMove = new RLFn("getRandomMove", getRandomMove, []);
+
   function hurt(e: RLEntity, damage: number) {
     e.Fighter.hp -= damage;
     if (e.Fighter.hp < 1) {
@@ -542,9 +616,33 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     { type: "param", name: "title", typeName: "str" },
   ]);
 
+  function tcUseItem(e: RLEntity, target: RLXY) {
+    const config: TargetingItemConfig = e.TargetingItemConfig;
+    if (config) {
+      e.remove(config);
+      const item: RLEntity = config.item;
+      if (item.Consumable.activate(e, item, target)) {
+        if (e.Inventory) {
+          e.Inventory.items.remove(config.key);
+        }
+        useTurn(e);
+      }
+    }
+  }
+  const fn_tcUseItem = new RLFn("tcUseItem", tcUseItem, [
+    { type: "param", name: "e", typeName: "entity" },
+    { type: "param", name: "target", typeName: "xy" },
+  ]);
+
   function icUse(e: RLEntity, key: string, item: RLEntity) {
     if (!item.Consumable) {
       log.add("You cannot use that.", impossible);
+      return;
+    }
+    if (item.Consumable.targeted) {
+      log.add("Select a target.", needsTarget);
+      e.add(mkTargetingItemConfig(key, item));
+      startTargeting(e, tcUseItem);
       return;
     }
     if (item.Consumable.activate(e, item)) {
@@ -824,16 +922,18 @@ export default function implementation(__lib: RLLibrary): RLEnv {
       );
       if (!taken.at(x, y)) {
         taken.put(x, y, true);
-        if (
-          __lib.randInt(
-            { type: "int", value: 1 },
-            { type: "int", value: 100 }
-          ) <= 80
-        ) {
-          __lib.spawn(tmOrc, mkPosition(x, y));
-        } else {
-          __lib.spawn(tmTroll, mkPosition(x, y));
-        }
+        __lib.spawn(
+          ((__match) => {
+            if (__match <= 80) return tmOrc;
+            else return tmTroll;
+          })(
+            __lib.randInt(
+              { type: "int", value: 1 },
+              { type: "int", value: 100 }
+            )
+          ),
+          mkPosition(x, y)
+        );
       }
     }
   }
@@ -862,15 +962,19 @@ export default function implementation(__lib: RLLibrary): RLEnv {
       );
       if (!taken.at(x, y)) {
         taken.put(x, y, true);
-        const index: number = __lib.randInt(
-          { type: "int", value: 1 },
-          { type: "int", value: 100 }
+        __lib.spawn(
+          ((__match) => {
+            if (__match <= 70) return tmHealingPotion;
+            else if (__match <= 90) return tmConfusionScroll;
+            else return tmLightningScroll;
+          })(
+            __lib.randInt(
+              { type: "int", value: 1 },
+              { type: "int", value: 100 }
+            )
+          ),
+          mkPosition(x, y)
         );
-        if (index <= 70) {
-          __lib.spawn(tmHealingPotion, mkPosition(x, y));
-        } else {
-          __lib.spawn(tmLightningScroll, mkPosition(x, y));
-        }
       }
     }
   }
@@ -924,6 +1028,30 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     { type: "param", name: "e", typeName: "entity" },
     { type: "constraint", typeName: "IsPlayer" },
     { type: "param", name: "k", typeName: "KeyEvent" },
+  ]);
+
+  function code_confusedAI(e: RLEntity, a: Appearance, c: ConfusedEnemy) {
+    if (c.duration <= 0) {
+      log.add(
+        __lib.join(
+          { type: "char", value: " " },
+          { type: "str", value: "The" },
+          { type: "str", value: a.name },
+          { type: "str", value: "is no longer confused." }
+        )
+      );
+      e.remove(c);
+      e.add(c.old);
+      return;
+    }
+    c.duration -= 1;
+    e.add(getRandomMove());
+  }
+  const confusedAI = new RLSystem("confusedAI", code_confusedAI, [
+    { type: "param", name: "e", typeName: "entity" },
+    { type: "param", name: "a", typeName: "Appearance" },
+    { type: "param", name: "c", typeName: "ConfusedEnemy" },
+    { type: "constraint", typeName: "MyTurn" },
   ]);
 
   function code_hostileAI(e: RLEntity, p: Position) {
@@ -986,6 +1114,19 @@ export default function implementation(__lib: RLLibrary): RLEnv {
         e.add(RecalculateFOV);
       }
     } else {
+      if (e.ConfusedEnemy) {
+        if (visible.at(p.x, p.y)) {
+          log.add(
+            __lib.join(
+              { type: "char", value: " " },
+              { type: "str", value: getName(e) },
+              { type: "str", value: "thumps into a wall." }
+            )
+          );
+        }
+        useTurn(e);
+        return;
+      }
       log.add("That way is blocked.", impossible);
     }
   }
@@ -1123,23 +1264,6 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     { type: "constraint", typeName: "MyTurn" },
   ]);
 
-  function code_doItem(e: RLEntity, ia: ItemAction) {
-    e.remove(ia);
-    const item: RLEntity = ia.target;
-    if (item.Consumable) {
-      if (item.Consumable.activate(e)) {
-        __lib.remove(item);
-      }
-    } else {
-      log.add("Cannot use that.", impossible);
-    }
-  }
-  const doItem = new RLSystem("doItem", code_doItem, [
-    { type: "param", name: "e", typeName: "entity" },
-    { type: "param", name: "ia", typeName: "ItemAction" },
-    { type: "constraint", typeName: "MyTurn" },
-  ]);
-
   function code_doPickup(e: RLEntity, p: Position, v: Inventory) {
     e.remove(PickupAction);
     let matches = 0;
@@ -1219,17 +1343,21 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     k: RLKeyEvent
   ) {
     let closing = false;
+    let firing = false;
     if (k.key == "Escape") {
       closing = true;
     }
     if (v.items.has(k.char)) {
-      config.callback(e, k.char, v.items.get(k.char));
+      firing = true;
       closing = true;
     }
     if (closing) {
       e.remove(config);
       __lib.popKeyHandler();
       redrawEverything(e);
+    }
+    if (firing) {
+      config.callback(e, k.char, v.items.get(k.char));
     }
   }
   const inventory_onKey = new RLSystem(
@@ -1283,6 +1411,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
       return;
     }
     if (key == "confirm") {
+      config.callback(e, targetAt);
       stopTargeting(e);
     }
     if (key == "cancel") {
@@ -1306,6 +1435,8 @@ export default function implementation(__lib: RLLibrary): RLEnv {
   ) {
     setTargetTo(m.x, m.y);
     if (m.button == 1) {
+      config.callback(e, targetAt);
+      stopTargeting(e);
     }
   }
   const targeting_onMouse = new RLSystem(
@@ -1435,15 +1566,18 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     ["distance", fn_distance],
     ["healingItem", fn_healingItem],
     ["zapItem", fn_zapItem],
+    ["confuseItem", fn_confuseItem],
     ["redrawEverything", fn_redrawEverything],
     ["getKey", fn_getKey],
     ["getNamesAtLocation", fn_getNamesAtLocation],
     ["showNamesAt", fn_showNamesAt],
     ["getBlockingMap", fn_getBlockingMap],
+    ["getRandomMove", fn_getRandomMove],
     ["hurt", fn_hurt],
     ["showHistoryView", fn_showHistoryView],
     ["getName", fn_getName],
     ["openInventory", fn_openInventory],
+    ["tcUseItem", fn_tcUseItem],
     ["icUse", fn_icUse],
     ["icDrop", fn_icDrop],
     ["setTargetTo", fn_setTargetTo],
@@ -1462,6 +1596,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     ["main_onMouse", main_onMouse],
     ["main_onKey", main_onKey],
     ["dead_onKey", dead_onKey],
+    ["confusedAI", confusedAI],
     ["hostileAI", hostileAI],
     ["doMove", doMove],
     ["doMelee", doMelee],
@@ -1469,7 +1604,6 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     ["history_onMouse", history_onMouse],
     ["history_onKey", history_onKey],
     ["doHistory", doHistory],
-    ["doItem", doItem],
     ["doPickup", doPickup],
     ["doInventory", doInventory],
     ["doDrop", doDrop],
@@ -1489,7 +1623,6 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     ["RedrawMe", RedrawMe],
     ["RedrawUI", RedrawUI],
     ["MyTurn", MyTurn],
-    ["BaseAI", BaseAI],
     ["HostileEnemy", HostileEnemy],
     ["WaitAction", WaitAction],
     ["HistoryAction", HistoryAction],
@@ -1505,5 +1638,6 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     ["Corpse", tmCorpse],
     ["HealingPotion", tmHealingPotion],
     ["LightningScroll", tmLightningScroll],
+    ["ConfusionScroll", tmConfusionScroll],
   ]);
 }

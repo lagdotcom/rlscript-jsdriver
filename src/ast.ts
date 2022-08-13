@@ -55,7 +55,7 @@ export type ASTField = { _: "field"; name: string; type: ASTType };
 export type ASTConstraint = { _: "constraint"; type: string };
 export type ASTParam = ASTField | ASTConstraint;
 
-export type ASTCall = { _: "call"; name: ASTIdent | ASTQName; args: ASTExpr[] };
+export type ASTCall = { _: "call"; name: ASTIdent | ASTQName; args: ASTArg[] };
 export type ASTTemplateTag = { _: "tag"; name: ASTIdent };
 export type ASTTemplateField = ASTCall | ASTTemplateTag;
 
@@ -106,6 +106,7 @@ export type ASTQuery = { _: "query"; params: ASTParam[]; code: ASTCode };
 
 export type ASTType = { _: "type"; value: string; optional?: boolean };
 
+export type ASTArg = ASTExpr;
 export type ASTExpr =
   | ASTQName
   | ASTMatch
@@ -117,7 +118,16 @@ export type ASTExpr =
 export type ASTIdent = { _: "id"; value: string };
 
 export type ASTMatch = { _: "match"; expr: ASTExpr; matches: ASTCase[] };
-export type ASTCase = { _: "case"; expr: ASTExpr | "else"; value: ASTExpr };
+
+export type ASTExprCase = { _: "case"; expr: ASTExpr; value: ASTExpr };
+export type ASTElseCase = { _: "else"; value: ASTExpr };
+export type ASTBinaryCase = {
+  _: "binary";
+  op: ASTBinaryOp;
+  expr: ASTExpr;
+  value: ASTExpr;
+};
+export type ASTCase = ASTExprCase | ASTElseCase | ASTBinaryCase;
 
 export type ASTQName = { _: "qname"; chain: string[] };
 

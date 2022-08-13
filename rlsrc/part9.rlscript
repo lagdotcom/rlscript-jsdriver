@@ -25,10 +25,6 @@ component MeleeAction
   target: entity
 end
 
-component ItemAction
-  target: entity
-end
-
 component Actor
   energy: int
 end
@@ -44,6 +40,7 @@ component Consumable
   activate: fn
   power: int
   range: int
+  targeted: bool
 end
 
 component Inventory
@@ -55,9 +52,17 @@ component InventoryActionConfig
 end
 
 component TargetingActionConfig
-  ;; centre: xy
-  ;; range: int
   callback: fn
+end
+
+component TargetingItemConfig
+  key: char
+  item: entity
+end
+
+component ConfusedEnemy
+  duration: int
+  old: tag
 end
 
 tag IsBlocker
@@ -66,7 +71,6 @@ tag RecalculateFOV
 tag RedrawMe
 tag RedrawUI
 tag MyTurn
-tag BaseAI
 tag HostileEnemy
 tag WaitAction
 tag HistoryAction
@@ -132,13 +136,19 @@ end
 template HealingPotion
   Item
   Appearance("healing potion", "!", "purple", "black", Layer.Item)
-  Consumable(healingItem, 4, 0)
+  Consumable(healingItem, 4, 0, false)
 end
 
 template LightningScroll
   Item
   Appearance("lightning scroll", "~", "cyan", "black", Layer.Item)
-  Consumable(zapItem, 20, 5)
+  Consumable(zapItem, 20, 5, false)
+end
+
+template ConfusionScroll
+  Item
+  Appearance("confusion scroll", "~", "#cf3fff", "black", Layer.Item)
+  Consumable(confuseItem, 10, 100, true)
 end
 
 fn distance(a: xy, b: xy): float
@@ -190,6 +200,36 @@ fn zapItem(pc: entity, item: entity)
 
   log.add("No enemy is close enough.", impossible)
   return false
+end
+
+fn confuseItem(pc: entity, item: entity, target: xy)
+  if not visible.at(target.x, target.y)
+    log.add("Cannot target there.", impossible)
+    return false
+  end
+
+  local victim: entity? = find(Actor, Position(target.x, target.y))
+  if not victim
+    log.add("No target.", impossible)
+    return false
+  end
+  if victim == pc
+    log.add("Cannot confuse yourself!", impossible)
+    return false
+  end
+
+  local ai: tag? = match victim
+    HostileEnemy = HostileEnemy
+  end
+  if not ai
+    log.add("Cannot be confused.", impossible)
+    return false
+  end
+
+  log.add(join(' ', "The eyes of the", getName(victim), "look vacant."), statusApplied)
+  victim.add(ConfusedEnemy(item.Consumable.power, ai))
+  victim.remove(ai)
+  return true
 end
 
 fn redrawEverything(e: entity)
@@ -320,6 +360,27 @@ fn getBlockingMap(): grid
   return blocked
 end
 
+fn getRandomMove(): MoveAction
+  return match randInt(1, 4)
+    1=MoveAction(0, -1)
+    2=MoveAction(1, 0)
+    3=MoveAction(0, 1)
+    4=MoveAction(-1, 0)
+  end
+end
+
+system confusedAI(e: entity, a: Appearance, c: ConfusedEnemy, MyTurn)
+  if c.duration <= 0
+    log.add(join(' ', "The", a.name, "is no longer confused."))
+    e.remove(c)
+    e.add(c.old)
+    exit
+  end
+
+  c.duration -= 1
+  e.add(getRandomMove())
+end
+
 system hostileAI(e: entity, p: Position, HostileEnemy, MyTurn)
   if visible.at(p.x, p.y)
     query (target: entity, tp: Position, IsPlayer)
@@ -370,6 +431,15 @@ system doMove(e: entity, p: Position, m: MoveAction, MyTurn)
       e.add(RecalculateFOV)
     end
   else
+    if e.ConfusedEnemy
+      if visible.at(p.x, p.y)
+        log.add(join(' ', getName(e), "thumps into a wall."))
+      end
+
+      useTurn(e)
+      exit
+    end
+
     log.add("That way is blocked.", impossible)
   end
 end
@@ -468,19 +538,6 @@ system doHistory(e: entity, HistoryAction, MyTurn)
   showHistoryView()
 end
 
-system doItem(e: entity, ia: ItemAction, MyTurn)
-  e.remove(ia)
-
-  local item: entity = ia.target
-  if item.Consumable
-    if item.Consumable.activate(e)
-      remove(item)
-    end
-  else
-    log.add("Cannot use that.", impossible)
-  end
-end
-
 system doPickup(e: entity, p: Position, v: Inventory, PickupAction, MyTurn)
   e.remove(PickupAction)
 
@@ -516,7 +573,7 @@ system doPickup(e: entity, p: Position, v: Inventory, PickupAction, MyTurn)
   end
 end
 
-fn getName(e: entity)
+fn getName(e: entity): str
   if e.Appearance
     return e.Appearance.name
   end
@@ -537,9 +594,32 @@ fn openInventory(e: entity, v: Inventory, callback: fn, title: str)
   drawBag(v.items, title, getName, "white", "silver", "grey", "black")
 end
 
+fn tcUseItem(e: entity, target: xy)
+  local config: TargetingItemConfig = e.TargetingItemConfig
+  if config
+    e.remove(config)
+
+    local item: entity = config.item
+    if item.Consumable.activate(e, item, target)
+      if e.Inventory
+        e.Inventory.items.remove(config.key)
+      end
+
+      useTurn(e)
+    end
+  end
+end
+
 fn icUse(e: entity, key: char, item: entity)
   if not item.Consumable
     log.add("You cannot use that.", impossible)
+    exit
+  end
+
+  if item.Consumable.targeted
+    log.add("Select a target.", needsTarget)
+    e.add(TargetingItemConfig(key, item))
+    startTargeting(e, tcUseItem)
     exit
   end
 
@@ -576,13 +656,14 @@ end
 
 system inventory_onKey(e: entity, v: Inventory, config: InventoryActionConfig, k: KeyEvent)
   local closing: bool = false
+  local firing: bool = false
 
   if k.key == "Escape"
     closing = true
   end
 
   if v.items.has(k.char)
-    config.callback(e, k.char, v.items.get(k.char))
+    firing = true
     closing = true
   end
 
@@ -590,6 +671,10 @@ system inventory_onKey(e: entity, v: Inventory, config: InventoryActionConfig, k
     e.remove(config)
     popKeyHandler()
     redrawEverything(e)
+  end
+
+  if firing
+    config.callback(e, k.char, v.items.get(k.char))
   end
 end
 
@@ -625,7 +710,7 @@ system targeting_onKey(e: entity, config: TargetingActionConfig, k: KeyEvent)
   end
 
   if key == "confirm"
-    ;; TODO
+    config.callback(e, targetAt)
     stopTargeting(e)
   end
 
@@ -638,7 +723,8 @@ system targeting_onMouse(e: entity, config: TargetingActionConfig, m: MouseEvent
   setTargetTo(m.x, m.y)
 
   if m.button == 1
-    ;; TODO
+    config.callback(e, targetAt)
+    stopTargeting(e)
   end
 end
 
@@ -836,11 +922,10 @@ fn addEnemies(r: rect, taken: grid)
 
     if not taken.at(x, y)
       taken.put(x, y, true)
-      if randInt(1, 100) <= 80
-        spawn(Orc, Position(x, y))
-      else
-        spawn(Troll, Position(x, y))
-      end
+      spawn(match randInt(1, 100)
+        <=80 = Orc
+        else = Troll
+      end, Position(x, y))
     end
   end
 end
@@ -852,13 +937,11 @@ fn addItems(r: rect, taken: grid)
 
     if not taken.at(x, y)
       taken.put(x, y, true)
-
-      local index: int = randInt(1, 100)
-      if index <= 70
-        spawn(HealingPotion, Position(x, y))
-      else
-        spawn(LightningScroll, Position(x, y))
-      end
+      spawn(match randInt(1, 100)
+        <=70 = HealingPotion
+        <=90 = ConfusionScroll
+        else = LightningScroll
+      end, Position(x, y))
     end
   end
 end

@@ -1,5 +1,6 @@
 import RLBag from "./RLBag";
 import RLEntity from "./RLEntity";
+import RLTag from "./RLTag";
 
 export type Appearance = {
   type: "component";
@@ -33,11 +34,6 @@ export type MeleeAction = {
   typeName: "MeleeAction";
   target: RLEntity;
 };
-export type ItemAction = {
-  type: "component";
-  typeName: "ItemAction";
-  target: RLEntity;
-};
 export type Actor = {
   type: "component";
   typeName: "Actor";
@@ -57,6 +53,7 @@ export type Consumable = {
   activate: CallableFunction;
   power: number;
   range: number;
+  targeted: boolean;
 };
 export type Inventory = {
   type: "component";
@@ -73,19 +70,32 @@ export type TargetingActionConfig = {
   typeName: "TargetingActionConfig";
   callback: CallableFunction;
 };
+export type TargetingItemConfig = {
+  type: "component";
+  typeName: "TargetingItemConfig";
+  key: string;
+  item: RLEntity;
+};
+export type ConfusedEnemy = {
+  type: "component";
+  typeName: "ConfusedEnemy";
+  duration: number;
+  old: RLTag;
+};
 export type RLComponent =
   | Appearance
   | OldPosition
   | Position
   | MoveAction
   | MeleeAction
-  | ItemAction
   | Actor
   | Fighter
   | Consumable
   | Inventory
   | InventoryActionConfig
-  | TargetingActionConfig;
+  | TargetingActionConfig
+  | TargetingItemConfig
+  | ConfusedEnemy;
 export type RLComponentName = RLComponent["typeName"];
 export type RLTagName =
   | "IsBlocker"
@@ -94,7 +104,6 @@ export type RLTagName =
   | "RedrawMe"
   | "RedrawUI"
   | "MyTurn"
-  | "BaseAI"
   | "HostileEnemy"
   | "WaitAction"
   | "HistoryAction"
