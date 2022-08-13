@@ -56,6 +56,7 @@ export type Consumable = {
   typeName: "Consumable";
   activate: CallableFunction;
   power: number;
+  range: number;
 };
 export type Inventory = {
   type: "component";

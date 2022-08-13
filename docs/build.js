@@ -3139,11 +3139,12 @@ void main() {
       defence,
       power
     });
-    const mkConsumable = (activate, power) => ({
+    const mkConsumable = (activate, power, range) => ({
       type: "component",
       typeName: "Consumable",
       activate,
-      power
+      power,
+      range
     });
     const mkInventory = (items) => ({
       type: "component",
@@ -3205,13 +3206,31 @@ void main() {
       type: "template",
       name: "HealingPotion",
       get: () => [
-        mkAppearance("healing potion", "!", "purple", "black", 2 /* Item */),
         Item,
-        mkConsumable(healingItem, 4)
+        mkAppearance("healing potion", "!", "purple", "black", 2 /* Item */),
+        mkConsumable(healingItem, 4, 0)
+      ]
+    };
+    const tmLightningScroll = {
+      type: "template",
+      name: "LightningScroll",
+      get: () => [
+        Item,
+        mkAppearance("lightning scroll", "~", "cyan", "black", 2 /* Item */),
+        mkConsumable(zapItem, 20, 5)
       ]
     };
     const Floor = new RLTile(".", true, true);
     const Wall = new RLTile("#", false, false);
+    const impossible = "#808080";
+    const healed = "#00ff00";
+    const playerDied = "#ff3030";
+    const enemyDied = "#ffa030";
+    const playerAttack = "#e0e0e0";
+    const enemyAttack = "#ffc0c0";
+    const welcomeText = "#20a0ff";
+    const needsTarget = "#3fffff";
+    const statusApplied = "#3fff3f";
     const gameWidth = 80;
     const gameHeight = 50;
     const mapWidth = gameWidth;
@@ -3223,18 +3242,29 @@ void main() {
     const hpWidth = 20;
     const logX = hpWidth + 2;
     const logY = hpY;
+    const maxEnemiesPerRoom = 2;
+    const maxItemsPerRoom = 20;
     const map = new RLGrid(mapWidth, mapHeight, Wall);
     const explored = new RLGrid(mapWidth, mapHeight, false);
     const visible = new RLGrid(mapWidth, mapHeight, false);
     const log = new RLMessages();
     let historyOffset = 0;
+    function distance(a, b) {
+      const dx = a.x - b.x;
+      const dy = a.y - b.y;
+      return __lib.sqrt({ type: "int", value: dx * dx + dy * dy });
+    }
+    const fn_distance = new RLFn("distance", distance, [
+      { type: "param", name: "a", typeName: "xy" },
+      { type: "param", name: "b", typeName: "xy" }
+    ]);
     function healingItem(pc, item) {
       if (!pc.Fighter) {
-        log.add("You can't use that.", "grey");
+        log.add("You can't use that.", impossible);
         return false;
       }
       if (pc.Fighter.hp >= pc.Fighter.maxHp) {
-        log.add("You're already healthy.", "grey");
+        log.add("You're already healthy.", impossible);
         return false;
       }
       const oldHp = pc.Fighter.hp;
@@ -3251,12 +3281,46 @@ void main() {
           { type: "int", value: gained },
           { type: "str", value: "hp" }
         ),
-        "lime"
+        healed
       );
       pc.add(RedrawUI);
       return true;
     }
     const fn_healingItem = new RLFn("healingItem", healingItem, [
+      { type: "param", name: "pc", typeName: "entity" },
+      { type: "param", name: "item", typeName: "entity" }
+    ]);
+    function zapItem(pc, item) {
+      let target;
+      let closest = item.Consumable.range + 1;
+      for (const t of new RLQuery(RL.instance, ["Position", "Fighter"]).get()) {
+        const { Position: p } = t;
+        if (t != pc && visible.at(p.x, p.y)) {
+          const d = distance(pc.Position, p);
+          if (d < closest) {
+            closest = d;
+            target = t;
+          }
+        }
+      }
+      if (target) {
+        log.add(
+          __lib.join(
+            { type: "char", value: " " },
+            { type: "str", value: "A lightning bolt strikes" },
+            { type: "str", value: target.Appearance.name },
+            { type: "str", value: "for" },
+            { type: "int", value: item.Consumable.power },
+            { type: "str", value: "damage!" }
+          )
+        );
+        hurt(target, item.Consumable.power);
+        return true;
+      }
+      log.add("No enemy is close enough.", impossible);
+      return false;
+    }
+    const fn_zapItem = new RLFn("zapItem", zapItem, [
       { type: "param", name: "pc", typeName: "entity" },
       { type: "param", name: "item", typeName: "entity" }
     ]);
@@ -3360,9 +3424,9 @@ void main() {
       if (e.Fighter.hp < 1) {
         const colour = ((__match) => {
           if (__match.has(IsPlayer.typeName))
-            return "red";
+            return playerDied;
           else
-            return "orange";
+            return enemyDied;
         })(e);
         if (e.IsPlayer) {
           log.add("You died!", colour);
@@ -3425,7 +3489,7 @@ void main() {
     ]);
     function openInventory(e, v, callback, title) {
       if (!v.items.count) {
-        log.add("You're not carrying anything.", "grey");
+        log.add("You're not carrying anything.", impossible);
         return;
       }
       e.add(mkInventoryActionConfig(callback));
@@ -3448,7 +3512,7 @@ void main() {
     ]);
     function icUse(e, key, item) {
       if (!item.Consumable) {
-        log.add("You cannot use that.", "grey");
+        log.add("You cannot use that.", impossible);
         return;
       }
       if (item.Consumable.activate(e, item)) {
@@ -3648,11 +3712,14 @@ void main() {
         }
       }
       hostileAI.enable();
-      log.add("Welcome to the RLscript dungeon!", "skyblue");
+      log.add("Welcome to the RLscript dungeon!", welcomeText);
     }
     const fn_generateDungeon = new RLFn("generateDungeon", generateDungeon, []);
     function addEnemies(r, taken) {
-      for (let z = 1; z <= __lib.randInt({ type: "int", value: 0 }, { type: "int", value: 2 }); z++) {
+      for (let z = 1; z <= __lib.randInt(
+        { type: "int", value: 0 },
+        { type: "int", value: maxEnemiesPerRoom }
+      ); z++) {
         const x = __lib.randInt(
           { type: "int", value: r.x + 1 },
           { type: "int", value: r.x2 - 1 }
@@ -3679,7 +3746,10 @@ void main() {
       { type: "param", name: "taken", typeName: "grid" }
     ]);
     function addItems(r, taken) {
-      for (let z = 1; z <= __lib.randInt({ type: "int", value: 0 }, { type: "int", value: 2 }); z++) {
+      for (let z = 1; z <= __lib.randInt(
+        { type: "int", value: 0 },
+        { type: "int", value: maxItemsPerRoom }
+      ); z++) {
         const x = __lib.randInt(
           { type: "int", value: r.x + 1 },
           { type: "int", value: r.x2 - 1 }
@@ -3690,7 +3760,15 @@ void main() {
         );
         if (!taken.at(x, y)) {
           taken.put(x, y, true);
-          __lib.spawn(tmHealingPotion, mkPosition(x, y));
+          const index = __lib.randInt(
+            { type: "int", value: 1 },
+            { type: "int", value: 100 }
+          );
+          if (index < 70) {
+            __lib.spawn(tmHealingPotion, mkPosition(x, y));
+          } else {
+            __lib.spawn(tmLightningScroll, mkPosition(x, y));
+          }
         }
       }
     }
@@ -3791,8 +3869,8 @@ void main() {
           const { Position: tp } = target;
           const dx = tp.x - p.x;
           const dy = tp.y - p.y;
-          const distance = __lib.abs({ type: "int", value: dx }) + __lib.abs({ type: "int", value: dy });
-          if (distance < 2) {
+          const distance2 = __lib.abs({ type: "int", value: dx }) + __lib.abs({ type: "int", value: dy });
+          if (distance2 < 2) {
             e.add(mkMeleeAction(target));
             return;
           }
@@ -3827,7 +3905,7 @@ void main() {
           if (b.Fighter) {
             e.add(mkMeleeAction(b));
           } else {
-            log.add("That way is blocked.", "grey");
+            log.add("That way is blocked.", impossible);
           }
           return;
         }
@@ -3839,7 +3917,7 @@ void main() {
           e.add(RecalculateFOV);
         }
       } else {
-        log.add("That way is blocked.", "grey");
+        log.add("That way is blocked.", impossible);
       }
     }
     const doMove = new RLSystem("doMove", code_doMove, [
@@ -3861,9 +3939,9 @@ void main() {
       const damage = f.power - target.Fighter.defence;
       const colour = ((__match) => {
         if (__match.has(IsPlayer.typeName))
-          return "white";
+          return playerAttack;
         else
-          return "red";
+          return enemyAttack;
       })(e);
       if (damage > 0) {
         log.add(
@@ -3976,7 +4054,7 @@ void main() {
           __lib.remove(item);
         }
       } else {
-        log.add("Cannot use that.", "grey");
+        log.add("Cannot use that.", impossible);
       }
     }
     const doItem = new RLSystem("doItem", code_doItem, [
@@ -4003,11 +4081,10 @@ void main() {
             log.add(
               __lib.join(
                 { type: "str", value: "" },
-                { type: "str", value: "You got the " },
-                { type: "str", value: ia.name },
-                { type: "str", value: " (" },
+                { type: "str", value: "You got (" },
                 { type: "char", value: key },
-                { type: "char", value: ")" }
+                { type: "str", value: ") " },
+                { type: "str", value: ia.name }
               )
             );
             item.remove(ip);
@@ -4020,10 +4097,10 @@ void main() {
         useTurn(e);
       }
       if (failed) {
-        log.add("Can't carry any more.", "grey");
+        log.add("Can't carry any more.", impossible);
       } else {
         if (!matches) {
-          log.add("Nothing here.", "grey");
+          log.add("Nothing here.", impossible);
         }
       }
     }
@@ -4120,7 +4197,7 @@ void main() {
     ]);
     function code_drawUI(e, f) {
       e.remove(RedrawUI);
-      drawBar(hpX, hpY, f.hp, f.maxHp, hpWidth, "red", "green");
+      drawBar(hpX, hpY, f.hp, f.maxHp, hpWidth, "#401010", "#006000");
       __lib.draw(
         { type: "int", value: hpX + 1 },
         { type: "int", value: hpY },
@@ -4177,7 +4254,9 @@ void main() {
     }
     const showLog = new RLSystem("showLog", code_showLog, []);
     return /* @__PURE__ */ new Map([
+      ["distance", fn_distance],
       ["healingItem", fn_healingItem],
+      ["zapItem", fn_zapItem],
       ["redrawEverything", fn_redrawEverything],
       ["getKey", fn_getKey],
       ["getNamesAtLocation", fn_getNamesAtLocation],
@@ -4238,7 +4317,8 @@ void main() {
       ["Orc", tmOrc],
       ["Troll", tmTroll],
       ["Corpse", tmCorpse],
-      ["HealingPotion", tmHealingPotion]
+      ["HealingPotion", tmHealingPotion],
+      ["LightningScroll", tmLightningScroll]
     ]);
   }
 
@@ -4638,6 +4718,9 @@ void main() {
     for (let i = 0; i < items.length; i++)
       term.drawString(x + 2, y + i + 3, items[i], ic);
   }
+  function sqrt({ value }) {
+    return Math.sqrt(value);
+  }
   var lib = {
     abs,
     add,
@@ -4662,7 +4745,8 @@ void main() {
     remove,
     repeat,
     setSize,
-    spawn
+    spawn,
+    sqrt
   };
   var lib_default = lib;
 

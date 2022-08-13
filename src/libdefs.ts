@@ -71,7 +71,7 @@ const library = [
   f("xy", [p("x", "int"), p("y", "int")], p("coord", "xy")),
 
   // library
-  f("abs", [p("value", "int")], p("value", "int")),
+  f("abs", [p("value", "int", "float")], p("value", "int", "float")),
   v("add", [], p("components", "component", "tag")),
   f("clear", []),
   f(
@@ -152,5 +152,6 @@ const library = [
     p("components", "component", "tag", "template"),
     p("e", "entity")
   ),
+  f("sqrt", [p("value", "int", "float")], p("value", "float")),
 ];
 export default library;

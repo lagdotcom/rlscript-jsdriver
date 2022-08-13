@@ -135,7 +135,7 @@ function find(...args: (RLComponent | RLTag)[]) {
   }
 }
 
-function abs(n: RLInt) {
+function abs(n: RLInt | RLFloat) {
   return Math.abs(n.value);
 }
 
@@ -342,6 +342,10 @@ function drawBag(
     term.drawString(x + 2, y + i + 3, items[i], ic);
 }
 
+function sqrt({ value }: RLInt | RLFloat) {
+  return Math.sqrt(value);
+}
+
 const lib: RLLibrary = {
   abs,
   add,
@@ -367,5 +371,6 @@ const lib: RLLibrary = {
   repeat,
   setSize,
   spawn,
+  sqrt,
 };
 export default lib;

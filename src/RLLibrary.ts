@@ -16,9 +16,13 @@ import RLTile from "./RLTile";
 import RLXY from "./RLXY";
 
 type RLLibrary = {
-  abs(n: RLInt): number;
+  abs(n: RLInt | RLFloat): number;
   add(...args: (RLComponent | RLTag)[]): void;
-  clamp(value: RLInt, min: RLInt, max: RLInt): number;
+  clamp(
+    value: RLInt | RLFloat,
+    min: RLInt | RLFloat,
+    max: RLInt | RLFloat
+  ): number;
   clear(): void;
   debug(...args: RLObject[]): void;
   draw(x: RLInt, y: RLInt, s: RLChar | RLStr, fg?: RLStr, bg?: RLStr): void;
@@ -74,5 +78,6 @@ type RLLibrary = {
   repeat(ch: RLChar | RLStr, amount: RLInt): string;
   setSize(width: RLInt, height: RLInt): void;
   spawn(...args: (RLComponent | RLTag | RLTemplate)[]): RLEntity;
+  sqrt(n: RLInt | RLFloat): number;
 };
 export default RLLibrary;
