@@ -222,6 +222,9 @@ system onMouseInDungeon(m: MouseEvent)
   end
 end
 
+system onMouseInHistory(m: MouseEvent)
+end
+
 system onKeyInDungeon(e: entity, IsPlayer, k: KeyEvent)
   e.add(match getKey(k.key)
     "up"        = MoveAction( 0, -1)
@@ -378,6 +381,7 @@ system onKeyInHistory(e: entity, IsPlayer, k: KeyEvent)
   if not change
     redrawEverything(e)
     popKeyHandler()
+    popMouseHandler()
     exit
   end
 
@@ -389,8 +393,10 @@ system doHistory(e: entity, HistoryAction, MyTurn)
   e.remove(HistoryAction)
 
   pushKeyHandler(onKeyInHistory)
+  pushMouseHandler(onMouseInHistory)
   historyOffset = 0
   clear()
+  draw(hpX, hpY, repeat(' ', hpWidth), "white", "black")    ;; specifically clear the HP bar...
   showHistoryView()
 end
 

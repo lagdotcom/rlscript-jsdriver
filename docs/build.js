@@ -701,12 +701,11 @@
     serializable
   ], Console);
   var Font = class {
-    constructor(url, charWidth, charHeight, scale, graphical) {
+    constructor(url, charWidth, charHeight, scale) {
       this.url = url;
       this.charWidth = charWidth;
       this.charHeight = charHeight;
       this.scale = scale || 1;
-      this.graphical = !!graphical;
     }
   };
   var FONT_IMAGE = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACAAQMAAAD58POIAAAABlBMVEUAAAD///+l2Z/dAAAEhklEQVRIx42Sv4oUQRDGC4UzadSwwMUD8QEKlbWD4Q58B/NGpTVocKO1wXHUzMAH0AcwMTYVGg5ag0IzEXaRjdZEZKNzkKbHqtnzHypY09M9+5uvqr7pbYCuC6ftaRhgONXs30eAh0O1rYDm4IS/eH0B8GxRW2vxo396yu/fb0ZFrW1zcOXlPU/XPwK8PGjbWhVwM4KnH61912oK4+zmmHJaQotyt1kvtC2Atdo24iohPDiG/v4eICJsY3Wy8Yvr0DSIBOdxgH6v8wsriWhc8s0AtaK/GzSl1jR0nSjQnwki6FQxNFKjgzO2a7BBqucH7dL4M9z96CIhT1Fs/AgKgcA6dKCxI29DaHNwRJ4EGAU1sU0OG9rmE4SIc3A4FChACqqhJRwpxkqh9wxag4DSmEJ5DtpFwAP4GUf6lmKcFFti1BYuQp4xN8kxM2kNhjdkTOiTUeAKGvhA1rLpMbYACQzCITlTDRMbLYoEa2JWPSMRFZIupcSzMVKcEUkX+sOG+ChNX2vD8ex6k7OFHL0P1655JuPd53WAD+yTv3UrCQiuHmYBbfIxpkImuvpBQBkVb5g4XHv3JkNireG8AO9zDhBZu2z2OMZ11S5/RIlyMefMNaZ4GsCz5xcjyM6hHYEjAYEfO8Ig1rklAe9sRIeYAdwyoIBq6YIzCAKiWoifA3m3o2AzWcdYKOdY47EIf8QABCuYgIUVmdVMEYEDA0Hmo/3D6KKJbh5mxhP3UsWIE97wnEygyizOfOLi2JOJW8CeOblW9IHeKZgv4zxuzDryOmb+4aQH+MXV6e0ywdUcxqCjBWl5GpbzZduOG1QEiGXP86T7EfiJfkMQ4OO4H0yqyNC2zlziWEN7Ywuc2fQ4p5BNkS5QYXP2h5NtRJh0vCKQidtVJmCGAwDSSQpYggSxiRIyzewsgCh4xxiTPDMh5aj//l7btqkr6rQyIOtLji4lVRQwXdzvus40Y53M33fh50GZwF4ExQeMlvuTggLzSi4ElKczUO7zVtpwdyMKdqZKOWb2nDblawPxPmuMwFEWBW+jlZR1eYtS442kiBGMWCi/h1/+GAR6NYOJWiqNJXFygFtrkx5C0O3IeFGs67HhEEhmBu/BUOT+0551pXxYIF+Elpi5AKRkLl5GUbCCZddyMv621ujEBPP4vSy2fotTx3U+d3WBiFOA6VSGSB49v/M7GBX9FPrDaT2c9qr4PCpwZ7qz813R94dVFIe19v33GlMZUghQFb8BrfE7QBmgBMbrn2B3enn/y3B5+DL8UBAdnejdYdBxeV9ejwoYNTgW0Ok/gA7UG2GAzanhL0DG7q4svynwF8UwDPu7u/vD0IudzSltMtVbP+J/gUbR29oJ7Fg9s6Uy+DnpiTCOYc4cXOeXMWfsusSw7FOg9x655nax6BlecwpOQQ68WBwp+H2LMQTuOq2RUigzh2Q/R3CWARJIJG199EwOTyKBlQMznshCRGeQ5gHABAQl6M4gLEdAzVaBWMCiANdsayDCHBA/hagKYfielrJIlipKKQIA9Nf3wBloTHT6BuAx15zRNa1nAAAAAElFTkSuQmCC";
@@ -840,12 +839,36 @@
       return this.upCount === 1;
     }
   };
+  var InputSet = class {
+    constructor() {
+      this.inputs = /* @__PURE__ */ new Map();
+    }
+    clear() {
+      this.inputs.clear();
+    }
+    get(key) {
+      let input = this.inputs.get(key);
+      if (!input) {
+        input = new Input();
+        this.inputs.set(key, input);
+      }
+      return input;
+    }
+    updateAll(time) {
+      this.inputs.forEach((input) => input.update(time));
+    }
+  };
   var Keyboard = class {
     constructor(el) {
-      this.keys = /* @__PURE__ */ new Map();
-      Object.keys(Key).forEach((key) => this.keys.set(key, new Input()));
+      this.keys = new InputSet();
       el.addEventListener("keydown", (e) => this.setKey(e, true));
       el.addEventListener("keyup", (e) => this.setKey(e, false));
+    }
+    clear() {
+      this.keys.clear();
+    }
+    getKey(key) {
+      return this.keys.get(key);
     }
     setKey(e, state) {
       const key = e.code;
@@ -854,18 +877,10 @@
       }
       e.stopPropagation();
       e.preventDefault();
-      this.getKey(key).setDown(state);
+      this.keys.get(key).setDown(state);
     }
     updateKeys(time) {
-      this.keys.forEach((input) => input.update(time));
-    }
-    getKey(key) {
-      let input = this.keys.get(key);
-      if (!input) {
-        input = new Input();
-        this.keys.set(key, input);
-      }
-      return input;
+      this.keys.updateAll(time);
     }
   };
   var Key;
@@ -992,6 +1007,7 @@
   ];
   var Mouse = class {
     constructor(terminal) {
+      this.buttons = new InputSet();
       this.el = terminal.canvas;
       this.width = terminal.width;
       this.height = terminal.height;
@@ -1003,7 +1019,6 @@
       this.dy = 0;
       this.wheelDeltaX = 0;
       this.wheelDeltaY = 0;
-      this.buttons = [new Input(), new Input(), new Input()];
       const el = this.el;
       el.addEventListener("mousedown", (e) => this.handleEvent(e));
       el.addEventListener("mouseup", (e) => this.handleEvent(e));
@@ -1021,9 +1036,9 @@
       if (e.touches.length > 0) {
         const touch = e.touches[0];
         this.updatePosition(touch.clientX, touch.clientY);
-        this.buttons[0].setDown(true);
+        this.buttons.get(0).setDown(true);
       } else {
-        this.buttons[0].setDown(false);
+        this.buttons.get(0).setDown(false);
       }
     }
     handleEvent(e) {
@@ -1031,11 +1046,11 @@
       e.preventDefault();
       this.updatePosition(e.clientX, e.clientY);
       if (e.type === "mousedown") {
-        this.buttons[e.button].setDown(true);
+        this.buttons.get(e.button).setDown(true);
         this.el.focus();
       }
       if (e.type === "mouseup") {
-        this.buttons[e.button].setDown(false);
+        this.buttons.get(e.button).setDown(false);
       }
     }
     handleWheelEvent(e) {
@@ -1066,10 +1081,62 @@
       this.dy = this.y - this.prevY;
       this.prevX = this.x;
       this.prevY = this.y;
-      for (let i = 0; i < this.buttons.length; i++) {
-        this.buttons[i].update(time);
-      }
+      this.buttons.updateAll(time);
     }
+  };
+  var Commodore64Palette = {
+    BLACK: fromRgb(0, 0, 0),
+    WHITE: fromRgb(255, 255, 255),
+    RED: fromRgb(136, 0, 0),
+    CYAN: fromRgb(170, 255, 238),
+    VIOLET: fromRgb(204, 68, 204),
+    GREEN: fromRgb(0, 204, 85),
+    BLUE: fromRgb(0, 0, 170),
+    YELLOW: fromRgb(238, 238, 119),
+    ORANGE: fromRgb(221, 136, 85),
+    BROWN: fromRgb(102, 68, 0),
+    LIGHT_RED: fromRgb(255, 119, 119),
+    DARK_GRAY: fromRgb(51, 51, 51),
+    GRAY: fromRgb(119, 119, 119),
+    LIGHT_GREEN: fromRgb(170, 255, 102),
+    LIGHT_BLUE: fromRgb(0, 136, 255),
+    LIGHT_GRAY: fromRgb(187, 187, 187)
+  };
+  var ColodorePalette = {
+    BLACK: fromRgb(0, 0, 0),
+    WHITE: fromRgb(255, 255, 255),
+    RED: fromRgb(136, 0, 0),
+    CYAN: fromRgb(170, 255, 238),
+    VIOLET: fromRgb(204, 68, 204),
+    GREEN: fromRgb(0, 204, 85),
+    BLUE: fromRgb(0, 0, 170),
+    YELLOW: fromRgb(238, 238, 119),
+    ORANGE: fromRgb(221, 136, 85),
+    BROWN: fromRgb(102, 68, 0),
+    LIGHT_RED: fromRgb(255, 119, 119),
+    DARK_GRAY: fromRgb(51, 51, 51),
+    GRAY: fromRgb(119, 119, 119),
+    LIGHT_GREEN: fromRgb(170, 255, 102),
+    LIGHT_BLUE: fromRgb(0, 136, 255),
+    LIGHT_GRAY: fromRgb(187, 187, 187)
+  };
+  var Pico8Palette = {
+    BLACK: fromRgb(0, 0, 0),
+    DARK_BLUE: fromRgb(29, 43, 83),
+    DARK_PURPLE: fromRgb(126, 37, 83),
+    DARK_GREEN: fromRgb(0, 135, 81),
+    BROWN: fromRgb(171, 82, 54),
+    DARK_GRAY: fromRgb(95, 87, 79),
+    LIGHT_GRAY: fromRgb(194, 195, 199),
+    WHITE: fromRgb(255, 241, 232),
+    RED: fromRgb(255, 0, 77),
+    ORANGE: fromRgb(255, 163, 0),
+    YELLOW: fromRgb(255, 236, 39),
+    GREEN: fromRgb(0, 228, 54),
+    BLUE: fromRgb(41, 173, 255),
+    LAVENDER: fromRgb(131, 118, 156),
+    PINK: fromRgb(255, 119, 168),
+    LIGHT_PEACH: fromRgb(255, 204, 170)
   };
   var RNG = class RNG2 {
     constructor(seed) {
@@ -1116,7 +1183,74 @@
     serializable
   ], RNG);
   var VERTEX_SHADER_SOURCE = "#version 300 es\nprecision highp float;in vec2 a;in vec2 b;in vec3 c;in vec3 d;out vec2 e;out vec4 f;out vec4 g;void main(void){gl_Position=vec4(a.x,a.y,0,1);e=b/16.0;f=vec4(c.r,c.g,c.b,1);g=vec4(d.r,d.g,d.b,1);}";
-  var FRAGMENT_SHADER_SOURCE = "#version 300 es\nprecision highp float;in vec2 e;in vec4 f;in vec4 g;uniform bool h;uniform sampler2D s;out vec4 o;void main(void){o=texture(s,e);if(h){if(o.a<0.1){o=texture(s,g.rg*16.0+fract(e*16.0)/16.0);}}else{if(o.r<0.1) {o=g;} else {o=f;}}}";
+  var FRAGMENT_SHADER_SOURCE = "#version 300 es\nprecision highp float;in vec2 e;in vec4 f;in vec4 g;uniform sampler2D s;out vec4 o;void main(void){o=texture(s,e);if(o.r<0.1) {o=g;} else {o=f;}}";
+  var CRT_VERTEX_SHADER_SOURCE = `#version 300 es
+precision highp float;
+in vec2 a_position;
+in vec2 a_texCoord;
+out vec2 v_texCoord;
+void main(void) {
+  gl_Position=vec4(a_position.x, a_position.y, 0.0, 1.0);
+  v_texCoord = a_texCoord;
+}`;
+  var CRT_FRAGMENT_SHADER_SOURCE = `#version 300 es
+#define PI 3.1415926535897932384626433832795
+precision highp float;
+in vec2 v_texCoord;
+uniform sampler2D u_texture;
+uniform float u_blur;
+uniform float u_curvature;
+uniform float u_chroma;
+uniform float u_scanlineWidth;
+uniform float u_scanlineIntensity;
+uniform float u_vignette;
+out vec4 outputColor;
+
+vec2 curve(vec2 uv) {
+  uv = (uv - 0.5) * 2.0;
+  uv *= 1.1;
+  uv.x *= 1.0 + pow((abs(uv.y) * u_curvature), 2.0);
+  uv.y *= 1.0 + pow((abs(uv.x) * u_curvature), 2.0);
+  uv /= 1.1;
+  uv = (uv / 2.0) + 0.5;
+  return uv;
+}
+
+void main() {
+  vec2 iResolution = vec2(640.0, 360.0);
+  vec2 q = v_texCoord;
+  vec2 fragCoord = v_texCoord;
+  vec2 uv = q;
+  uv = curve(uv);
+
+  // Outside of range is black
+  if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
+    outputColor = vec4(0.0, 0.0, 0.0, 1.0);
+    return;
+  }
+
+  vec4 col;
+
+  // Chromatic aberration
+  // col = texture(u_texture, uv.xy);
+  col.r = 0.7 * texture(u_texture, vec2(uv.x + 0.001 * u_chroma, uv.y + 0.001 * u_chroma)).r;
+  col.g = 0.7 * texture(u_texture, vec2(uv.x + 0.000 * u_chroma, uv.y - 0.002 * u_chroma)).g;
+  col.b = 0.7 * texture(u_texture, vec2(uv.x - 0.002 * u_chroma, uv.y + 0.000 * u_chroma)).b;
+  
+  // Blur
+  col += 0.05 * texture(u_texture, vec2(uv.x - 2.0 * u_blur / iResolution.x, uv.y));
+  col += 0.10 * texture(u_texture, vec2(uv.x - 1.0 * u_blur / iResolution.x, uv.y));
+  col += 0.10 * texture(u_texture, vec2(uv.x + 1.0 * u_blur / iResolution.x, uv.y));
+  col += 0.05 * texture(u_texture, vec2(uv.x + 2.0 * u_blur / iResolution.x, uv.y));
+
+  // Vignette
+  col *= pow(16.0 * uv.x * uv.y * (1.0 - uv.x) * (1.0 - uv.y), u_vignette);
+
+  // Scanlines
+  col *= clamp(1.0 + u_scanlineWidth * sin(uv.y * iResolution.y * 2.0 * PI), 1.0 - u_scanlineIntensity, 1.0);
+
+  outputColor = vec4(col.rgb, 1.0);
+}`;
   function interpolate(i, max) {
     return -1 + 2 * (i / max);
   }
@@ -1125,14 +1259,18 @@
   };
   var Terminal = class extends Console {
     constructor(canvas, width, height, options) {
+      var _a;
       super(width, height);
       options = options || DEFAULT_OPTIONS;
       this.canvas = canvas;
       this.font = options.font || DEFAULT_FONT;
+      this.crt = options.crt;
+      this.maxFps = options.maxFps;
       this.pixelWidth = width * this.font.charWidth;
       this.pixelHeight = height * this.font.charHeight;
-      canvas.width = this.pixelWidth;
-      canvas.height = this.pixelHeight;
+      this.pixelScale = ((_a = options.crt) === null || _a === void 0 ? void 0 : _a.scale) || 1;
+      canvas.width = this.pixelWidth * this.pixelScale;
+      canvas.height = this.pixelHeight * this.pixelScale;
       canvas.style.imageRendering = "pixelated";
       canvas.style.outline = "none";
       canvas.tabIndex = 0;
@@ -1154,9 +1292,29 @@
       gl.attachShader(program, this.buildShader(gl.FRAGMENT_SHADER, FRAGMENT_SHADER_SOURCE));
       gl.linkProgram(program);
       gl.useProgram(program);
-      if (this.font.graphical) {
-        gl.uniform1i(gl.getUniformLocation(program, "h"), 1);
-      }
+      this.crtProgram = gl.createProgram();
+      gl.attachShader(this.crtProgram, this.buildShader(gl.VERTEX_SHADER, CRT_VERTEX_SHADER_SOURCE));
+      gl.attachShader(this.crtProgram, this.buildShader(gl.FRAGMENT_SHADER, CRT_FRAGMENT_SHADER_SOURCE));
+      gl.linkProgram(this.crtProgram);
+      gl.useProgram(this.crtProgram);
+      this.crtBlurLocation = gl.getUniformLocation(this.crtProgram, "u_blur");
+      this.crtCurvatureLocation = gl.getUniformLocation(this.crtProgram, "u_curvature");
+      this.crtChromaLocation = gl.getUniformLocation(this.crtProgram, "u_chroma");
+      this.crtScanlineWidthLocation = gl.getUniformLocation(this.crtProgram, "u_scanlineWidth");
+      this.crtScanlineIntensityLocation = gl.getUniformLocation(this.crtProgram, "u_scanlineIntensity");
+      this.crtVignetteLocation = gl.getUniformLocation(this.crtProgram, "u_vignette");
+      this.crtPositionLocation = gl.getAttribLocation(this.crtProgram, "a_position");
+      this.crtPositionBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.crtPositionBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]), gl.STATIC_DRAW);
+      gl.enableVertexAttribArray(this.crtPositionLocation);
+      gl.vertexAttribPointer(this.crtPositionLocation, 2, gl.FLOAT, false, 0, 0);
+      this.crtTexCoordLocation = gl.getAttribLocation(this.crtProgram, "a_texCoord");
+      this.crtTexCoordBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.crtTexCoordBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1]), gl.STATIC_DRAW);
+      gl.enableVertexAttribArray(this.crtTexCoordLocation);
+      gl.vertexAttribPointer(this.crtTexCoordLocation, 2, gl.FLOAT, false, 0, 0);
       this.positionAttribLocation = this.getAttribLocation("a");
       this.textureAttribLocation = this.getAttribLocation("b");
       this.fgColorAttribLocation = this.getAttribLocation("c");
@@ -1169,6 +1327,15 @@
       this.foregroundDataView = new DataView(this.foregroundUint8Array.buffer);
       this.backgroundUint8Array = new Uint8Array(cellCount * 4 * 4);
       this.backgroundDataView = new DataView(this.backgroundUint8Array.buffer);
+      this.frameBufferTexture = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, this.frameBufferTexture);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, this.pixelWidth, this.pixelHeight, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      this.frameBuffer = gl.createFramebuffer();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.frameBuffer);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.frameBufferTexture, 0);
       let i = 0;
       let j = 0;
       let k = 0;
@@ -1205,7 +1372,11 @@
       this.renderDelta = 0;
       this.fps = 0;
       this.averageFps = 0;
-      this.requestAnimationFrame();
+      if (this.maxFps === void 0) {
+        this.requestAnimationFrame();
+      } else {
+        window.setInterval(() => this.renderLoop(performance.now()), 1e3 / this.maxFps);
+      }
     }
     handleResize() {
       const parent = this.canvas.parentElement;
@@ -1337,6 +1508,11 @@
       gl.clearColor(0, 0, 0, 1);
       gl.clearDepth(1);
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      if (this.crt) {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.frameBuffer);
+      } else {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      }
       gl.viewport(0, 0, this.pixelWidth, this.pixelHeight);
       {
         const numComponents = 2;
@@ -1388,6 +1564,29 @@
         gl.drawElements(gl.TRIANGLES, vertexCount, type, offset);
       }
     }
+    renderCrt() {
+      const crt = this.crt;
+      if (!crt) {
+        return;
+      }
+      const gl = this.gl;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, this.pixelWidth * this.pixelScale, this.pixelHeight * this.pixelScale);
+      gl.useProgram(this.crtProgram);
+      gl.uniform1f(this.crtBlurLocation, crt.blur);
+      gl.uniform1f(this.crtCurvatureLocation, crt.curvature);
+      gl.uniform1f(this.crtChromaLocation, crt.chroma);
+      gl.uniform1f(this.crtVignetteLocation, crt.vignette);
+      gl.uniform1f(this.crtScanlineWidthLocation, crt.scanlineWidth);
+      gl.uniform1f(this.crtScanlineIntensityLocation, crt.scanlineIntensity);
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.crtPositionBuffer);
+      gl.vertexAttribPointer(this.crtPositionLocation, 2, gl.FLOAT, false, 0, 0);
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.crtTexCoordBuffer);
+      gl.vertexAttribPointer(this.crtTexCoordLocation, 2, gl.FLOAT, false, 0, 0);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, this.frameBufferTexture);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+    }
     requestAnimationFrame() {
       window.requestAnimationFrame((t) => this.renderLoop(t));
     }
@@ -1408,7 +1607,12 @@
       }
       this.flush();
       this.render();
-      this.requestAnimationFrame();
+      if (this.crt) {
+        this.renderCrt();
+      }
+      if (this.maxFps === void 0) {
+        this.requestAnimationFrame();
+      }
     }
   };
 
@@ -1523,7 +1727,7 @@
       return __async(this, null, function* () {
         return new Promise((resolve) => {
           const handler = () => {
-            for (const [key, input] of this.terminal.keys.keys.entries()) {
+            for (const [key, input] of this.terminal.keys.keys.inputs) {
               if (input.isPressed())
                 return resolve(new RLKeyEvent(key));
             }
@@ -2715,6 +2919,8 @@
     }
     latest(size, offset = 0) {
       const start = this.length - offset - size;
+      if (start < 0)
+        return this.messages.slice().reverse();
       const end = start + size;
       return this.messages.slice(start, end).reverse();
     }
@@ -3533,6 +3739,13 @@
       code_onMouseInDungeon,
       [{ type: "param", name: "m", typeName: "MouseEvent" }]
     );
+    function code_onMouseInHistory(m) {
+    }
+    const onMouseInHistory = new RLSystem(
+      "onMouseInHistory",
+      code_onMouseInHistory,
+      [{ type: "param", name: "m", typeName: "MouseEvent" }]
+    );
     function code_onKeyInDungeon(e, k) {
       e.add(
         ((__match) => {
@@ -3714,6 +3927,7 @@
       if (!change) {
         redrawEverything(e);
         __lib.popKeyHandler();
+        __lib.popMouseHandler();
         return;
       }
       historyOffset = __lib.clamp(
@@ -3731,8 +3945,22 @@
     function code_doHistory(e) {
       e.remove(HistoryAction);
       __lib.pushKeyHandler(onKeyInHistory);
+      __lib.pushMouseHandler(onMouseInHistory);
       historyOffset = 0;
       __lib.clear();
+      __lib.draw(
+        { type: "int", value: hpX },
+        { type: "int", value: hpY },
+        {
+          type: "str",
+          value: __lib.repeat(
+            { type: "char", value: " " },
+            { type: "int", value: hpWidth }
+          )
+        },
+        { type: "str", value: "white" },
+        { type: "str", value: "black" }
+      );
       showHistoryView();
     }
     const doHistory = new RLSystem("doHistory", code_doHistory, [
@@ -3971,6 +4199,7 @@
       ["addItems", fn_addItems],
       ["main", fn_main],
       ["onMouseInDungeon", onMouseInDungeon],
+      ["onMouseInHistory", onMouseInHistory],
       ["onKeyInDungeon", onKeyInDungeon],
       ["onKeyWhenDead", onKeyWhenDead],
       ["hostileAI", hostileAI],
@@ -4390,7 +4619,7 @@
       getColour(bg)
     );
   }
-  function drawBag(bag, { value: title }, getName, titleColour, itemColour, borderColour, b) {
+  function drawBag(bag, { value: title }, getName, titleColour, itemColour, borderColour, bgColour) {
     const items = Array.from(bag.items.entries()).map(
       ([key, e]) => `(${key}) ${getName.apply([{ type: "positional", value: e }])}`
     ).sort();
@@ -4401,12 +4630,13 @@
     const tc = getColour(titleColour);
     const ic = getColour(itemColour);
     const bc = getColour(borderColour);
-    const bg = getColour(b);
+    const bg = getColour(bgColour);
     const term = Game.instance.terminal;
-    term.drawSingleBox(x, y, width, height, bc, bg);
-    term.drawString(x + 2, y + 1, title, tc, bg);
+    term.fillRect(x, y, width, height, " ", ic, bg);
+    term.drawSingleBox(x, y, width, height, bc);
+    term.drawString(x + 2, y + 1, title, tc);
     for (let i = 0; i < items.length; i++)
-      term.drawString(x + 2, y + i + 3, items[i], ic, bg);
+      term.drawString(x + 2, y + i + 3, items[i], ic);
   }
   var lib = {
     abs,

@@ -135,7 +135,7 @@ export default class Game {
   async getKey(): Promise<RLKeyEvent> {
     return new Promise<RLKeyEvent>((resolve) => {
       const handler = () => {
-        for (const [key, input] of this.terminal.keys.keys.entries()) {
+        for (const [key, input] of this.terminal.keys.keys.inputs) {
           if (input.isPressed()) return resolve(new RLKeyEvent(key));
         }
 

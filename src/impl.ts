@@ -751,6 +751,13 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     [{ type: "param", name: "m", typeName: "MouseEvent" }]
   );
 
+  function code_onMouseInHistory(m: RLMouseEvent) {}
+  const onMouseInHistory = new RLSystem(
+    "onMouseInHistory",
+    code_onMouseInHistory,
+    [{ type: "param", name: "m", typeName: "MouseEvent" }]
+  );
+
   function code_onKeyInDungeon(e: RLEntity, k: RLKeyEvent) {
     e.add(
       ((__match) => {
@@ -926,6 +933,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     if (!change) {
       redrawEverything(e);
       __lib.popKeyHandler();
+      __lib.popMouseHandler();
       return;
     }
     historyOffset = __lib.clamp(
@@ -944,8 +952,22 @@ export default function implementation(__lib: RLLibrary): RLEnv {
   function code_doHistory(e: RLEntity) {
     e.remove(HistoryAction);
     __lib.pushKeyHandler(onKeyInHistory);
+    __lib.pushMouseHandler(onMouseInHistory);
     historyOffset = 0;
     __lib.clear();
+    __lib.draw(
+      { type: "int", value: hpX },
+      { type: "int", value: hpY },
+      {
+        type: "str",
+        value: __lib.repeat(
+          { type: "char", value: " " },
+          { type: "int", value: hpWidth }
+        ),
+      },
+      { type: "str", value: "white" },
+      { type: "str", value: "black" }
+    );
     showHistoryView();
   }
   const doHistory = new RLSystem("doHistory", code_doHistory, [
@@ -1201,6 +1223,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     ["addItems", fn_addItems],
     ["main", fn_main],
     ["onMouseInDungeon", onMouseInDungeon],
+    ["onMouseInHistory", onMouseInHistory],
     ["onKeyInDungeon", onKeyInDungeon],
     ["onKeyWhenDead", onKeyWhenDead],
     ["hostileAI", hostileAI],

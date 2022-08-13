@@ -34,6 +34,8 @@ export default class RLMessages {
 
   latest(size: number, offset = 0) {
     const start = this.length - offset - size;
+    if (start < 0) return this.messages.slice().reverse();
+
     const end = start + size;
 
     return this.messages.slice(start, end).reverse();

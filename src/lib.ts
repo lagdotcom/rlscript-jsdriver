@@ -314,7 +314,7 @@ function drawBag(
   titleColour?: RLStr,
   itemColour?: RLStr,
   borderColour?: RLStr,
-  b?: RLStr
+  bgColour?: RLStr
 ) {
   const items = Array.from(bag.items.entries())
     .map(
@@ -331,14 +331,15 @@ function drawBag(
   const tc = getColour(titleColour);
   const ic = getColour(itemColour);
   const bc = getColour(borderColour);
-  const bg = getColour(b);
+  const bg = getColour(bgColour);
 
   const term = Game.instance.terminal;
-  term.drawSingleBox(x, y, width, height, bc, bg);
-  term.drawString(x + 2, y + 1, title, tc, bg);
+  term.fillRect(x, y, width, height, " ", ic, bg);
+  term.drawSingleBox(x, y, width, height, bc);
+  term.drawString(x + 2, y + 1, title, tc);
 
   for (let i = 0; i < items.length; i++)
-    term.drawString(x + 2, y + i + 3, items[i], ic, bg);
+    term.drawString(x + 2, y + i + 3, items[i], ic);
 }
 
 const lib: RLLibrary = {
