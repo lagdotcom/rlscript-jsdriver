@@ -274,7 +274,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
   const logX: number = hpWidth + 2;
   const logY: number = hpY;
   const maxEnemiesPerRoom = 2;
-  const maxItemsPerRoom = 20;
+  const maxItemsPerRoom = 2;
   const map: RLGrid = new RLGrid(mapWidth, mapHeight, Wall);
   const explored: RLGrid = new RLGrid(mapWidth, mapHeight, false);
   const visible: RLGrid = new RLGrid(mapWidth, mapHeight, false);
@@ -1040,7 +1040,10 @@ export default function implementation(__lib: RLLibrary): RLEnv {
         taken.put(x, y, true);
         __lib.spawn(
           ((__match) => {
-            return tmFireballScroll;
+            if (__match <= 70) return tmHealingPotion;
+            else if (__match <= 80) return tmFireballScroll;
+            else if (__match <= 90) return tmConfusionScroll;
+            else return tmLightningScroll;
           })(
             __lib.randInt(
               { type: "int", value: 1 },
