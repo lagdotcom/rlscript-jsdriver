@@ -403,6 +403,7 @@ class MessagesScope implements TSScope {
       ["dirty", boolType],
       ["length", intType],
       ["add", builtinType],
+      ["clear", builtinType],
     ]);
   }
 }
@@ -685,7 +686,7 @@ import RLTag from "./RLTag";
 
   getImplImport(meta = false) {
     return `import type { ${this.componentNames.join(", ")}${
-      meta ? ", RLComponent, RLComponentName" : ""
+      meta ? ", RLComponent, RLComponentName, RLTagName" : ""
     } } from "./implTypes";`;
   }
 

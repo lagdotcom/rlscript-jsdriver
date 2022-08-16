@@ -12,6 +12,7 @@ import type {
   Position,
   RLComponent,
   RLComponentName,
+  RLTagName,
   TargetingActionConfig,
   TargetingItemConfig,
 } from "./implTypes";
@@ -20,6 +21,13 @@ import RLObjectType from "./RLObjectType";
 import RLTag from "./RLTag";
 import RLTemplate from "./RLTemplate";
 import { nanoid } from "nanoid";
+
+type RLEntityField =
+  | "id"
+  | "components"
+  | "templates"
+  | RLComponentName
+  | RLTagName;
 
 export default class RLEntity {
   static type: RLObjectType = "entity";
@@ -55,6 +63,7 @@ export default class RLEntity {
   InventoryAction: boolean;
   DropAction: boolean;
   LookAction: boolean;
+  QuitAction: boolean;
   constructor() {
     this.type = "entity";
     this.id = nanoid();
@@ -74,6 +83,7 @@ export default class RLEntity {
     this.InventoryAction = false;
     this.DropAction = false;
     this.LookAction = false;
+    this.QuitAction = false;
   }
 
   toString() {
@@ -81,7 +91,7 @@ export default class RLEntity {
   }
 
   get [Symbol.toStringTag]() {
-    return `Entity#${this.toString()})`;
+    return `Entity#${this.toString()}`;
   }
 
   has(name: RLObjectType) {
@@ -120,5 +130,39 @@ export default class RLEntity {
     if (this.components.has(name)) return this[name];
 
     throw new Error(`Tried to access empty entity.${name}`);
+  }
+
+  serialize() {
+    const keys = Object.keys(this).filter(
+      (k) => Object.prototype.hasOwnProperty.call(this, k) && k !== "type"
+    ) as RLEntityField[];
+
+    return Object.fromEntries(
+      keys.map((k) => {
+        const raw = this[k];
+        const value = raw instanceof Set ? Array.from(raw.values()) : raw;
+        return [k, value];
+      })
+    );
+  }
+
+  static deserialize(data: object) {
+    const e = new RLEntity();
+
+    for (const key in data) {
+      const value = data[key];
+
+      switch (key) {
+        case "components":
+        case "templates":
+          for (const name of value) e[key].add(name);
+          break;
+
+        default:
+          e[key] = value;
+      }
+    }
+
+    return e;
   }
 }

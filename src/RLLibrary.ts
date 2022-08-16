@@ -19,12 +19,14 @@ import RLXY from "./RLXY";
 type RLLibrary = {
   abs(n: RLInt | RLFloat): number;
   add(...args: (RLComponent | RLTag)[]): void;
+  canLoadGame(): boolean;
   clamp(
     value: RLInt | RLFloat,
     min: RLInt | RLFloat,
     max: RLInt | RLFloat
   ): number;
   clear(): void;
+  clearHandlers(): void;
   debug(...args: RLObject[]): void;
   draw(x: RLInt, y: RLInt, s: RLChar | RLStr, fg?: RLStr, bg?: RLStr): void;
   drawBag(
@@ -72,6 +74,7 @@ type RLLibrary = {
     dst: RLXY
   ): RLXY | undefined;
   join(glue: RLChar | RLStr, ...parts: (RLChar | RLStr | RLInt)[]): string;
+  loadGame(): void;
   popKeyHandler(): void;
   popMouseHandler(): void;
   pushKeyHandler(handler: RLSystem): void;
@@ -79,6 +82,7 @@ type RLLibrary = {
   randInt(min: RLInt, max: RLInt): number;
   remove(e: RLEntity): void;
   repeat(ch: RLChar | RLStr, amount: RLInt): string;
+  saveGame(): void;
   setSize(width: RLInt, height: RLInt): void;
   spawn(...args: (RLComponent | RLTag | RLTemplate)[]): RLEntity;
   sqrt(n: RLInt | RLFloat): number;

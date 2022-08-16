@@ -1650,19 +1650,24 @@ void main() {
       this.running = false;
       this.mouseX = NaN;
       this.mouseY = NaN;
+      this.afterInit = [];
     }
     init() {
+      this.afterInit = [];
       this.rl.callNamedFunction("main");
       this.terminal = new Terminal(this.canvas, this.width, this.height);
       this.terminal.update = this.terminalUpdate.bind(this);
+      for (const pending of this.afterInit.splice(0))
+        pending();
     }
     start() {
       return __async(this, null, function* () {
         let count = 0;
         this.running = true;
+        const activated = /* @__PURE__ */ new Set();
         while (this.running) {
+          activated.clear();
           let fired = false;
-          const activated = /* @__PURE__ */ new Set();
           for (const sys of this.rl.systems.filter((s) => s.enabled)) {
             if (this.trySystem(sys)) {
               activated.add(sys.name);
@@ -1793,6 +1798,9 @@ void main() {
     }
     pop() {
       return this.items.pop();
+    }
+    clear() {
+      this.items.splice(0);
     }
   };
 
@@ -2925,6 +2933,10 @@ void main() {
     get length() {
       return this.messages.length;
     }
+    clear() {
+      this.dirty = true;
+      this.messages.splice(0);
+    }
     add(text, fg = "white", stack = true) {
       const top = this.messages.at(-1);
       if (stack && (top == null ? void 0 : top.text) === text)
@@ -3012,7 +3024,8 @@ void main() {
       "PickupAction",
       "InventoryAction",
       "DropAction",
-      "LookAction"
+      "LookAction",
+      "QuitAction"
     ].includes(p.typeName);
   }
 
@@ -3107,6 +3120,7 @@ void main() {
     const InventoryAction = new RLTag("InventoryAction");
     const DropAction = new RLTag("DropAction");
     const LookAction = new RLTag("LookAction");
+    const QuitAction = new RLTag("QuitAction");
     const mkAppearance = (name, ch, fg, bg, layer) => ({
       type: "component",
       typeName: "Appearance",
@@ -3282,6 +3296,7 @@ void main() {
     const welcomeText = "#20a0ff";
     const needsTarget = "#3fffff";
     const statusApplied = "#3fff3f";
+    const menuTitle = "#ffff3f";
     const gameWidth = 80;
     const gameHeight = 50;
     const mapWidth = gameWidth;
@@ -3511,7 +3526,7 @@ void main() {
         else if (__match === "NumpadEnter")
           return "confirm";
         else if (__match === "Escape")
-          return "cancel";
+          return "quit";
         else
           return k;
       })(k);
@@ -3613,7 +3628,7 @@ void main() {
             return enemyDied;
         })(e);
         if (e.IsPlayer) {
-          log.add("You died!", colour);
+          log.add("You died! Press Escape to leave.", colour);
         } else {
           log.add(
             __lib.join(
@@ -3920,6 +3935,22 @@ void main() {
       { type: "param", name: "emptyColour", typeName: "str" },
       { type: "param", name: "filledColour", typeName: "str" }
     ]);
+    function clearHPBar() {
+      __lib.draw(
+        { type: "int", value: hpX },
+        { type: "int", value: hpY },
+        {
+          type: "str",
+          value: __lib.repeat(
+            { type: "char", value: " " },
+            { type: "int", value: hpWidth }
+          )
+        },
+        { type: "str", value: "white" },
+        { type: "str", value: "black" }
+      );
+    }
+    const fn_clearHPBar = new RLFn("clearHPBar", clearHPBar, []);
     function randomRoom() {
       const w = __lib.randInt(
         { type: "int", value: 6 },
@@ -4057,14 +4088,56 @@ void main() {
       { type: "param", name: "r", typeName: "rect" },
       { type: "param", name: "taken", typeName: "grid" }
     ]);
+    function newGame() {
+      for (const e of new RLQuery(RL.instance, []).get()) {
+        const {} = e;
+        __lib.remove(e);
+      }
+      log.clear();
+      generateDungeon();
+      __lib.pushKeyHandler(main_onKey);
+      __lib.pushMouseHandler(main_onMouse);
+      nextTurn.enable();
+    }
+    const fn_newGame = new RLFn("newGame", newGame, []);
+    function mainMenu() {
+      __lib.clearHandlers();
+      __lib.pushKeyHandler(menu_onKey);
+      nextTurn.disable();
+      __lib.clear();
+      clearHPBar();
+      __lib.draw(
+        { type: "int", value: gameWidth / 2 },
+        { type: "int", value: gameHeight / 2 - 4 },
+        { type: "str", value: "An Improbable Roguelike" },
+        { type: "str", value: menuTitle }
+      );
+      __lib.draw(
+        { type: "int", value: gameWidth / 2 },
+        { type: "int", value: gameHeight - 2 },
+        { type: "str", value: "by Lag.Com" },
+        { type: "str", value: menuTitle }
+      );
+      __lib.draw(
+        { type: "int", value: gameWidth / 2 },
+        { type: "int", value: gameHeight / 2 - 2 },
+        { type: "str", value: "[N] Play a new game" },
+        { type: "str", value: "white" }
+      );
+      __lib.draw(
+        { type: "int", value: gameWidth / 2 },
+        { type: "int", value: gameHeight / 2 - 1 },
+        { type: "str", value: "[C] Continue last game" },
+        { type: "str", value: "white" }
+      );
+    }
+    const fn_mainMenu = new RLFn("mainMenu", mainMenu, []);
     function main() {
       __lib.setSize(
         { type: "int", value: gameWidth },
         { type: "int", value: gameHeight }
       );
-      generateDungeon();
-      __lib.pushKeyHandler(main_onKey);
-      __lib.pushMouseHandler(main_onMouse);
+      mainMenu();
     }
     const fn_main = new RLFn("main", main, []);
     function code_main_onMouse(m) {
@@ -4096,6 +4169,8 @@ void main() {
             return DropAction;
           else if (__match === "look")
             return LookAction;
+          else if (__match === "quit")
+            return QuitAction;
         })(getKey(k.key))
       );
     }
@@ -4105,6 +4180,9 @@ void main() {
       { type: "param", name: "k", typeName: "KeyEvent" }
     ]);
     function code_dead_onKey(e, k) {
+      if (k.key == "Escape") {
+        mainMenu();
+      }
     }
     const dead_onKey = new RLSystem("dead_onKey", code_dead_onKey, [
       { type: "param", name: "e", typeName: "entity" },
@@ -4320,19 +4398,7 @@ void main() {
       __lib.pushMouseHandler(history_onMouse);
       historyOffset = 0;
       __lib.clear();
-      __lib.draw(
-        { type: "int", value: hpX },
-        { type: "int", value: hpY },
-        {
-          type: "str",
-          value: __lib.repeat(
-            { type: "char", value: " " },
-            { type: "int", value: hpWidth }
-          )
-        },
-        { type: "str", value: "white" },
-        { type: "str", value: "black" }
-      );
+      clearHPBar();
       showHistoryView();
     }
     const doHistory = new RLSystem("doHistory", code_doHistory, [
@@ -4482,7 +4548,7 @@ void main() {
         config.callback(e, targetAt);
         stopTargeting(e);
       }
-      if (key == "cancel") {
+      if (key == "quit") {
         stopTargeting(e);
       }
     }
@@ -4518,6 +4584,18 @@ void main() {
     const doLook = new RLSystem("doLook", code_doLook, [
       { type: "param", name: "e", typeName: "entity" },
       { type: "constraint", typeName: "LookAction" },
+      { type: "constraint", typeName: "MyTurn" }
+    ]);
+    function code_doQuit(e) {
+      e.remove(QuitAction);
+      redrawEverything(e);
+      __lib.saveGame();
+      log.add("Game saved.");
+    }
+    const doQuit = new RLSystem("doQuit", code_doQuit, [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "constraint", typeName: "QuitAction" },
+      { type: "constraint", typeName: "IsPlayer" },
       { type: "constraint", typeName: "MyTurn" }
     ]);
     function code_fov(e, p) {
@@ -4617,6 +4695,23 @@ void main() {
       }
     }
     const showLog = new RLSystem("showLog", code_showLog, []);
+    function code_menu_onKey(k) {
+      if (k.key == "KeyN") {
+        newGame();
+        return;
+      }
+      if (k.key == "KeyC") {
+        if (__lib.canLoadGame()) {
+          __lib.clear();
+          __lib.loadGame();
+        } else {
+          __lib.debug({ type: "str", value: "no saved game?" });
+        }
+      }
+    }
+    const menu_onKey = new RLSystem("menu_onKey", code_menu_onKey, [
+      { type: "param", name: "k", typeName: "KeyEvent" }
+    ]);
     return /* @__PURE__ */ new Map([
       ["distance", fn_distance],
       ["healingItem", fn_healingItem],
@@ -4644,11 +4739,14 @@ void main() {
       ["drawTileAt", fn_drawTileAt],
       ["drawEntity", fn_drawEntity],
       ["drawBar", fn_drawBar],
+      ["clearHPBar", fn_clearHPBar],
       ["randomRoom", fn_randomRoom],
       ["randomCorridor", fn_randomCorridor],
       ["generateDungeon", fn_generateDungeon],
       ["addEnemies", fn_addEnemies],
       ["addItems", fn_addItems],
+      ["newGame", fn_newGame],
+      ["mainMenu", fn_mainMenu],
       ["main", fn_main],
       ["main_onMouse", main_onMouse],
       ["main_onKey", main_onKey],
@@ -4668,12 +4766,14 @@ void main() {
       ["targeting_onKey", targeting_onKey],
       ["targeting_onMouse", targeting_onMouse],
       ["doLook", doLook],
+      ["doQuit", doQuit],
       ["fov", fov],
       ["drawUnderTile", drawUnderTile],
       ["RedrawMeEntity", RedrawMeEntity],
       ["drawUI", drawUI],
       ["nextTurn", nextTurn],
       ["showLog", showLog],
+      ["menu_onKey", menu_onKey],
       ["IsBlocker", IsBlocker],
       ["IsPlayer", IsPlayer],
       ["RecalculateFOV", RecalculateFOV],
@@ -4688,6 +4788,7 @@ void main() {
       ["InventoryAction", InventoryAction],
       ["DropAction", DropAction],
       ["LookAction", LookAction],
+      ["QuitAction", QuitAction],
       ["Player", tmPlayer],
       ["Enemy", tmEnemy],
       ["Orc", tmOrc],
@@ -4809,7 +4910,7 @@ void main() {
   }, "");
 
   // src/RLEntity.ts
-  var RLEntity = class {
+  var _RLEntity = class {
     constructor() {
       this.type = "entity";
       this.id = nanoid();
@@ -4829,12 +4930,13 @@ void main() {
       this.InventoryAction = false;
       this.DropAction = false;
       this.LookAction = false;
+      this.QuitAction = false;
     }
     toString() {
       return `#${this.id} (${Array.from(this.templates.values()).join(" ")})`;
     }
     get [Symbol.toStringTag]() {
-      return `Entity#${this.toString()})`;
+      return `Entity#${this.toString()}`;
     }
     has(name) {
       return this.components.has(name);
@@ -4868,7 +4970,36 @@ void main() {
         return this[name];
       throw new Error(`Tried to access empty entity.${name}`);
     }
+    serialize() {
+      const keys = Object.keys(this).filter(
+        (k) => Object.prototype.hasOwnProperty.call(this, k) && k !== "type"
+      );
+      return Object.fromEntries(
+        keys.map((k) => {
+          const raw = this[k];
+          const value = raw instanceof Set ? Array.from(raw.values()) : raw;
+          return [k, value];
+        })
+      );
+    }
+    static deserialize(data) {
+      const e = new _RLEntity();
+      for (const key in data) {
+        const value = data[key];
+        switch (key) {
+          case "components":
+          case "templates":
+            for (const name of value)
+              e[key].add(name);
+            break;
+          default:
+            e[key] = value;
+        }
+      }
+      return e;
+    }
   };
+  var RLEntity = _RLEntity;
   RLEntity.type = "entity";
 
   // src/lib.ts
@@ -4889,27 +5020,37 @@ void main() {
   function getColour(s) {
     return s ? new TinyColor(s.value).toNumber() << 8 : void 0;
   }
-  function draw({ value: x }, { value: y }, display, fg, bg) {
-    const f = getColour(fg);
-    const b = getColour(bg);
-    if (display.type === "char")
-      Game.instance.terminal.drawChar(x, y, display.value, f, b);
+  function drawable(fn) {
+    if (Game.instance.terminal)
+      fn();
     else
-      Game.instance.terminal.drawString(x, y, display.value, f, b);
+      Game.instance.afterInit.push(fn);
+  }
+  function draw({ value: x }, { value: y }, display, fg, bg) {
+    drawable(() => {
+      const f = getColour(fg);
+      const b = getColour(bg);
+      if (display.type === "char")
+        Game.instance.terminal.drawChar(x, y, display.value, f, b);
+      else
+        Game.instance.terminal.drawString(x, y, display.value, f, b);
+    });
   }
   function drawGrid(g) {
-    for (let y = 0; y < g.height; y++) {
-      for (let x = 0; x < g.width; x++) {
-        const t = g.at(x, y);
-        if (t)
-          draw(
-            { type: "int", value: x },
-            { type: "int", value: y },
-            { type: "char", value: t.ch },
-            { type: "str", value: "silver" }
-          );
+    drawable(() => {
+      for (let y = 0; y < g.height; y++) {
+        for (let x = 0; x < g.width; x++) {
+          const t = g.at(x, y);
+          if (t)
+            draw(
+              { type: "int", value: x },
+              { type: "int", value: y },
+              { type: "char", value: t.ch },
+              { type: "str", value: "silver" }
+            );
+        }
       }
-    }
+    });
   }
   function randInt({ value: min }, { value: max }) {
     return Math.floor(Math.random() * (max + 1 - min) + min);
@@ -5050,13 +5191,15 @@ void main() {
     return s;
   }
   function drawLog(log, { value: x }, { value: y }, { value: width }, { value: height }, offset) {
-    log.render(
-      Game.instance.terminal,
-      x,
-      y,
-      width,
-      height,
-      offset ? offset.value : 0
+    drawable(
+      () => log.render(
+        Game.instance.terminal,
+        x,
+        y,
+        width,
+        height,
+        offset ? offset.value : 0
+      )
     );
   }
   function pushMouseHandler(handler) {
@@ -5072,7 +5215,8 @@ void main() {
     return value < min ? min : value > max ? max : value;
   }
   function clear() {
-    Game.instance.terminal.clear();
+    var _a;
+    (_a = Game.instance.terminal) == null ? void 0 : _a.clear();
   }
   function drawBox({ value: x }, { value: y }, { value: width }, { value: height }, fg, bg) {
     Game.instance.terminal.drawSingleBox(
@@ -5106,11 +5250,54 @@ void main() {
   function sqrt({ value }) {
     return Math.sqrt(value);
   }
+  function clearHandlers() {
+    RL.instance.keyHandlers.clear();
+    RL.instance.mouseHandlers.clear();
+  }
+  var saveId = "rlscript-jsdriver.save";
+  function saveGame() {
+    const rl = RL.instance;
+    const save = {
+      ed: Array.from(rl.entities.values()).map((e) => e.serialize()),
+      kh: rl.keyHandlers.items.map((sys) => sys.name),
+      mh: rl.mouseHandlers.items.map((sys) => sys.name),
+      se: rl.systems.filter((sys) => sys.enabled).map((sys) => sys.name)
+    };
+    localStorage.setItem(saveId, JSON.stringify(save));
+  }
+  function loadGame() {
+    const raw = localStorage.getItem(saveId);
+    if (!raw)
+      throw new Error("No save data.");
+    const save = JSON.parse(raw);
+    RL.instance.entities.clear();
+    for (const data of save.ed) {
+      const e = RLEntity.deserialize(data);
+      RL.instance.entities.set(e.id, e);
+    }
+    RL.instance.keyHandlers.clear();
+    for (const kh of save.kh)
+      RL.instance.keyHandlers.push(RL.instance.env.get(kh));
+    RL.instance.mouseHandlers.clear();
+    for (const mh of save.mh)
+      RL.instance.mouseHandlers.push(RL.instance.env.get(mh));
+    for (const sys of RL.instance.systems) {
+      if (save.se.includes(sys.name))
+        sys.enable();
+      else
+        sys.disable();
+    }
+  }
+  function canLoadGame() {
+    return localStorage.getItem(saveId) !== null;
+  }
   var lib = {
     abs,
     add,
+    canLoadGame,
     clamp,
     clear,
+    clearHandlers,
     debug,
     draw,
     drawBag,
@@ -5122,6 +5309,7 @@ void main() {
     getFOV,
     getNextMove,
     join,
+    loadGame,
     popKeyHandler,
     popMouseHandler,
     pushKeyHandler,
@@ -5129,6 +5317,7 @@ void main() {
     randInt,
     remove,
     repeat,
+    saveGame,
     setSize,
     spawn,
     sqrt

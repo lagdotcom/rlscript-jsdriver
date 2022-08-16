@@ -29,5 +29,6 @@ export default function isConstraint(p: RLSystemParam) {
     "InventoryAction",
     "DropAction",
     "LookAction",
+    "QuitAction",
   ].includes(p.typeName);
 }

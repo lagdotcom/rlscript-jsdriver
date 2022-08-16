@@ -23,6 +23,11 @@ export default class RLMessages {
     return this.messages.length;
   }
 
+  clear() {
+    this.dirty = true;
+    this.messages.splice(0);
+  }
+
   add(text: string, fg = "white", stack = true) {
     const top = this.messages.at(-1);
 

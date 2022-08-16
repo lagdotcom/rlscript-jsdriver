@@ -42,6 +42,11 @@ function getColour(s?: RLStr) {
   return s ? new TinyColor(s.value).toNumber() << 8 : undefined;
 }
 
+function drawable(fn: CallableFunction) {
+  if (Game.instance.terminal) fn();
+  else Game.instance.afterInit.push(fn);
+}
+
 function draw(
   { value: x }: RLInt,
   { value: y }: RLInt,
@@ -49,27 +54,31 @@ function draw(
   fg?: RLStr,
   bg?: RLStr
 ) {
-  const f = getColour(fg);
-  const b = getColour(bg);
+  drawable(() => {
+    const f = getColour(fg);
+    const b = getColour(bg);
 
-  if (display.type === "char")
-    Game.instance.terminal.drawChar(x, y, display.value, f, b);
-  else Game.instance.terminal.drawString(x, y, display.value, f, b);
+    if (display.type === "char")
+      Game.instance.terminal.drawChar(x, y, display.value, f, b);
+    else Game.instance.terminal.drawString(x, y, display.value, f, b);
+  });
 }
 
 function drawGrid(g: RLGrid<RLTile>) {
-  for (let y = 0; y < g.height; y++) {
-    for (let x = 0; x < g.width; x++) {
-      const t = g.at(x, y);
-      if (t)
-        draw(
-          { type: "int", value: x },
-          { type: "int", value: y },
-          { type: "char", value: t.ch },
-          { type: "str", value: "silver" }
-        );
+  drawable(() => {
+    for (let y = 0; y < g.height; y++) {
+      for (let x = 0; x < g.width; x++) {
+        const t = g.at(x, y);
+        if (t)
+          draw(
+            { type: "int", value: x },
+            { type: "int", value: y },
+            { type: "char", value: t.ch },
+            { type: "str", value: "silver" }
+          );
+      }
     }
-  }
+  });
 }
 
 function randInt({ value: min }: RLInt, { value: max }: RLInt) {
@@ -263,13 +272,15 @@ function drawLog(
   { value: height }: RLInt,
   offset?: RLInt
 ) {
-  log.render(
-    Game.instance.terminal,
-    x,
-    y,
-    width,
-    height,
-    offset ? offset.value : 0
+  drawable(() =>
+    log.render(
+      Game.instance.terminal,
+      x,
+      y,
+      width,
+      height,
+      offset ? offset.value : 0
+    )
   );
 }
 
@@ -294,7 +305,7 @@ function clamp(
 }
 
 function clear() {
-  Game.instance.terminal.clear();
+  Game.instance.terminal?.clear();
 }
 
 function drawBox(
@@ -354,11 +365,70 @@ function sqrt({ value }: RLInt | RLFloat) {
   return Math.sqrt(value);
 }
 
+function clearHandlers() {
+  RL.instance.keyHandlers.clear();
+  RL.instance.mouseHandlers.clear();
+}
+
+const saveId = "rlscript-jsdriver.save";
+type SaveData = {
+  ed: object[];
+  kh: string[];
+  mh: string[];
+  se: string[];
+};
+
+// TODO how to save map data?
+function saveGame() {
+  const rl = RL.instance;
+
+  const save: SaveData = {
+    ed: Array.from(rl.entities.values()).map((e) => e.serialize()),
+    kh: rl.keyHandlers.items.map((sys) => sys.name),
+    mh: rl.mouseHandlers.items.map((sys) => sys.name),
+    se: rl.systems.filter((sys) => sys.enabled).map((sys) => sys.name),
+  };
+
+  localStorage.setItem(saveId, JSON.stringify(save));
+}
+
+function loadGame() {
+  const raw = localStorage.getItem(saveId);
+  if (!raw) throw new Error("No save data.");
+
+  const save = JSON.parse(raw) as SaveData;
+
+  RL.instance.entities.clear();
+  for (const data of save.ed) {
+    const e = RLEntity.deserialize(data);
+    RL.instance.entities.set(e.id, e);
+  }
+
+  RL.instance.keyHandlers.clear();
+  for (const kh of save.kh)
+    RL.instance.keyHandlers.push(RL.instance.env.get(kh));
+
+  RL.instance.mouseHandlers.clear();
+  for (const mh of save.mh)
+    RL.instance.mouseHandlers.push(RL.instance.env.get(mh));
+
+  for (const sys of RL.instance.systems) {
+    if (save.se.includes(sys.name)) sys.enable();
+    else sys.disable();
+  }
+}
+
+function canLoadGame() {
+  return localStorage.getItem(saveId) !== null;
+}
+
 const lib: RLLibrary = {
   abs,
   add,
+  canLoadGame,
   clamp,
   clear,
+  clearHandlers,
   debug,
   draw,
   drawBag,
@@ -370,6 +440,7 @@ const lib: RLLibrary = {
   getFOV,
   getNextMove,
   join,
+  loadGame,
   popKeyHandler,
   popMouseHandler,
   pushKeyHandler,
@@ -377,6 +448,7 @@ const lib: RLLibrary = {
   randInt,
   remove,
   repeat,
+  saveGame,
   setSize,
   spawn,
   sqrt,

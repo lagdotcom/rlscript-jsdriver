@@ -24,6 +24,7 @@ export default class Game {
   running: boolean;
   mouseX: number;
   mouseY: number;
+  afterInit: CallableFunction[];
 
   constructor(public rl: RL, public canvas: HTMLCanvasElement) {
     Game.instance = this;
@@ -35,20 +36,27 @@ export default class Game {
     this.running = false;
     this.mouseX = NaN;
     this.mouseY = NaN;
+    this.afterInit = [];
   }
 
   init() {
+    this.afterInit = [];
     this.rl.callNamedFunction("main");
+
     this.terminal = new Terminal(this.canvas, this.width, this.height);
     this.terminal.update = this.terminalUpdate.bind(this);
+
+    for (const pending of this.afterInit.splice(0)) pending();
   }
 
   async start() {
     let count = 0;
     this.running = true;
+    const activated = new Set<string>();
+
     while (this.running) {
+      activated.clear();
       let fired = false;
-      const activated = new Set<string>();
 
       for (const sys of this.rl.systems.filter((s) => s.enabled)) {
         if (this.trySystem(sys)) {

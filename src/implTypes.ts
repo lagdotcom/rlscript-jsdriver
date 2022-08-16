@@ -113,4 +113,5 @@ export type RLTagName =
   | "PickupAction"
   | "InventoryAction"
   | "DropAction"
-  | "LookAction";
+  | "LookAction"
+  | "QuitAction";

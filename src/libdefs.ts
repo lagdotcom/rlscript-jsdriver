@@ -73,7 +73,9 @@ const library = [
   // library
   f("abs", [p("value", "int", "float")], p("value", "int", "float")),
   v("add", [], p("components", "component", "tag")),
+  f("canLoadGame", [], p("exists", "bool")),
   f("clear", []),
+  f("clearHandlers", []),
   f(
     "clamp",
     [
@@ -138,6 +140,7 @@ const library = [
     p("parts", "char", "str", "int"),
     p("string", "str")
   ),
+  f("loadGame", []),
   f("popKeyHandler", []),
   f("popMouseHandler", []),
   f("pushKeyHandler", [p("handler", "system")]),
@@ -145,6 +148,7 @@ const library = [
   f("randInt", [p("min", "int"), p("max", "int")], p("value", "int")),
   f("remove", [p("e", "entity")]),
   f("repeat", [p("ch", "char", "str"), p("count", "int")], p("string", "str")),
+  f("saveGame", []),
   f("setSize", [p("width", "int"), p("height", "int")]),
   v(
     "spawn",

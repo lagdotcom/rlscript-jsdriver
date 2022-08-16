@@ -58,6 +58,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
   const InventoryAction = new RLTag("InventoryAction");
   const DropAction = new RLTag("DropAction");
   const LookAction = new RLTag("LookAction");
+  const QuitAction = new RLTag("QuitAction");
 
   const mkAppearance = (
     name: string,
@@ -262,6 +263,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
   const welcomeText = "#20a0ff";
   const needsTarget = "#3fffff";
   const statusApplied = "#3fff3f";
+  const menuTitle = "#ffff3f";
   const gameWidth = 80;
   const gameHeight = 50;
   const mapWidth: number = gameWidth;
@@ -475,7 +477,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
       else if (__match === "Slash") return "look";
       else if (__match === "Enter") return "confirm";
       else if (__match === "NumpadEnter") return "confirm";
-      else if (__match === "Escape") return "cancel";
+      else if (__match === "Escape") return "quit";
       else return k;
     })(k);
   }
@@ -575,7 +577,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
         else return enemyDied;
       })(e);
       if (e.IsPlayer) {
-        log.add("You died!", colour);
+        log.add("You died! Press Escape to leave.", colour);
       } else {
         log.add(
           __lib.join(
@@ -914,6 +916,23 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     { type: "param", name: "filledColour", typeName: "str" },
   ]);
 
+  function clearHPBar() {
+    __lib.draw(
+      { type: "int", value: hpX },
+      { type: "int", value: hpY },
+      {
+        type: "str",
+        value: __lib.repeat(
+          { type: "char", value: " " },
+          { type: "int", value: hpWidth }
+        ),
+      },
+      { type: "str", value: "white" },
+      { type: "str", value: "black" }
+    );
+  }
+  const fn_clearHPBar = new RLFn("clearHPBar", clearHPBar, []);
+
   function randomRoom() {
     const w: number = __lib.randInt(
       { type: "int", value: 6 },
@@ -1060,14 +1079,58 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     { type: "param", name: "taken", typeName: "grid" },
   ]);
 
+  function newGame() {
+    for (const e of new RLQuery(RL.instance, []).get()) {
+      const {} = e;
+      __lib.remove(e);
+    }
+    log.clear();
+    generateDungeon();
+    __lib.pushKeyHandler(main_onKey);
+    __lib.pushMouseHandler(main_onMouse);
+    nextTurn.enable();
+  }
+  const fn_newGame = new RLFn("newGame", newGame, []);
+
+  function mainMenu() {
+    __lib.clearHandlers();
+    __lib.pushKeyHandler(menu_onKey);
+    nextTurn.disable();
+    __lib.clear();
+    clearHPBar();
+    __lib.draw(
+      { type: "int", value: gameWidth / 2 },
+      { type: "int", value: gameHeight / 2 - 4 },
+      { type: "str", value: "An Improbable Roguelike" },
+      { type: "str", value: menuTitle }
+    );
+    __lib.draw(
+      { type: "int", value: gameWidth / 2 },
+      { type: "int", value: gameHeight - 2 },
+      { type: "str", value: "by Lag.Com" },
+      { type: "str", value: menuTitle }
+    );
+    __lib.draw(
+      { type: "int", value: gameWidth / 2 },
+      { type: "int", value: gameHeight / 2 - 2 },
+      { type: "str", value: "[N] Play a new game" },
+      { type: "str", value: "white" }
+    );
+    __lib.draw(
+      { type: "int", value: gameWidth / 2 },
+      { type: "int", value: gameHeight / 2 - 1 },
+      { type: "str", value: "[C] Continue last game" },
+      { type: "str", value: "white" }
+    );
+  }
+  const fn_mainMenu = new RLFn("mainMenu", mainMenu, []);
+
   function main() {
     __lib.setSize(
       { type: "int", value: gameWidth },
       { type: "int", value: gameHeight }
     );
-    generateDungeon();
-    __lib.pushKeyHandler(main_onKey);
-    __lib.pushMouseHandler(main_onMouse);
+    mainMenu();
   }
   const fn_main = new RLFn("main", main, []);
 
@@ -1091,6 +1154,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
         else if (__match === "inventory") return InventoryAction;
         else if (__match === "drop") return DropAction;
         else if (__match === "look") return LookAction;
+        else if (__match === "quit") return QuitAction;
       })(getKey(k.key))
     );
   }
@@ -1100,7 +1164,11 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     { type: "param", name: "k", typeName: "KeyEvent" },
   ]);
 
-  function code_dead_onKey(e: RLEntity, k: RLKeyEvent) {}
+  function code_dead_onKey(e: RLEntity, k: RLKeyEvent) {
+    if (k.key == "Escape") {
+      mainMenu();
+    }
+  }
   const dead_onKey = new RLSystem("dead_onKey", code_dead_onKey, [
     { type: "param", name: "e", typeName: "entity" },
     { type: "constraint", typeName: "IsPlayer" },
@@ -1320,19 +1388,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     __lib.pushMouseHandler(history_onMouse);
     historyOffset = 0;
     __lib.clear();
-    __lib.draw(
-      { type: "int", value: hpX },
-      { type: "int", value: hpY },
-      {
-        type: "str",
-        value: __lib.repeat(
-          { type: "char", value: " " },
-          { type: "int", value: hpWidth }
-        ),
-      },
-      { type: "str", value: "white" },
-      { type: "str", value: "black" }
-    );
+    clearHPBar();
     showHistoryView();
   }
   const doHistory = new RLSystem("doHistory", code_doHistory, [
@@ -1492,7 +1548,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
       config.callback(e, targetAt);
       stopTargeting(e);
     }
-    if (key == "cancel") {
+    if (key == "quit") {
       stopTargeting(e);
     }
   }
@@ -1534,6 +1590,19 @@ export default function implementation(__lib: RLLibrary): RLEnv {
   const doLook = new RLSystem("doLook", code_doLook, [
     { type: "param", name: "e", typeName: "entity" },
     { type: "constraint", typeName: "LookAction" },
+    { type: "constraint", typeName: "MyTurn" },
+  ]);
+
+  function code_doQuit(e: RLEntity) {
+    e.remove(QuitAction);
+    redrawEverything(e);
+    __lib.saveGame();
+    log.add("Game saved.");
+  }
+  const doQuit = new RLSystem("doQuit", code_doQuit, [
+    { type: "param", name: "e", typeName: "entity" },
+    { type: "constraint", typeName: "QuitAction" },
+    { type: "constraint", typeName: "IsPlayer" },
     { type: "constraint", typeName: "MyTurn" },
   ]);
 
@@ -1640,6 +1709,24 @@ export default function implementation(__lib: RLLibrary): RLEnv {
   }
   const showLog = new RLSystem("showLog", code_showLog, []);
 
+  function code_menu_onKey(k: RLKeyEvent) {
+    if (k.key == "KeyN") {
+      newGame();
+      return;
+    }
+    if (k.key == "KeyC") {
+      if (__lib.canLoadGame()) {
+        __lib.clear();
+        __lib.loadGame();
+      } else {
+        __lib.debug({ type: "str", value: "no saved game?" });
+      }
+    }
+  }
+  const menu_onKey = new RLSystem("menu_onKey", code_menu_onKey, [
+    { type: "param", name: "k", typeName: "KeyEvent" },
+  ]);
+
   return new Map<string, RLObject>([
     ["distance", fn_distance],
     ["healingItem", fn_healingItem],
@@ -1667,11 +1754,14 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     ["drawTileAt", fn_drawTileAt],
     ["drawEntity", fn_drawEntity],
     ["drawBar", fn_drawBar],
+    ["clearHPBar", fn_clearHPBar],
     ["randomRoom", fn_randomRoom],
     ["randomCorridor", fn_randomCorridor],
     ["generateDungeon", fn_generateDungeon],
     ["addEnemies", fn_addEnemies],
     ["addItems", fn_addItems],
+    ["newGame", fn_newGame],
+    ["mainMenu", fn_mainMenu],
     ["main", fn_main],
     ["main_onMouse", main_onMouse],
     ["main_onKey", main_onKey],
@@ -1691,12 +1781,14 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     ["targeting_onKey", targeting_onKey],
     ["targeting_onMouse", targeting_onMouse],
     ["doLook", doLook],
+    ["doQuit", doQuit],
     ["fov", fov],
     ["drawUnderTile", drawUnderTile],
     ["RedrawMeEntity", RedrawMeEntity],
     ["drawUI", drawUI],
     ["nextTurn", nextTurn],
     ["showLog", showLog],
+    ["menu_onKey", menu_onKey],
     ["IsBlocker", IsBlocker],
     ["IsPlayer", IsPlayer],
     ["RecalculateFOV", RecalculateFOV],
@@ -1711,6 +1803,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     ["InventoryAction", InventoryAction],
     ["DropAction", DropAction],
     ["LookAction", LookAction],
+    ["QuitAction", QuitAction],
     ["Player", tmPlayer],
     ["Enemy", tmEnemy],
     ["Orc", tmOrc],

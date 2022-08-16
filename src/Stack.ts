@@ -17,4 +17,8 @@ export default class Stack<T> {
   pop() {
     return this.items.pop();
   }
+
+  clear() {
+    this.items.splice(0);
+  }
 }
