@@ -54,6 +54,7 @@ export type Consumable = {
   power: number;
   range: number;
   targeted: boolean;
+  radius: number;
 };
 export type Inventory = {
   type: "component";
@@ -69,6 +70,7 @@ export type TargetingActionConfig = {
   type: "component";
   typeName: "TargetingActionConfig";
   callback: CallableFunction;
+  radius: number;
 };
 export type TargetingItemConfig = {
   type: "component";

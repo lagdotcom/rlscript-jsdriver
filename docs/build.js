@@ -3152,13 +3152,14 @@ void main() {
       defence,
       power
     });
-    const mkConsumable = (activate, power, range, targeted) => ({
+    const mkConsumable = (activate, power, range, targeted, radius) => ({
       type: "component",
       typeName: "Consumable",
       activate,
       power,
       range,
-      targeted
+      targeted,
+      radius
     });
     const mkInventory = (items) => ({
       type: "component",
@@ -3170,10 +3171,11 @@ void main() {
       typeName: "InventoryActionConfig",
       callback
     });
-    const mkTargetingActionConfig = (callback) => ({
+    const mkTargetingActionConfig = (callback, radius) => ({
       type: "component",
       typeName: "TargetingActionConfig",
-      callback
+      callback,
+      radius
     });
     const mkTargetingItemConfig = (key, item) => ({
       type: "component",
@@ -3239,7 +3241,7 @@ void main() {
       get: () => [
         Item,
         mkAppearance("healing potion", "!", "purple", "black", 2 /* Item */),
-        mkConsumable(healingItem, 4, 0, false)
+        mkConsumable(healingItem, 4, 0, false, 0)
       ]
     };
     const tmLightningScroll = {
@@ -3248,7 +3250,7 @@ void main() {
       get: () => [
         Item,
         mkAppearance("lightning scroll", "~", "cyan", "black", 2 /* Item */),
-        mkConsumable(zapItem, 20, 5, false)
+        mkConsumable(zapItem, 20, 5, false, 0)
       ]
     };
     const tmConfusionScroll = {
@@ -3257,7 +3259,16 @@ void main() {
       get: () => [
         Item,
         mkAppearance("confusion scroll", "~", "#cf3fff", "black", 2 /* Item */),
-        mkConsumable(confuseItem, 10, 100, true)
+        mkConsumable(confuseItem, 10, 100, true, 0)
+      ]
+    };
+    const tmFireballScroll = {
+      type: "template",
+      name: "FireballScroll",
+      get: () => [
+        Item,
+        mkAppearance("fireball scroll", "~", "#ff0000", "black", 2 /* Item */),
+        mkConsumable(fireballItem, 12, 100, true, 3)
       ]
     };
     const Floor = new RLTile(".", true, true);
@@ -3289,6 +3300,7 @@ void main() {
     const visible = new RLGrid(mapWidth, mapHeight, false);
     const log = new RLMessages();
     let targetAt = new RLXY(-1, -1);
+    let targetSize = 1;
     let historyOffset = 0;
     function distance(a, b) {
       const dx = a.x - b.x;
@@ -3407,6 +3419,40 @@ void main() {
       return true;
     }
     const fn_confuseItem = new RLFn("confuseItem", confuseItem, [
+      { type: "param", name: "pc", typeName: "entity" },
+      { type: "param", name: "item", typeName: "entity" },
+      { type: "param", name: "target", typeName: "xy" }
+    ]);
+    function fireballItem(pc, item, target) {
+      if (!visible.at(target.x, target.y)) {
+        log.add("Cannot target there.", impossible);
+        return false;
+      }
+      const damage = item.Consumable.power;
+      let hit = false;
+      for (const t of new RLQuery(RL.instance, ["Position", "Fighter"]).get()) {
+        const { Position: p } = t;
+        if (distance(target, new RLXY(p.x, p.y)) <= item.Consumable.radius) {
+          log.add(
+            __lib.join(
+              { type: "char", value: " " },
+              { type: "str", value: "The" },
+              { type: "str", value: getName(t) },
+              { type: "str", value: "is engulfed in fire, taking" },
+              { type: "int", value: damage },
+              { type: "str", value: "damage" }
+            )
+          );
+          hurt(t, damage);
+          hit = true;
+        }
+      }
+      if (!hit) {
+        log.add("No targets in range.", impossible);
+      }
+      return hit;
+    }
+    const fn_fireballItem = new RLFn("fireballItem", fireballItem, [
       { type: "param", name: "pc", typeName: "entity" },
       { type: "param", name: "item", typeName: "entity" },
       { type: "param", name: "target", typeName: "xy" }
@@ -3673,7 +3719,7 @@ void main() {
       if (item.Consumable.targeted) {
         log.add("Select a target.", needsTarget);
         e.add(mkTargetingItemConfig(key, item));
-        startTargeting(e, tcUseItem);
+        startTargeting(e, tcUseItem, item.Consumable.radius);
         return;
       }
       if (item.Consumable.activate(e, item)) {
@@ -3709,32 +3755,54 @@ void main() {
       { type: "param", name: "key", typeName: "char" },
       { type: "param", name: "item", typeName: "entity" }
     ]);
-    function setTargetTo(x, y) {
+    function drawTilesAt(sx, sy, width, height) {
+      for (let x = sx; x <= sx + width; x++) {
+        for (let y = sy; y <= sy + height; y++) {
+          drawTileAt(x, y);
+        }
+      }
+    }
+    const fn_drawTilesAt = new RLFn("drawTilesAt", drawTilesAt, [
+      { type: "param", name: "sx", typeName: "int" },
+      { type: "param", name: "sy", typeName: "int" },
+      { type: "param", name: "width", typeName: "int" },
+      { type: "param", name: "height", typeName: "int" }
+    ]);
+    function setTargetTo(x, y, radius) {
       const oldX = targetAt.x;
       const oldY = targetAt.y;
       targetAt = new RLXY(x, y);
-      drawTileAt(oldX, oldY);
-      drawTileAt(x, y);
+      targetSize = radius;
+      if (radius > 0) {
+        const size = radius * 2 + 1;
+        drawTilesAt(oldX - radius, oldY - radius, size, size);
+        drawTilesAt(x - radius, y - radius, size, size);
+      } else {
+        drawTileAt(oldX, oldY);
+        drawTileAt(x, y);
+      }
       showNamesAt(x, y);
     }
     const fn_setTargetTo = new RLFn("setTargetTo", setTargetTo, [
       { type: "param", name: "x", typeName: "int" },
-      { type: "param", name: "y", typeName: "int" }
+      { type: "param", name: "y", typeName: "int" },
+      { type: "param", name: "radius", typeName: "int" }
     ]);
-    function startTargeting(e, callback) {
-      e.add(mkTargetingActionConfig(callback));
+    function startTargeting(e, callback, radius) {
+      e.add(mkTargetingActionConfig(callback, radius));
       if (e.Position) {
-        setTargetTo(e.Position.x, e.Position.y);
+        setTargetTo(e.Position.x, e.Position.y, radius);
       }
       __lib.pushKeyHandler(targeting_onKey);
       __lib.pushMouseHandler(targeting_onMouse);
     }
     const fn_startTargeting = new RLFn("startTargeting", startTargeting, [
       { type: "param", name: "e", typeName: "entity" },
-      { type: "param", name: "callback", typeName: "fn" }
+      { type: "param", name: "callback", typeName: "fn" },
+      { type: "param", name: "radius", typeName: "int" }
     ]);
     function stopTargeting(e) {
-      setTargetTo(-1, -1);
+      setTargetTo(-1, -1, 0);
       __lib.popKeyHandler();
       __lib.popMouseHandler();
       redrawEverything(e);
@@ -3750,7 +3818,7 @@ void main() {
       { type: "param", name: "e", typeName: "entity" }
     ]);
     function drawTileAt(x, y) {
-      const highlight = targetAt.equals(new RLXY(x, y));
+      const highlight = distance(targetAt, new RLXY(x, y)) <= targetSize;
       let ch = " ";
       let fg = "white";
       let bg = "black";
@@ -3781,7 +3849,7 @@ void main() {
         }
       }
       if (highlight) {
-        bg = "yellow";
+        bg = "#808000";
       }
       __lib.draw(
         { type: "int", value: x },
@@ -3966,12 +4034,7 @@ void main() {
           taken.put(x, y, true);
           __lib.spawn(
             ((__match) => {
-              if (__match <= 70)
-                return tmHealingPotion;
-              else if (__match <= 90)
-                return tmConfusionScroll;
-              else
-                return tmLightningScroll;
+              return tmFireballScroll;
             })(
               __lib.randInt(
                 { type: "int", value: 1 },
@@ -4403,7 +4466,8 @@ void main() {
             { type: "int", value: y },
             { type: "int", value: 0 },
             { type: "int", value: mapHeight - 1 }
-          )
+          ),
+          config.radius
         );
         return;
       }
@@ -4425,7 +4489,7 @@ void main() {
       ]
     );
     function code_targeting_onMouse(e, config, m) {
-      setTargetTo(m.x, m.y);
+      setTargetTo(m.x, m.y, config.radius);
       if (m.button == 1) {
         config.callback(e, targetAt);
         stopTargeting(e);
@@ -4442,7 +4506,7 @@ void main() {
     );
     function code_doLook(e) {
       e.remove(LookAction);
-      startTargeting(e, stopTargeting);
+      startTargeting(e, stopTargeting, 0);
     }
     const doLook = new RLSystem("doLook", code_doLook, [
       { type: "param", name: "e", typeName: "entity" },
@@ -4551,6 +4615,7 @@ void main() {
       ["healingItem", fn_healingItem],
       ["zapItem", fn_zapItem],
       ["confuseItem", fn_confuseItem],
+      ["fireballItem", fn_fireballItem],
       ["redrawEverything", fn_redrawEverything],
       ["getKey", fn_getKey],
       ["getNamesAtLocation", fn_getNamesAtLocation],
@@ -4564,6 +4629,7 @@ void main() {
       ["tcUseItem", fn_tcUseItem],
       ["icUse", fn_icUse],
       ["icDrop", fn_icDrop],
+      ["drawTilesAt", fn_drawTilesAt],
       ["setTargetTo", fn_setTargetTo],
       ["startTargeting", fn_startTargeting],
       ["stopTargeting", fn_stopTargeting],
@@ -4622,7 +4688,8 @@ void main() {
       ["Corpse", tmCorpse],
       ["HealingPotion", tmHealingPotion],
       ["LightningScroll", tmLightningScroll],
-      ["ConfusionScroll", tmConfusionScroll]
+      ["ConfusionScroll", tmConfusionScroll],
+      ["FireballScroll", tmFireballScroll]
     ]);
   }
 

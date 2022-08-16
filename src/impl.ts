@@ -119,7 +119,8 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     activate: CallableFunction,
     power: number,
     range: number,
-    targeted: boolean
+    targeted: boolean,
+    radius: number
   ): Consumable => ({
     type: "component",
     typeName: "Consumable",
@@ -127,6 +128,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     power,
     range,
     targeted,
+    radius,
   });
   const mkInventory = (items: RLBag): Inventory => ({
     type: "component",
@@ -141,11 +143,13 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     callback,
   });
   const mkTargetingActionConfig = (
-    callback: CallableFunction
+    callback: CallableFunction,
+    radius: number
   ): TargetingActionConfig => ({
     type: "component",
     typeName: "TargetingActionConfig",
     callback,
+    radius,
   });
   const mkTargetingItemConfig = (
     key: string,
@@ -215,7 +219,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     get: () => [
       Item,
       mkAppearance("healing potion", "!", "purple", "black", Layer.Item),
-      mkConsumable(healingItem, 4, 0, false),
+      mkConsumable(healingItem, 4, 0, false, 0),
     ],
   };
   const tmLightningScroll: RLTemplate = {
@@ -224,7 +228,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     get: () => [
       Item,
       mkAppearance("lightning scroll", "~", "cyan", "black", Layer.Item),
-      mkConsumable(zapItem, 20, 5, false),
+      mkConsumable(zapItem, 20, 5, false, 0),
     ],
   };
   const tmConfusionScroll: RLTemplate = {
@@ -233,7 +237,16 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     get: () => [
       Item,
       mkAppearance("confusion scroll", "~", "#cf3fff", "black", Layer.Item),
-      mkConsumable(confuseItem, 10, 100, true),
+      mkConsumable(confuseItem, 10, 100, true, 0),
+    ],
+  };
+  const tmFireballScroll: RLTemplate = {
+    type: "template",
+    name: "FireballScroll",
+    get: () => [
+      Item,
+      mkAppearance("fireball scroll", "~", "#ff0000", "black", Layer.Item),
+      mkConsumable(fireballItem, 12, 100, true, 3),
     ],
   };
 
@@ -267,6 +280,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
   const visible: RLGrid = new RLGrid(mapWidth, mapHeight, false);
   const log: RLMessages = new RLMessages();
   let targetAt: RLXY = new RLXY(-1, -1);
+  let targetSize = 1;
   let historyOffset = 0;
 
   function distance(a: RLXY, b: RLXY) {
@@ -388,6 +402,41 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     return true;
   }
   const fn_confuseItem = new RLFn("confuseItem", confuseItem, [
+    { type: "param", name: "pc", typeName: "entity" },
+    { type: "param", name: "item", typeName: "entity" },
+    { type: "param", name: "target", typeName: "xy" },
+  ]);
+
+  function fireballItem(pc: RLEntity, item: RLEntity, target: RLXY) {
+    if (!visible.at(target.x, target.y)) {
+      log.add("Cannot target there.", impossible);
+      return false;
+    }
+    const damage: number = item.Consumable.power;
+    let hit = false;
+    for (const t of new RLQuery(RL.instance, ["Position", "Fighter"]).get()) {
+      const { Position: p } = t;
+      if (distance(target, new RLXY(p.x, p.y)) <= item.Consumable.radius) {
+        log.add(
+          __lib.join(
+            { type: "char", value: " " },
+            { type: "str", value: "The" },
+            { type: "str", value: getName(t) },
+            { type: "str", value: "is engulfed in fire, taking" },
+            { type: "int", value: damage },
+            { type: "str", value: "damage" }
+          )
+        );
+        hurt(t, damage);
+        hit = true;
+      }
+    }
+    if (!hit) {
+      log.add("No targets in range.", impossible);
+    }
+    return hit;
+  }
+  const fn_fireballItem = new RLFn("fireballItem", fireballItem, [
     { type: "param", name: "pc", typeName: "entity" },
     { type: "param", name: "item", typeName: "entity" },
     { type: "param", name: "target", typeName: "xy" },
@@ -642,7 +691,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     if (item.Consumable.targeted) {
       log.add("Select a target.", needsTarget);
       e.add(mkTargetingItemConfig(key, item));
-      startTargeting(e, tcUseItem);
+      startTargeting(e, tcUseItem, item.Consumable.radius);
       return;
     }
     if (item.Consumable.activate(e, item)) {
@@ -680,23 +729,49 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     { type: "param", name: "item", typeName: "entity" },
   ]);
 
-  function setTargetTo(x: number, y: number) {
+  function drawTilesAt(sx: number, sy: number, width: number, height: number) {
+    for (let x = sx; x <= sx + width; x++) {
+      for (let y = sy; y <= sy + height; y++) {
+        drawTileAt(x, y);
+      }
+    }
+  }
+  const fn_drawTilesAt = new RLFn("drawTilesAt", drawTilesAt, [
+    { type: "param", name: "sx", typeName: "int" },
+    { type: "param", name: "sy", typeName: "int" },
+    { type: "param", name: "width", typeName: "int" },
+    { type: "param", name: "height", typeName: "int" },
+  ]);
+
+  function setTargetTo(x: number, y: number, radius: number) {
     const oldX: number = targetAt.x;
     const oldY: number = targetAt.y;
     targetAt = new RLXY(x, y);
-    drawTileAt(oldX, oldY);
-    drawTileAt(x, y);
+    targetSize = radius;
+    if (radius > 0) {
+      const size: number = radius * 2 + 1;
+      drawTilesAt(oldX - radius, oldY - radius, size, size);
+      drawTilesAt(x - radius, y - radius, size, size);
+    } else {
+      drawTileAt(oldX, oldY);
+      drawTileAt(x, y);
+    }
     showNamesAt(x, y);
   }
   const fn_setTargetTo = new RLFn("setTargetTo", setTargetTo, [
     { type: "param", name: "x", typeName: "int" },
     { type: "param", name: "y", typeName: "int" },
+    { type: "param", name: "radius", typeName: "int" },
   ]);
 
-  function startTargeting(e: RLEntity, callback: CallableFunction) {
-    e.add(mkTargetingActionConfig(callback));
+  function startTargeting(
+    e: RLEntity,
+    callback: CallableFunction,
+    radius: number
+  ) {
+    e.add(mkTargetingActionConfig(callback, radius));
     if (e.Position) {
-      setTargetTo(e.Position.x, e.Position.y);
+      setTargetTo(e.Position.x, e.Position.y, radius);
     }
     __lib.pushKeyHandler(targeting_onKey);
     __lib.pushMouseHandler(targeting_onMouse);
@@ -704,10 +779,11 @@ export default function implementation(__lib: RLLibrary): RLEnv {
   const fn_startTargeting = new RLFn("startTargeting", startTargeting, [
     { type: "param", name: "e", typeName: "entity" },
     { type: "param", name: "callback", typeName: "fn" },
+    { type: "param", name: "radius", typeName: "int" },
   ]);
 
   function stopTargeting(e: RLEntity) {
-    setTargetTo(-1, -1);
+    setTargetTo(-1, -1, 0);
     __lib.popKeyHandler();
     __lib.popMouseHandler();
     redrawEverything(e);
@@ -725,7 +801,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
   ]);
 
   function drawTileAt(x: number, y: number) {
-    const highlight: boolean = targetAt.equals(new RLXY(x, y));
+    const highlight: boolean = distance(targetAt, new RLXY(x, y)) <= targetSize;
     let ch = " ";
     let fg = "white";
     let bg = "black";
@@ -756,7 +832,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
       }
     }
     if (highlight) {
-      bg = "yellow";
+      bg = "#808000";
     }
     __lib.draw(
       { type: "int", value: x },
@@ -964,9 +1040,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
         taken.put(x, y, true);
         __lib.spawn(
           ((__match) => {
-            if (__match <= 70) return tmHealingPotion;
-            else if (__match <= 90) return tmConfusionScroll;
-            else return tmLightningScroll;
+            return tmFireballScroll;
           })(
             __lib.randInt(
               { type: "int", value: 1 },
@@ -1406,7 +1480,8 @@ export default function implementation(__lib: RLLibrary): RLEnv {
           { type: "int", value: y },
           { type: "int", value: 0 },
           { type: "int", value: mapHeight - 1 }
-        )
+        ),
+        config.radius
       );
       return;
     }
@@ -1433,7 +1508,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     config: TargetingActionConfig,
     m: RLMouseEvent
   ) {
-    setTargetTo(m.x, m.y);
+    setTargetTo(m.x, m.y, config.radius);
     if (m.button == 1) {
       config.callback(e, targetAt);
       stopTargeting(e);
@@ -1451,7 +1526,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
 
   function code_doLook(e: RLEntity) {
     e.remove(LookAction);
-    startTargeting(e, stopTargeting);
+    startTargeting(e, stopTargeting, 0);
   }
   const doLook = new RLSystem("doLook", code_doLook, [
     { type: "param", name: "e", typeName: "entity" },
@@ -1567,6 +1642,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     ["healingItem", fn_healingItem],
     ["zapItem", fn_zapItem],
     ["confuseItem", fn_confuseItem],
+    ["fireballItem", fn_fireballItem],
     ["redrawEverything", fn_redrawEverything],
     ["getKey", fn_getKey],
     ["getNamesAtLocation", fn_getNamesAtLocation],
@@ -1580,6 +1656,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     ["tcUseItem", fn_tcUseItem],
     ["icUse", fn_icUse],
     ["icDrop", fn_icDrop],
+    ["drawTilesAt", fn_drawTilesAt],
     ["setTargetTo", fn_setTargetTo],
     ["startTargeting", fn_startTargeting],
     ["stopTargeting", fn_stopTargeting],
@@ -1639,5 +1716,6 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     ["HealingPotion", tmHealingPotion],
     ["LightningScroll", tmLightningScroll],
     ["ConfusionScroll", tmConfusionScroll],
+    ["FireballScroll", tmFireballScroll],
   ]);
 }

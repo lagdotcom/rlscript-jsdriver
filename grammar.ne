@@ -115,8 +115,10 @@ assignop -> "=" {% val %}
           | "/=" {% val %}
           | "^=" {% val %}
 
-local -> "local" __ field {% ([,,field]) => ({ _: 'local', name: field.name, type: field.type }) %}
-       | "local" __ field _ "=" _ expr {% ([,,field,,,,expr]) => ({ _: 'local', name: field.name, type: field.type, expr }) %}
+local -> localcw __ field {% ([,,field]) => ({ _: 'local', name: field.name, type: field.type }) %}
+       | localcw __ field _ "=" _ expr {% ([,,field,,,,expr]) => ({ _: 'local', name: field.name, type: field.type, expr }) %}
+localcw -> "local" {% id %}
+         | "let" {% id %}
 
 if -> "if" __ expr _ code "end" {% ([,,expr,,code]) => ({ _: 'if', expr, code }) %}
     | "if" __ expr _ code _ "else" _ code "end" {% ([,,expr,,code,,,,code2]) => ({ _: 'if', expr, code, code2 }) %}

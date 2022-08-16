@@ -41,6 +41,7 @@ component Consumable
   power: int
   range: int
   targeted: bool
+  radius: int
 end
 
 component Inventory
@@ -53,6 +54,7 @@ end
 
 component TargetingActionConfig
   callback: fn
+  radius: int
 end
 
 component TargetingItemConfig
@@ -136,19 +138,25 @@ end
 template HealingPotion
   Item
   Appearance("healing potion", "!", "purple", "black", Layer.Item)
-  Consumable(healingItem, 4, 0, false)
+  Consumable(healingItem, 4, 0, false, 0)
 end
 
 template LightningScroll
   Item
   Appearance("lightning scroll", "~", "cyan", "black", Layer.Item)
-  Consumable(zapItem, 20, 5, false)
+  Consumable(zapItem, 20, 5, false, 0)
 end
 
 template ConfusionScroll
   Item
   Appearance("confusion scroll", "~", "#cf3fff", "black", Layer.Item)
-  Consumable(confuseItem, 10, 100, true)
+  Consumable(confuseItem, 10, 100, true, 0)
+end
+
+template FireballScroll
+  Item
+  Appearance("fireball scroll", "~", "#ff0000", "black", Layer.Item)
+  Consumable(fireballItem, 12, 100, true, 3)
 end
 
 fn distance(a: xy, b: xy): float
@@ -232,6 +240,28 @@ fn confuseItem(pc: entity, item: entity, target: xy)
   return true
 end
 
+fn fireballItem(pc: entity, item: entity, target: xy)
+  if not visible.at(target.x, target.y)
+    log.add("Cannot target there.", impossible)
+    return false
+  end
+
+  local damage: int = item.Consumable.power
+  local hit: bool = false
+  query (t: entity, p: Position, Fighter)
+    if distance(target, xy(p.x, p.y)) <= item.Consumable.radius
+      log.add(join(' ', "The", getName(t), "is engulfed in fire, taking", damage, "damage"))
+      hurt(t, damage)
+      hit = true
+    end
+  end
+
+  if not hit
+    log.add("No targets in range.", impossible)
+  end
+  return hit
+end
+
 fn redrawEverything(e: entity)
   clear()
   e.add(RecalculateFOV)
@@ -255,13 +285,14 @@ global logX: int = hpWidth + 2
 global logY: int = hpY
 
 global maxEnemiesPerRoom: int = 2
-global maxItemsPerRoom: int = 20
+global maxItemsPerRoom: int = 2
 
 global map: grid = grid(mapWidth, mapHeight, Wall)
 global explored: grid = grid(mapWidth, mapHeight, false)
 global visible: grid = grid(mapWidth, mapHeight, false)
 global log: messages = messages()
 global targetAt: xy = xy(-1, -1)
+global targetSize: int = 1
 
 fn getKey(k: str): str
   return match k
@@ -619,7 +650,7 @@ fn icUse(e: entity, key: char, item: entity)
   if item.Consumable.targeted
     log.add("Select a target.", needsTarget)
     e.add(TargetingItemConfig(key, item))
-    startTargeting(e, tcUseItem)
+    startTargeting(e, tcUseItem, item.Consumable.radius)
     exit
   end
 
@@ -678,13 +709,29 @@ system inventory_onKey(e: entity, v: Inventory, config: InventoryActionConfig, k
   end
 end
 
-fn setTargetTo(x: int, y: int)
+fn drawTilesAt(sx: int, sy: int, width: int, height: int)
+  for x = sx to sx + width
+    for y = sy to sy + height
+      drawTileAt(x, y)
+    end
+  end
+end
+
+fn setTargetTo(x: int, y: int, radius: int)
   local oldX: int = targetAt.x
   local oldY: int = targetAt.y
   targetAt = xy(x, y)
+  targetSize = radius
 
-  drawTileAt(oldX, oldY)
-  drawTileAt(x, y)
+  if radius > 0
+    local size: int = radius * 2 + 1
+    drawTilesAt(oldX - radius, oldY - radius, size, size)
+    drawTilesAt(x - radius, y - radius, size, size)
+  else
+    drawTileAt(oldX, oldY)
+    drawTileAt(x, y)
+  end
+
   showNamesAt(x, y)
 end
 
@@ -705,7 +752,7 @@ system targeting_onKey(e: entity, config: TargetingActionConfig, k: KeyEvent)
 
     local x: int = targetAt.x + move.x * mul
     local y: int = targetAt.y + move.y * mul
-    setTargetTo(clamp(x, 0, mapWidth - 1), clamp(y, 0, mapHeight - 1))
+    setTargetTo(clamp(x, 0, mapWidth - 1), clamp(y, 0, mapHeight - 1), config.radius)
     exit
   end
 
@@ -720,7 +767,7 @@ system targeting_onKey(e: entity, config: TargetingActionConfig, k: KeyEvent)
 end
 
 system targeting_onMouse(e: entity, config: TargetingActionConfig, m: MouseEvent)
-  setTargetTo(m.x, m.y)
+  setTargetTo(m.x, m.y, config.radius)
 
   if m.button == 1
     config.callback(e, targetAt)
@@ -728,11 +775,11 @@ system targeting_onMouse(e: entity, config: TargetingActionConfig, m: MouseEvent
   end
 end
 
-fn startTargeting(e: entity, callback: fn)
-  e.add(TargetingActionConfig(callback))
+fn startTargeting(e: entity, callback: fn, radius: int)
+  e.add(TargetingActionConfig(callback, radius))
 
   if e.Position
-    setTargetTo(e.Position.x, e.Position.y)
+    setTargetTo(e.Position.x, e.Position.y, radius)
   end
 
   pushKeyHandler(targeting_onKey)
@@ -740,7 +787,7 @@ fn startTargeting(e: entity, callback: fn)
 end
 
 fn stopTargeting(e: entity)
-  setTargetTo(-1, -1)
+  setTargetTo(-1, -1, 0)
 
   popKeyHandler()
   popMouseHandler()
@@ -750,7 +797,7 @@ end
 
 system doLook(e: entity, LookAction, MyTurn)
   e.remove(LookAction)
-  startTargeting(e, stopTargeting)
+  startTargeting(e, stopTargeting, 0)
 end
 
 system fov(e: entity, p: Position, RecalculateFOV)
@@ -771,7 +818,7 @@ fn useTurn(e: entity)
 end
 
 fn drawTileAt(x: int, y: int)
-  local highlight: bool = targetAt.equals(xy(x, y))
+  local highlight: bool = distance(targetAt, xy(x, y)) <= targetSize
   local ch: char = ' '
   local fg: str = "white"
   local bg: str = "black"
@@ -800,7 +847,7 @@ fn drawTileAt(x: int, y: int)
     end
   end
 
-  if highlight bg = "yellow" end
+  if highlight bg = "#808000" end
   draw(x, y, ch, fg, bg)
 end
 
@@ -939,6 +986,7 @@ fn addItems(r: rect, taken: grid)
       taken.put(x, y, true)
       spawn(match randInt(1, 100)
         <=70 = HealingPotion
+        <=80 = FireballScroll
         <=90 = ConfusionScroll
         else = LightningScroll
       end, Position(x, y))
