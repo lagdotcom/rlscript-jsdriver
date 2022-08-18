@@ -289,10 +289,10 @@ global logY: int = hpY
 global maxEnemiesPerRoom: int = 2
 global maxItemsPerRoom: int = 2
 
-global map: grid = grid(mapWidth, mapHeight, Wall)
-global explored: grid = grid(mapWidth, mapHeight, false)
-global visible: grid = grid(mapWidth, mapHeight, false)
-global log: messages = messages()
+persistent map: grid = grid(mapWidth, mapHeight, Wall)
+persistent explored: grid = grid(mapWidth, mapHeight, false)
+persistent visible: grid = grid(mapWidth, mapHeight, false)
+persistent log: messages = messages()
 global targetAt: xy = xy(-1, -1)
 global targetSize: int = 1
 
@@ -1035,6 +1035,7 @@ system menu_onKey(k: KeyEvent)
       clear()
       loadGame()
     else
+      ;; TODO
       debug("no saved game?")
     end
   end
@@ -1047,11 +1048,11 @@ fn mainMenu()
 
   clear()
   clearHPBar()
-  draw(gameWidth / 2, gameHeight / 2 - 4, "An Improbable Roguelike", menuTitle)
-  draw(gameWidth / 2, gameHeight - 2, "by Lag.Com", menuTitle)
+  drawCentred(gameWidth / 2, gameHeight / 2 - 4, "An Improbable Roguelike", menuTitle)
+  drawCentred(gameWidth / 2, gameHeight - 2, "by Lag.Com", menuTitle)
 
-  draw(gameWidth / 2, gameHeight / 2 - 2, "[N] Play a new game", "white")
-  draw(gameWidth / 2, gameHeight / 2 - 1, "[C] Continue last game", "white")
+  drawCentred(gameWidth / 2, gameHeight / 2 - 2, "[N] Play a new game", "white")
+  drawCentred(gameWidth / 2, gameHeight / 2 - 1, "[C] Continue last game", "white")
 end
 
 fn main()

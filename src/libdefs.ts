@@ -110,6 +110,13 @@ const library = [
     o("fg", "str"),
     o("bg", "str"),
   ]),
+  f("drawCentred", [
+    p("x", "int"),
+    p("y", "int"),
+    p("s", "char", "str"),
+    o("fg", "str"),
+    o("bg", "str"),
+  ]),
   f("drawLog", [
     p("log", "messages"),
     p("x", "int"),
@@ -141,6 +148,7 @@ const library = [
     p("string", "str")
   ),
   f("loadGame", []),
+  f("persist", [p("name", "str"), p("obj", "any")]),
   f("popKeyHandler", []),
   f("popMouseHandler", []),
   f("pushKeyHandler", [p("handler", "system")]),

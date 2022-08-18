@@ -478,7 +478,7 @@ export default class TSCompiler implements TSScope {
       } else if (d._ === "template") {
         this.templates.push(d);
         this.define(d.name, templateType);
-      } else if (d._ === "global") {
+      } else if (d._ === "global" || d._ === "persistent") {
         this.globals.push(d);
         this.define(d.name, d.type);
       } else if (d._ === "tiletype") {
@@ -1072,7 +1072,11 @@ import RLTag from "./RLTag";
         (g) =>
           `let ${g.name}: ${this.getTSType(g.type)}${
             g.expr ? ` = ${this.getExpr(g.expr)}` : ""
-          };`
+          };${
+            g._ === "persistent"
+              ? ` __lib.persist({ type: "str", value: "${g.name}"}, ${g.name});`
+              : ""
+          }`
       )
       .join("\n");
   }

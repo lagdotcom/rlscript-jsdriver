@@ -1970,6 +1970,41 @@ void main() {
   };
   RLFn.type = "fn";
 
+  // src/Serializer.ts
+  var boolean = {
+    ser: (b) => b ? "T" : "F",
+    des: (data) => data === "T"
+  };
+  var Serializer = class {
+    constructor() {
+      this.entries = /* @__PURE__ */ new Map([["n:boolean", boolean]]);
+    }
+    add(type, ser, des) {
+      this.entries.set(type, { ser, des });
+    }
+    serialize(type, obj) {
+      const e = this.entries.get(type);
+      if (!e)
+        throw new Error(`No serializer for: ${type}`);
+      return e.ser(obj);
+    }
+    deserialize(type, data, obj) {
+      const e = this.entries.get(type);
+      if (!e)
+        throw new Error(`No serializer for: ${type}`);
+      return e.des(data, obj);
+    }
+  };
+  Serializer.instance = new Serializer();
+  function getTypeName(o) {
+    const to = typeof o;
+    if (to !== "object")
+      return "n:" + to;
+    if ("type" in o)
+      return o.type;
+    throw new Error(`Unknown type: ${o}`);
+  }
+
   // src/RLGrid.ts
   var import_bresenham = __toESM(require_bresenham());
   var RLGrid = class {
@@ -1979,6 +2014,7 @@ void main() {
       this.empty = empty;
       this.type = "grid";
       this.contents = /* @__PURE__ */ new Map();
+      this.itemType = getTypeName(empty);
     }
     tag(x, y) {
       return `${x},${y}`;
@@ -2026,8 +2062,32 @@ void main() {
     draw() {
       RL.instance.lib.drawGrid(this);
     }
+    serialize() {
+      const { width, height, itemType } = this;
+      const contents = {};
+      for (const [tag, item] of this.contents)
+        contents[tag] = Serializer.instance.serialize(itemType, item);
+      return { width, height, contents };
+    }
+    deserialize(data) {
+      this.width = data.width;
+      this.height = data.height;
+      this.contents.clear();
+      for (const tag in data.contents) {
+        this.contents.set(
+          tag,
+          Serializer.instance.deserialize(this.itemType, data.contents[tag])
+        );
+      }
+      return this;
+    }
   };
   RLGrid.type = "grid";
+  Serializer.instance.add(
+    "grid",
+    (g) => g.serialize(),
+    (data, g) => g.deserialize(data)
+  );
 
   // node_modules/tinycolor-ts/dist/module/util.js
   function bound01(n, max) {
@@ -2923,6 +2983,13 @@ void main() {
         return `${this.text} (x${this.count})`;
       return this.text;
     }
+    serialize() {
+      const { text, fg, count } = this;
+      return [text, fg, count];
+    }
+    static deserialize([text, fg, count]) {
+      return new Message3(text, fg, count);
+    }
   };
   var RLMessages = class {
     constructor(messages = []) {
@@ -2966,7 +3033,20 @@ void main() {
         }
       }
     }
+    serialize() {
+      return this.messages.map((m) => m.serialize());
+    }
+    deserialize(data) {
+      this.messages = data.map((m) => Message3.deserialize(m));
+      this.dirty = true;
+      return this;
+    }
   };
+  Serializer.instance.add(
+    "messages",
+    (m) => m.serialize(),
+    (data, m) => m.deserialize(data)
+  );
 
   // src/RLRect.ts
   var RLRect = class {
@@ -3069,15 +3149,23 @@ void main() {
   RLTag.type = "tag";
 
   // src/RLTile.ts
-  var RLTile = class {
+  var _RLTile = class {
     constructor(ch, walkable, transparent) {
       this.ch = ch;
       this.walkable = walkable;
       this.transparent = transparent;
+      _RLTile.registry[ch] = this;
       this.type = "tile";
     }
   };
+  var RLTile = _RLTile;
+  RLTile.registry = {};
   RLTile.type = "tile";
+  Serializer.instance.add(
+    "tile",
+    (t) => t.ch,
+    (ch) => RLTile.registry[ch]
+  );
 
   // src/RLXY.ts
   var _RLXY = class {
@@ -3311,9 +3399,13 @@ void main() {
     const maxEnemiesPerRoom = 2;
     const maxItemsPerRoom = 2;
     const map = new RLGrid(mapWidth, mapHeight, Wall);
+    __lib.persist({ type: "str", value: "map" }, map);
     const explored = new RLGrid(mapWidth, mapHeight, false);
+    __lib.persist({ type: "str", value: "explored" }, explored);
     const visible = new RLGrid(mapWidth, mapHeight, false);
+    __lib.persist({ type: "str", value: "visible" }, visible);
     const log = new RLMessages();
+    __lib.persist({ type: "str", value: "log" }, log);
     let targetAt = new RLXY(-1, -1);
     let targetSize = 1;
     let historyOffset = 0;
@@ -4106,25 +4198,25 @@ void main() {
       nextTurn.disable();
       __lib.clear();
       clearHPBar();
-      __lib.draw(
+      __lib.drawCentred(
         { type: "int", value: gameWidth / 2 },
         { type: "int", value: gameHeight / 2 - 4 },
         { type: "str", value: "An Improbable Roguelike" },
         { type: "str", value: menuTitle }
       );
-      __lib.draw(
+      __lib.drawCentred(
         { type: "int", value: gameWidth / 2 },
         { type: "int", value: gameHeight - 2 },
         { type: "str", value: "by Lag.Com" },
         { type: "str", value: menuTitle }
       );
-      __lib.draw(
+      __lib.drawCentred(
         { type: "int", value: gameWidth / 2 },
         { type: "int", value: gameHeight / 2 - 2 },
         { type: "str", value: "[N] Play a new game" },
         { type: "str", value: "white" }
       );
-      __lib.draw(
+      __lib.drawCentred(
         { type: "int", value: gameWidth / 2 },
         { type: "int", value: gameHeight / 2 - 1 },
         { type: "str", value: "[C] Continue last game" },
@@ -5036,6 +5128,10 @@ void main() {
         Game.instance.terminal.drawString(x, y, display.value, f, b);
     });
   }
+  function drawCentred({ value: x }, y, display, fg, bg) {
+    const offset = Math.floor(display.value.length / 2);
+    draw({ type: "int", value: x - offset }, y, display, fg, bg);
+  }
   function drawGrid(g) {
     drawable(() => {
       for (let y = 0; y < g.height; y++) {
@@ -5255,13 +5351,18 @@ void main() {
     RL.instance.mouseHandlers.clear();
   }
   var saveId = "rlscript-jsdriver.save";
+  var persistent = /* @__PURE__ */ new Map();
+  function saveObj(name, obj) {
+    return [name, Serializer.instance.serialize(obj.type, obj)];
+  }
   function saveGame() {
     const rl = RL.instance;
     const save = {
-      ed: Array.from(rl.entities.values()).map((e) => e.serialize()),
-      kh: rl.keyHandlers.items.map((sys) => sys.name),
-      mh: rl.mouseHandlers.items.map((sys) => sys.name),
-      se: rl.systems.filter((sys) => sys.enabled).map((sys) => sys.name)
+      e: Array.from(rl.entities.values()).map((e) => e.serialize()),
+      k: rl.keyHandlers.items.map((sys) => sys.name),
+      m: rl.mouseHandlers.items.map((sys) => sys.name),
+      s: rl.systems.filter((sys) => sys.enabled).map((sys) => sys.name),
+      x: Array.from(persistent).map(([name, obj]) => saveObj(name, obj))
     };
     localStorage.setItem(saveId, JSON.stringify(save));
   }
@@ -5269,27 +5370,44 @@ void main() {
     const raw = localStorage.getItem(saveId);
     if (!raw)
       throw new Error("No save data.");
+    const rl = RL.instance;
     const save = JSON.parse(raw);
-    RL.instance.entities.clear();
-    for (const data of save.ed) {
+    rl.entities.clear();
+    for (const data of save.e) {
       const e = RLEntity.deserialize(data);
-      RL.instance.entities.set(e.id, e);
+      rl.entities.set(e.id, e);
     }
-    RL.instance.keyHandlers.clear();
-    for (const kh of save.kh)
-      RL.instance.keyHandlers.push(RL.instance.env.get(kh));
-    RL.instance.mouseHandlers.clear();
-    for (const mh of save.mh)
-      RL.instance.mouseHandlers.push(RL.instance.env.get(mh));
-    for (const sys of RL.instance.systems) {
-      if (save.se.includes(sys.name))
+    rl.keyHandlers.clear();
+    for (const kh of save.k)
+      rl.keyHandlers.push(rl.env.get(kh));
+    rl.mouseHandlers.clear();
+    for (const mh of save.m)
+      rl.mouseHandlers.push(rl.env.get(mh));
+    for (const sys of rl.systems) {
+      if (save.s.includes(sys.name))
         sys.enable();
       else
         sys.disable();
     }
+    for (const [name, data] of save.x) {
+      const obj = persistent.get(name);
+      if (obj)
+        Serializer.instance.deserialize(getTypeName(obj), data, obj);
+    }
   }
   function canLoadGame() {
     return localStorage.getItem(saveId) !== null;
+  }
+  function persist({ value: name }, obj) {
+    switch (obj.type) {
+      case "messages":
+      case "grid":
+      case "tile":
+        persistent.set(name, obj);
+        break;
+      default:
+        throw new Error(`Cannot persist type: ${obj.type}`);
+    }
   }
   var lib = {
     abs,
@@ -5302,6 +5420,7 @@ void main() {
     draw,
     drawBag,
     drawBox,
+    drawCentred,
     drawLog,
     drawGrid,
     find,
@@ -5310,6 +5429,7 @@ void main() {
     getNextMove,
     join,
     loadGame,
+    persist,
     popKeyHandler,
     popMouseHandler,
     pushKeyHandler,

@@ -31,7 +31,7 @@ export type ASTTileTypeDecl = {
   fields: ASTTileMember[];
 };
 export type ASTGlobalDecl = {
-  _: "global";
+  _: "global" | "persistent";
   name: string;
   type: ASTType;
   expr?: ASTExpr;

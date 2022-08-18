@@ -46,6 +46,13 @@ type RLLibrary = {
     fg?: RLStr,
     bg?: RLStr
   ): void;
+  drawCentred(
+    x: RLInt,
+    y: RLInt,
+    s: RLChar | RLStr,
+    fg?: RLStr,
+    bg?: RLStr
+  ): void;
   drawLog(
     log: RLMessages,
     x: RLInt,
@@ -75,6 +82,7 @@ type RLLibrary = {
   ): RLXY | undefined;
   join(glue: RLChar | RLStr, ...parts: (RLChar | RLStr | RLInt)[]): string;
   loadGame(): void;
+  persist(name: RLStr, obj: RLObject): void;
   popKeyHandler(): void;
   popMouseHandler(): void;
   pushKeyHandler(handler: RLSystem): void;

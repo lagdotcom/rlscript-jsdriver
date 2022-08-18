@@ -1,5 +1,6 @@
 import { ComputeVisibility, ShadowCastingGrid } from "./RecursiveShadowCasting";
 import { RLComponent, RLComponentName } from "./implTypes";
+import Serializer, { getTypeName } from "./Serializer";
 
 import Game from "./Game";
 import RL from "./RL";
@@ -62,6 +63,17 @@ function draw(
       Game.instance.terminal.drawChar(x, y, display.value, f, b);
     else Game.instance.terminal.drawString(x, y, display.value, f, b);
   });
+}
+
+function drawCentred(
+  { value: x }: RLInt,
+  y: RLInt,
+  display: RLChar | RLStr,
+  fg?: RLStr,
+  bg?: RLStr
+) {
+  const offset = Math.floor(display.value.length / 2);
+  draw({ type: "int", value: x - offset }, y, display, fg, bg);
 }
 
 function drawGrid(g: RLGrid<RLTile>) {
@@ -372,21 +384,28 @@ function clearHandlers() {
 
 const saveId = "rlscript-jsdriver.save";
 type SaveData = {
-  ed: object[];
-  kh: string[];
-  mh: string[];
-  se: string[];
+  e: object[];
+  k: string[];
+  m: string[];
+  s: string[];
+  x: [string, any][];
 };
 
-// TODO how to save map data?
+const persistent: Map<string, RLObject> = new Map();
+
+function saveObj(name: string, obj: RLObject): [string, any] {
+  return [name, Serializer.instance.serialize(obj.type, obj)];
+}
+
 function saveGame() {
   const rl = RL.instance;
 
   const save: SaveData = {
-    ed: Array.from(rl.entities.values()).map((e) => e.serialize()),
-    kh: rl.keyHandlers.items.map((sys) => sys.name),
-    mh: rl.mouseHandlers.items.map((sys) => sys.name),
-    se: rl.systems.filter((sys) => sys.enabled).map((sys) => sys.name),
+    e: Array.from(rl.entities.values()).map((e) => e.serialize()),
+    k: rl.keyHandlers.items.map((sys) => sys.name),
+    m: rl.mouseHandlers.items.map((sys) => sys.name),
+    s: rl.systems.filter((sys) => sys.enabled).map((sys) => sys.name),
+    x: Array.from(persistent).map(([name, obj]) => saveObj(name, obj)),
   };
 
   localStorage.setItem(saveId, JSON.stringify(save));
@@ -396,30 +415,48 @@ function loadGame() {
   const raw = localStorage.getItem(saveId);
   if (!raw) throw new Error("No save data.");
 
+  const rl = RL.instance;
   const save = JSON.parse(raw) as SaveData;
 
-  RL.instance.entities.clear();
-  for (const data of save.ed) {
+  rl.entities.clear();
+  for (const data of save.e) {
     const e = RLEntity.deserialize(data);
-    RL.instance.entities.set(e.id, e);
+    rl.entities.set(e.id, e);
   }
 
-  RL.instance.keyHandlers.clear();
-  for (const kh of save.kh)
-    RL.instance.keyHandlers.push(RL.instance.env.get(kh));
+  rl.keyHandlers.clear();
+  for (const kh of save.k) rl.keyHandlers.push(rl.env.get(kh));
 
-  RL.instance.mouseHandlers.clear();
-  for (const mh of save.mh)
-    RL.instance.mouseHandlers.push(RL.instance.env.get(mh));
+  rl.mouseHandlers.clear();
+  for (const mh of save.m) rl.mouseHandlers.push(rl.env.get(mh));
 
-  for (const sys of RL.instance.systems) {
-    if (save.se.includes(sys.name)) sys.enable();
+  for (const sys of rl.systems) {
+    if (save.s.includes(sys.name)) sys.enable();
     else sys.disable();
+  }
+
+  for (const [name, data] of save.x) {
+    const obj = persistent.get(name);
+
+    if (obj) Serializer.instance.deserialize(getTypeName(obj), data, obj);
   }
 }
 
 function canLoadGame() {
   return localStorage.getItem(saveId) !== null;
+}
+
+function persist({ value: name }: RLStr, obj: RLObject) {
+  switch (obj.type) {
+    case "messages":
+    case "grid":
+    case "tile":
+      persistent.set(name, obj);
+      break;
+
+    default:
+      throw new Error(`Cannot persist type: ${obj.type}`);
+  }
 }
 
 const lib: RLLibrary = {
@@ -433,6 +470,7 @@ const lib: RLLibrary = {
   draw,
   drawBag,
   drawBox,
+  drawCentred,
   drawLog,
   drawGrid,
   find,
@@ -441,6 +479,7 @@ const lib: RLLibrary = {
   getNextMove,
   join,
   loadGame,
+  persist,
   popKeyHandler,
   popMouseHandler,
   pushKeyHandler,

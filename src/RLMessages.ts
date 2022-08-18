@@ -1,6 +1,9 @@
 import { Terminal, wordWrap } from "wglt";
 
+import Serializer from "./Serializer";
 import { TinyColor } from "tinycolor-ts";
+
+type SerializedMessage = [text: string, fg: string, count: number];
 
 class Message {
   constructor(public text: string, public fg: string, public count = 1) {}
@@ -8,6 +11,15 @@ class Message {
   get fullText() {
     if (this.count > 1) return `${this.text} (x${this.count})`;
     return this.text;
+  }
+
+  serialize(): SerializedMessage {
+    const { text, fg, count } = this;
+    return [text, fg, count];
+  }
+
+  static deserialize([text, fg, count]: SerializedMessage) {
+    return new Message(text, fg, count);
   }
 }
 
@@ -69,4 +81,21 @@ export default class RLMessages {
       }
     }
   }
+
+  serialize() {
+    return this.messages.map((m) => m.serialize());
+  }
+
+  deserialize(data: SerializedMessage[]) {
+    this.messages = data.map((m) => Message.deserialize(m));
+    this.dirty = true;
+
+    return this;
+  }
 }
+
+Serializer.instance.add(
+  "messages",
+  (m: RLMessages) => m.serialize(),
+  (data: SerializedMessage[], m: RLMessages) => m.deserialize(data)
+);

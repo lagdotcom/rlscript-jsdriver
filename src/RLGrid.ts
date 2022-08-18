@@ -1,16 +1,27 @@
+import Serializer, { getTypeName } from "./Serializer";
+
 import RL from "./RL";
 import RLObjectType from "./RLObjectType";
 import RLRect from "./RLRect";
 import bresenham from "bresenham";
 
+type SerializedGrid = {
+  width: number;
+  height: number;
+  contents: Record<string, any>;
+};
+
 export default class RLGrid<T> {
   static type: RLObjectType = "grid";
   type: "grid";
   contents: Map<string, T>;
+  itemType: string;
 
   constructor(public width: number, public height: number, public empty: T) {
     this.type = "grid";
     this.contents = new Map<string, T>();
+
+    this.itemType = getTypeName(empty);
   }
 
   tag(x: number, y: number) {
@@ -66,4 +77,34 @@ export default class RLGrid<T> {
   draw() {
     RL.instance.lib.drawGrid(this);
   }
+
+  serialize(): SerializedGrid {
+    const { width, height, itemType } = this;
+    const contents: SerializedGrid["contents"] = {};
+    for (const [tag, item] of this.contents)
+      contents[tag] = Serializer.instance.serialize(itemType, item);
+
+    return { width, height, contents };
+  }
+
+  deserialize(data: SerializedGrid) {
+    this.width = data.width;
+    this.height = data.height;
+
+    this.contents.clear();
+    for (const tag in data.contents) {
+      this.contents.set(
+        tag,
+        Serializer.instance.deserialize(this.itemType, data.contents[tag])
+      );
+    }
+
+    return this;
+  }
 }
+
+Serializer.instance.add(
+  "grid",
+  (g: RLGrid<unknown>) => g.serialize(),
+  (data: SerializedGrid, g: RLGrid<unknown>) => g.deserialize(data)
+);

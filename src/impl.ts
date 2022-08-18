@@ -278,9 +278,13 @@ export default function implementation(__lib: RLLibrary): RLEnv {
   const maxEnemiesPerRoom = 2;
   const maxItemsPerRoom = 2;
   const map: RLGrid = new RLGrid(mapWidth, mapHeight, Wall);
+  __lib.persist({ type: "str", value: "map" }, map);
   const explored: RLGrid = new RLGrid(mapWidth, mapHeight, false);
+  __lib.persist({ type: "str", value: "explored" }, explored);
   const visible: RLGrid = new RLGrid(mapWidth, mapHeight, false);
+  __lib.persist({ type: "str", value: "visible" }, visible);
   const log: RLMessages = new RLMessages();
+  __lib.persist({ type: "str", value: "log" }, log);
   let targetAt: RLXY = new RLXY(-1, -1);
   let targetSize = 1;
   let historyOffset = 0;
@@ -1098,25 +1102,25 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     nextTurn.disable();
     __lib.clear();
     clearHPBar();
-    __lib.draw(
+    __lib.drawCentred(
       { type: "int", value: gameWidth / 2 },
       { type: "int", value: gameHeight / 2 - 4 },
       { type: "str", value: "An Improbable Roguelike" },
       { type: "str", value: menuTitle }
     );
-    __lib.draw(
+    __lib.drawCentred(
       { type: "int", value: gameWidth / 2 },
       { type: "int", value: gameHeight - 2 },
       { type: "str", value: "by Lag.Com" },
       { type: "str", value: menuTitle }
     );
-    __lib.draw(
+    __lib.drawCentred(
       { type: "int", value: gameWidth / 2 },
       { type: "int", value: gameHeight / 2 - 2 },
       { type: "str", value: "[N] Play a new game" },
       { type: "str", value: "white" }
     );
-    __lib.draw(
+    __lib.drawCentred(
       { type: "int", value: gameWidth / 2 },
       { type: "int", value: gameHeight / 2 - 1 },
       { type: "str", value: "[C] Continue last game" },
