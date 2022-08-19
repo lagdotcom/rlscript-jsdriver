@@ -3,6 +3,7 @@
 import RLObjectType from "./RLObjectType";
 import RLTag from "./RLTag";
 import RLTemplate from "./RLTemplate";
+import Serializer from "./Serializer";
 import { nanoid } from "nanoid";
 
 type RLEntityField =
@@ -79,13 +80,8 @@ export default class RLEntity {
       (k) => Object.prototype.hasOwnProperty.call(this, k) && k !== "type"
     ) as RLEntityField[];
 
-    return Object.fromEntries(
-      keys.map((k) => {
-        const raw = this[k];
-        const value = raw instanceof Set ? Array.from(raw.values()) : raw;
-        return [k, value];
-      })
-    );
+    const data = Object.fromEntries(keys.map((k) => [k, this[k]]));
+    return Serializer.instance.serialize("n:object", data)[1];
   }
 
   static deserialize(data: object) {
@@ -93,18 +89,16 @@ export default class RLEntity {
 
     for (const key in data) {
       const value = data[key];
-
-      switch (key) {
-        case "components":
-        case "templates":
-          for (const name of value) e[key].add(name);
-          break;
-
-        default:
-          e[key] = value;
-      }
+      e[key] = Serializer.instance.deserialize(value);
     }
 
     return e;
   }
 }
+
+Serializer.instance.add(
+  "entity",
+  (e: RLEntity) => e.serialize(),
+  (data: object) => RLEntity.deserialize(data)
+);
+Serializer.instance.alias("component", "n:object");

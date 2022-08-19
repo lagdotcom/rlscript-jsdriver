@@ -1,5 +1,6 @@
 import RLObjectType from "./RLObjectType";
 import { RLTagName } from "./implTypes";
+import Serializer from "./Serializer";
 
 export default class RLTag {
   static type: RLObjectType = "tag";
@@ -9,3 +10,9 @@ export default class RLTag {
     this.type = "tag";
   }
 }
+
+Serializer.instance.add(
+  "tag",
+  (t: RLTag) => t.typeName,
+  (data: string) => new RLTag(data)
+);

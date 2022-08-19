@@ -388,12 +388,18 @@ type SaveData = {
   k: string[];
   m: string[];
   s: string[];
-  x: [string, any][];
+  x: [string, [string, any]][];
 };
 
 const persistent: Map<string, RLObject> = new Map();
 
-function saveObj(name: string, obj: RLObject): [string, any] {
+Serializer.instance.add(
+  "n:function",
+  (fn: Function) => fn.name,
+  (data: string) => RL.instance.env.get(data).code
+);
+
+function saveObj(name: string, obj: RLObject): [string, [string, any]] {
   return [name, Serializer.instance.serialize(obj.type, obj)];
 }
 
@@ -438,7 +444,7 @@ function loadGame() {
   for (const [name, data] of save.x) {
     const obj = persistent.get(name);
 
-    if (obj) Serializer.instance.deserialize(getTypeName(obj), data, obj);
+    if (obj) Serializer.instance.deserialize(data, obj);
   }
 }
 

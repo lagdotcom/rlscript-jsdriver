@@ -1841,6 +1841,80 @@ void main() {
     }
   };
 
+  // src/Serializer.ts
+  var boolean = {
+    ser: (b) => b ? "T" : "F",
+    des: (data) => data === "T"
+  };
+  var object = {
+    ser: (o) => Object.fromEntries(
+      Object.entries(o).map(([key, val]) => [
+        key,
+        Serializer.instance.serialize(getTypeName(val), val)
+      ])
+    ),
+    des: (data) => Object.fromEntries(
+      Object.entries(data).map(([key, val]) => [
+        key,
+        Serializer.instance.deserialize(val)
+      ])
+    )
+  };
+  var string = {
+    ser: (s) => s,
+    des: (s) => s
+  };
+  var number = {
+    ser: (n) => n,
+    des: (n) => n
+  };
+  var set = {
+    ser: (s) => Array.from(s).map((o) => Serializer.instance.serialize(getTypeName(o), o)),
+    des: (data) => new Set(data.map((o) => Serializer.instance.deserialize(o)))
+  };
+  var Serializer = class {
+    constructor() {
+      this.entries = /* @__PURE__ */ new Map([
+        ["n:boolean", boolean],
+        ["n:number", number],
+        ["n:object", object],
+        ["n:string", string],
+        ["set", set]
+      ]);
+    }
+    add(type, ser, des) {
+      this.entries.set(type, { ser, des });
+    }
+    alias(type, other) {
+      this.entries.set(type, this.get(other));
+    }
+    get(type) {
+      const e = this.entries.get(type);
+      if (!e)
+        throw new Error(`No serializer for: ${type}`);
+      return e;
+    }
+    serialize(type, obj) {
+      return [type, this.get(type).ser(obj)];
+    }
+    deserialize([type, data], obj) {
+      return this.get(type).des(data, obj);
+    }
+  };
+  Serializer.instance = new Serializer();
+  function getTypeName(o) {
+    const to = typeof o;
+    if (to !== "object")
+      return "n:" + to;
+    if ("type" in o)
+      return o.type;
+    if (o instanceof Set)
+      return "set";
+    if (o instanceof Map)
+      return "map";
+    return "n:object";
+  }
+
   // src/RLBag.ts
   var RLBag = class {
     constructor(capacity) {
@@ -1879,7 +1953,26 @@ void main() {
     remove(key) {
       this.items.delete(key);
     }
+    serialize() {
+      const { capacity } = this;
+      const items = [];
+      for (const [key, item] of this.items)
+        items.push([key, Serializer.instance.serialize(getTypeName(item), item)]);
+      return { capacity, items };
+    }
+    static deserialize(data) {
+      const b = new RLBag(data.capacity);
+      b.items.clear();
+      for (const [key, obj] of data.items)
+        b.items.set(key, Serializer.instance.deserialize(obj));
+      return b;
+    }
   };
+  Serializer.instance.add(
+    "bag",
+    (b) => b.serialize(),
+    (data) => RLBag.deserialize(data)
+  );
 
   // src/getParam.ts
   function getParam(params, predicate) {
@@ -1902,7 +1995,7 @@ void main() {
     const results = params.map((p) => p.default);
     const filled = /* @__PURE__ */ new Set();
     const get = (predicate) => getParam(params, predicate);
-    const set = (i, value) => {
+    const set2 = (i, value) => {
       if (filled.has(i))
         throw new Error(`Param #${i} set twice`);
       if (i >= results.length) {
@@ -1926,18 +2019,18 @@ void main() {
           const [i, p] = get((p2) => p2.typeName === a.typeName);
           if (!p)
             throw new Error(`No param of type ${a.typeName}`);
-          set(i, a.value);
+          set2(i, a.value);
           break;
         }
         case "named": {
           const [i, p] = get((p2) => p2.name === a.name);
           if (!p)
             throw new Error(`No param with name ${a.name}`);
-          set(i, a.value);
+          set2(i, a.value);
           break;
         }
         case "positional": {
-          set(pos, a.value);
+          set2(pos, a.value);
           pos++;
           break;
         }
@@ -1971,41 +2064,6 @@ void main() {
     }
   };
   RLFn.type = "fn";
-
-  // src/Serializer.ts
-  var boolean = {
-    ser: (b) => b ? "T" : "F",
-    des: (data) => data === "T"
-  };
-  var Serializer = class {
-    constructor() {
-      this.entries = /* @__PURE__ */ new Map([["n:boolean", boolean]]);
-    }
-    add(type, ser, des) {
-      this.entries.set(type, { ser, des });
-    }
-    serialize(type, obj) {
-      const e = this.entries.get(type);
-      if (!e)
-        throw new Error(`No serializer for: ${type}`);
-      return e.ser(obj);
-    }
-    deserialize(type, data, obj) {
-      const e = this.entries.get(type);
-      if (!e)
-        throw new Error(`No serializer for: ${type}`);
-      return e.des(data, obj);
-    }
-  };
-  Serializer.instance = new Serializer();
-  function getTypeName(o) {
-    const to = typeof o;
-    if (to !== "object")
-      return "n:" + to;
-    if ("type" in o)
-      return o.type;
-    throw new Error(`Unknown type: ${o}`);
-  }
 
   // src/RLGrid.ts
   var import_bresenham = __toESM(require_bresenham());
@@ -2068,7 +2126,7 @@ void main() {
       const { width, height, itemType } = this;
       const contents = {};
       for (const [tag, item] of this.contents)
-        contents[tag] = Serializer.instance.serialize(itemType, item);
+        contents[tag] = Serializer.instance.serialize(itemType, item)[1];
       return { width, height, contents };
     }
     deserialize(data) {
@@ -2078,7 +2136,7 @@ void main() {
       for (const tag in data.contents) {
         this.contents.set(
           tag,
-          Serializer.instance.deserialize(this.itemType, data.contents[tag])
+          Serializer.instance.deserialize([this.itemType, data.contents[tag]])
         );
       }
       return this;
@@ -3171,6 +3229,11 @@ void main() {
     }
   };
   RLTag.type = "tag";
+  Serializer.instance.add(
+    "tag",
+    (t) => t.typeName,
+    (data) => new RLTag(data)
+  );
 
   // src/RLTile.ts
   var _RLTile = class {
@@ -5122,33 +5185,26 @@ void main() {
       const keys = Object.keys(this).filter(
         (k) => Object.prototype.hasOwnProperty.call(this, k) && k !== "type"
       );
-      return Object.fromEntries(
-        keys.map((k) => {
-          const raw = this[k];
-          const value = raw instanceof Set ? Array.from(raw.values()) : raw;
-          return [k, value];
-        })
-      );
+      const data = Object.fromEntries(keys.map((k) => [k, this[k]]));
+      return Serializer.instance.serialize("n:object", data)[1];
     }
     static deserialize(data) {
       const e = new _RLEntity();
       for (const key in data) {
         const value = data[key];
-        switch (key) {
-          case "components":
-          case "templates":
-            for (const name of value)
-              e[key].add(name);
-            break;
-          default:
-            e[key] = value;
-        }
+        e[key] = Serializer.instance.deserialize(value);
       }
       return e;
     }
   };
   var RLEntity = _RLEntity;
   RLEntity.type = "entity";
+  Serializer.instance.add(
+    "entity",
+    (e) => e.serialize(),
+    (data) => RLEntity.deserialize(data)
+  );
+  Serializer.instance.alias("component", "n:object");
 
   // src/lib.ts
   function setSize({ value: width }, { value: height }) {
@@ -5408,6 +5464,11 @@ void main() {
   }
   var saveId = "rlscript-jsdriver.save";
   var persistent = /* @__PURE__ */ new Map();
+  Serializer.instance.add(
+    "n:function",
+    (fn) => fn.name,
+    (data) => RL.instance.env.get(data).code
+  );
   function saveObj(name, obj) {
     return [name, Serializer.instance.serialize(obj.type, obj)];
   }
@@ -5448,7 +5509,7 @@ void main() {
     for (const [name, data] of save.x) {
       const obj = persistent.get(name);
       if (obj)
-        Serializer.instance.deserialize(getTypeName(obj), data, obj);
+        Serializer.instance.deserialize(data, obj);
     }
   }
   function canLoadGame() {

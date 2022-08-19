@@ -82,7 +82,7 @@ export default class RLGrid<T> {
     const { width, height, itemType } = this;
     const contents: SerializedGrid["contents"] = {};
     for (const [tag, item] of this.contents)
-      contents[tag] = Serializer.instance.serialize(itemType, item);
+      contents[tag] = Serializer.instance.serialize(itemType, item)[1];
 
     return { width, height, contents };
   }
@@ -95,7 +95,7 @@ export default class RLGrid<T> {
     for (const tag in data.contents) {
       this.contents.set(
         tag,
-        Serializer.instance.deserialize(this.itemType, data.contents[tag])
+        Serializer.instance.deserialize([this.itemType, data.contents[tag]])
       );
     }
 
