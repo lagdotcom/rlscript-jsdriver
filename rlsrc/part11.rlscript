@@ -291,6 +291,8 @@ global hoverY: int = mapHeight
 global hpX: int = 0
 global hpY: int = hoverY + 1
 global hpWidth: int = 20
+global floorX: int = hpX
+global floorY: int = hpY + 2
 global logX: int = hpWidth + 2
 global logY: int = hpY
 
@@ -921,6 +923,8 @@ system drawUI(e: entity, f: Fighter, RedrawUI)
 
   drawBar(hpX, hpY, f.hp, f.maxHp, hpWidth, "#401010", "#006000")
   draw(hpX+1, hpY, join("", "HP: ", f.hp, "/", f.maxHp))
+
+  draw(floorX, floorY, join(' ', "Floor:", e.Progress.floor))
 end
 
 system nextTurn()

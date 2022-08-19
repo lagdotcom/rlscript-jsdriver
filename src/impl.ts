@@ -283,6 +283,8 @@ export default function implementation(__lib: RLLibrary): RLEnv {
   const hpX = 0;
   const hpY: number = hoverY + 1;
   const hpWidth = 20;
+  const floorX: number = hpX;
+  const floorY: number = hpY + 2;
   const logX: number = hpWidth + 2;
   const logY: number = hpY;
   const maxEnemiesPerRoom = 2;
@@ -1715,6 +1717,18 @@ export default function implementation(__lib: RLLibrary): RLEnv {
           { type: "int", value: f.hp },
           { type: "str", value: "/" },
           { type: "int", value: f.maxHp }
+        ),
+      }
+    );
+    __lib.draw(
+      { type: "int", value: floorX },
+      { type: "int", value: floorY },
+      {
+        type: "str",
+        value: __lib.join(
+          { type: "char", value: " " },
+          { type: "str", value: "Floor:" },
+          { type: "int", value: e.Progress.floor }
         ),
       }
     );

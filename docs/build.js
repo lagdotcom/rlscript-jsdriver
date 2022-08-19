@@ -3473,6 +3473,8 @@ void main() {
     const hpX = 0;
     const hpY = hoverY + 1;
     const hpWidth = 20;
+    const floorX = hpX;
+    const floorY = hpY + 2;
     const logX = hpWidth + 2;
     const logY = hpY;
     const maxEnemiesPerRoom = 2;
@@ -4860,6 +4862,18 @@ void main() {
             { type: "int", value: f.hp },
             { type: "str", value: "/" },
             { type: "int", value: f.maxHp }
+          )
+        }
+      );
+      __lib.draw(
+        { type: "int", value: floorX },
+        { type: "int", value: floorY },
+        {
+          type: "str",
+          value: __lib.join(
+            { type: "char", value: " " },
+            { type: "str", value: "Floor:" },
+            { type: "int", value: e.Progress.floor }
           )
         }
       );
