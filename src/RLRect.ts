@@ -1,4 +1,5 @@
 import RLObjectType from "./RLObjectType";
+import RLXY from "./RLXY";
 
 export default class RLRect {
   static type: RLObjectType = "rect";
@@ -27,6 +28,10 @@ export default class RLRect {
 
   get cy() {
     return Math.floor(this.y + this.height / 2);
+  }
+
+  get centre() {
+    return new RLXY(this.cx, this.cy);
   }
 
   intersects(o: RLRect) {

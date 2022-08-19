@@ -10,6 +10,7 @@ import type {
   MoveAction,
   OldPosition,
   Position,
+  Progress,
   TargetingActionConfig,
   TargetingItemConfig,
 } from "./implTypes";
@@ -59,6 +60,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
   const DropAction = new RLTag("DropAction");
   const LookAction = new RLTag("LookAction");
   const QuitAction = new RLTag("QuitAction");
+  const TakeStairsAction = new RLTag("TakeStairsAction");
 
   const mkAppearance = (
     name: string,
@@ -167,6 +169,11 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     duration,
     old,
   });
+  const mkProgress = (floor: number): Progress => ({
+    type: "component",
+    typeName: "Progress",
+    floor,
+  });
 
   const tmPlayer: RLTemplate = {
     type: "template",
@@ -181,6 +188,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
       MyTurn,
       RecalculateFOV,
       RedrawUI,
+      mkProgress(1),
     ],
   };
   const tmEnemy: RLTemplate = {
@@ -253,6 +261,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
 
   const Floor = new RLTile(".", true, true);
   const Wall = new RLTile("#", false, false);
+  const DownStairs = new RLTile(">", true, true);
 
   const impossible = "#808080";
   const healed = "#00ff00";
@@ -264,6 +273,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
   const needsTarget = "#3fffff";
   const statusApplied = "#3fff3f";
   const menuTitle = "#ffff3f";
+  const descended = "#9f3fff";
   const gameWidth = 80;
   const gameHeight = 50;
   const mapWidth: number = gameWidth;
@@ -982,6 +992,8 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     let prev: RLRect | undefined;
     let room: RLRect;
     const taken: RLGrid = new RLGrid(mapWidth, mapHeight, false);
+    let start: RLXY;
+    let stairs: RLXY;
     for (let r = 1; r <= 30; r++) {
       room = randomRoom();
       if (!map.findInRegion(room, Floor)) {
@@ -991,13 +1003,15 @@ export default function implementation(__lib: RLLibrary): RLEnv {
           addEnemies(room, taken);
           addItems(room, taken);
         } else {
-          __lib.spawn(tmPlayer, mkPosition(room.cx, room.cy));
+          start = room.centre;
         }
+        stairs = room.centre;
         prev = room;
       }
     }
+    map.put(stairs.x, stairs.y, DownStairs);
     hostileAI.enable();
-    log.add("Welcome to the RLscript dungeon!", welcomeText);
+    return start;
   }
   const fn_generateDungeon = new RLFn("generateDungeon", generateDungeon, []);
 
@@ -1083,8 +1097,23 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     { type: "param", name: "taken", typeName: "grid" },
   ]);
 
+  function nextFloor(player: RLEntity) {
+    player.Progress.floor += 1;
+    const start: RLXY = generateDungeon();
+    player.Position.x = start.x;
+    player.Position.y = start.y;
+    player.add(RecalculateFOV);
+    player.add(RedrawUI);
+  }
+  const fn_nextFloor = new RLFn("nextFloor", nextFloor, [
+    { type: "param", name: "player", typeName: "entity" },
+  ]);
+
   function newGame() {
-    generateDungeon();
+    const player: RLEntity = __lib.spawn(tmPlayer);
+    const start: RLXY = generateDungeon();
+    player.add(mkPosition(start.x, start.y));
+    log.add("Welcome to the RLscript dungeon!", welcomeText);
     __lib.pushKeyHandler(main_onKey);
     __lib.pushMouseHandler(main_onMouse);
     nextTurn.enable();
@@ -1159,6 +1188,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
         else if (__match === "inventory") return InventoryAction;
         else if (__match === "drop") return DropAction;
         else if (__match === "look") return LookAction;
+        else if (__match === "confirm") return TakeStairsAction;
         else if (__match === "quit") return QuitAction;
       })(getKey(k.key))
     );
@@ -1611,6 +1641,24 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     { type: "constraint", typeName: "MyTurn" },
   ]);
 
+  function code_doStairs(e: RLEntity, p: Position) {
+    e.remove(TakeStairsAction);
+    const t: RLTile = map.at(p.x, p.y);
+    if (t.ch == ">") {
+      log.add("You descend the staircase.", descended);
+      nextFloor(e);
+    } else {
+      log.add("There are no stairs here.", impossible);
+    }
+  }
+  const doStairs = new RLSystem("doStairs", code_doStairs, [
+    { type: "param", name: "e", typeName: "entity" },
+    { type: "param", name: "p", typeName: "Position" },
+    { type: "constraint", typeName: "TakeStairsAction" },
+    { type: "constraint", typeName: "IsPlayer" },
+    { type: "constraint", typeName: "MyTurn" },
+  ]);
+
   function code_fov(e: RLEntity, p: Position) {
     __lib.getFOV(
       map,
@@ -1763,6 +1811,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     ["generateDungeon", fn_generateDungeon],
     ["addEnemies", fn_addEnemies],
     ["addItems", fn_addItems],
+    ["nextFloor", fn_nextFloor],
     ["newGame", fn_newGame],
     ["mainMenu", fn_mainMenu],
     ["main", fn_main],
@@ -1785,6 +1834,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     ["targeting_onMouse", targeting_onMouse],
     ["doLook", doLook],
     ["doQuit", doQuit],
+    ["doStairs", doStairs],
     ["fov", fov],
     ["drawUnderTile", drawUnderTile],
     ["RedrawMeEntity", RedrawMeEntity],
@@ -1807,6 +1857,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     ["DropAction", DropAction],
     ["LookAction", LookAction],
     ["QuitAction", QuitAction],
+    ["TakeStairsAction", TakeStairsAction],
     ["Player", tmPlayer],
     ["Enemy", tmEnemy],
     ["Orc", tmOrc],

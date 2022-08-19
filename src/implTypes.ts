@@ -84,6 +84,11 @@ export type ConfusedEnemy = {
   duration: number;
   old: RLTag;
 };
+export type Progress = {
+  type: "component";
+  typeName: "Progress";
+  floor: number;
+};
 export type RLComponent =
   | Appearance
   | OldPosition
@@ -97,7 +102,8 @@ export type RLComponent =
   | InventoryActionConfig
   | TargetingActionConfig
   | TargetingItemConfig
-  | ConfusedEnemy;
+  | ConfusedEnemy
+  | Progress;
 export type RLComponentName = RLComponent["typeName"];
 export type RLTagName =
   | "IsBlocker"
@@ -114,4 +120,5 @@ export type RLTagName =
   | "InventoryAction"
   | "DropAction"
   | "LookAction"
-  | "QuitAction";
+  | "QuitAction"
+  | "TakeStairsAction";

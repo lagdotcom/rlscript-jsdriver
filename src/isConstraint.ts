@@ -15,6 +15,7 @@ export default function isConstraint(p: RLSystemParam) {
     "TargetingActionConfig",
     "TargetingItemConfig",
     "ConfusedEnemy",
+    "Progress",
     "IsBlocker",
     "IsPlayer",
     "RecalculateFOV",
@@ -30,5 +31,6 @@ export default function isConstraint(p: RLSystemParam) {
     "DropAction",
     "LookAction",
     "QuitAction",
+    "TakeStairsAction",
   ].includes(p.typeName);
 }

@@ -1,0 +1,1100 @@
+component Appearance
+  name: str
+  ch: char
+  fg: str
+  bg: str
+  layer: int
+end
+
+component OldPosition
+  x: int
+  y: int
+end
+
+component Position
+  x: int
+  y: int
+end
+
+component MoveAction
+  x: int
+  y: int
+end
+
+component MeleeAction
+  target: entity
+end
+
+component Actor
+  energy: int
+end
+
+component Fighter
+  maxHp: int
+  hp: int
+  defence: int
+  power: int
+end
+
+component Consumable
+  activate: fn
+  power: int
+  range: int
+  targeted: bool
+  radius: int
+end
+
+component Inventory
+  items: bag
+end
+
+component InventoryActionConfig
+  callback: fn
+end
+
+component TargetingActionConfig
+  callback: fn
+  radius: int
+end
+
+component TargetingItemConfig
+  key: char
+  item: entity
+end
+
+component ConfusedEnemy
+  duration: int
+  old: tag
+end
+
+component Progress
+  floor: int
+end
+
+tag IsBlocker
+tag IsPlayer
+tag RecalculateFOV
+tag RedrawMe
+tag RedrawUI
+tag MyTurn
+tag HostileEnemy
+tag WaitAction
+tag HistoryAction
+tag Item
+tag PickupAction
+tag InventoryAction
+tag DropAction
+tag LookAction
+tag QuitAction
+tag TakeStairsAction
+
+global impossible: str = "#808080"
+global healed: str = "#00ff00"
+global playerDied: str = "#ff3030"
+global enemyDied: str = "#ffa030"
+global playerAttack: str = "#e0e0e0"
+global enemyAttack: str = "#ffc0c0"
+global welcomeText: str = "#20a0ff"
+global needsTarget: str = "#3fffff"
+global statusApplied: str = "#3fff3f"
+global menuTitle: str = "#ffff3f"
+global descended: str = "#9f3fff"
+
+enum Layer
+  Nothing
+  Corpse
+  Item
+  Enemy
+  Player
+end
+
+template Player
+  IsBlocker
+  IsPlayer
+  Appearance("player", '@', "white", "black", Layer.Player)
+  Fighter(30, 30, 2, 5)
+  Actor(100)
+  Inventory(bag(20))
+  MyTurn
+  RecalculateFOV
+  RedrawUI
+  Progress(1)
+end
+
+template Enemy
+  IsBlocker
+  HostileEnemy
+  Actor(1)
+end
+
+template Orc
+  Enemy
+  Appearance("orc", 'o', "green", "black", Layer.Enemy)
+  Fighter(10, 10, 0, 3)
+end
+
+template Troll
+  Enemy
+  Appearance("troll", 'T', "lime", "black", Layer.Enemy)
+  Fighter(16, 16, 1, 4)
+end
+
+template Corpse
+  RedrawMe
+  Appearance("corpse", '%', "red", "black", Layer.Corpse)
+end
+
+template HealingPotion
+  Item
+  Appearance("healing potion", "!", "purple", "black", Layer.Item)
+  Consumable(healingItem, 4, 0, false, 0)
+end
+
+template LightningScroll
+  Item
+  Appearance("lightning scroll", "~", "cyan", "black", Layer.Item)
+  Consumable(zapItem, 20, 5, false, 0)
+end
+
+template ConfusionScroll
+  Item
+  Appearance("confusion scroll", "~", "#cf3fff", "black", Layer.Item)
+  Consumable(confuseItem, 10, 100, true, 0)
+end
+
+template FireballScroll
+  Item
+  Appearance("fireball scroll", "~", "#ff0000", "black", Layer.Item)
+  Consumable(fireballItem, 12, 100, true, 3)
+end
+
+fn distance(a: xy, b: xy): float
+  local dx: int = a.x - b.x
+  local dy: int = a.y - b.y
+
+  return sqrt(dx * dx + dy * dy)
+end
+
+fn healingItem(pc: entity, item: entity)
+  if not pc.Fighter
+    log.add("You can't use that.", impossible)
+    return false
+  end
+
+  if pc.Fighter.hp >= pc.Fighter.maxHp
+    log.add("You're already healthy.", impossible)
+    return false
+  end
+
+  local oldHp: int = pc.Fighter.hp
+  pc.Fighter.hp = clamp(oldHp + item.Consumable.power, 0, pc.Fighter.maxHp)
+
+  local gained: int = pc.Fighter.hp - oldHp
+  log.add(join(' ', "You healed for", gained, "hp"), healed)
+  pc.add(RedrawUI)
+  return true
+end
+
+fn zapItem(pc: entity, item: entity)
+  local target: entity?
+  local closest: int = item.Consumable.range + 1
+
+  query (t: entity, p: Position, Fighter)
+    if t != pc and visible.at(p.x, p.y)
+      local d: float = distance(xy(pc.Position.x, pc.Position.y), xy(p.x, p.y))
+      if d < closest
+        closest = d
+        target = t
+      end
+    end
+  end
+
+  if target
+    log.add(join(' ', "A lightning bolt strikes", target.Appearance.name, "for", item.Consumable.power, "damage!"))
+    hurt(target, item.Consumable.power)
+    return true
+  end
+
+  log.add("No enemy is close enough.", impossible)
+  return false
+end
+
+fn confuseItem(pc: entity, item: entity, target: xy)
+  if not visible.at(target.x, target.y)
+    log.add("Cannot target there.", impossible)
+    return false
+  end
+
+  local victim: entity? = find(Actor, Position(target.x, target.y))
+  if not victim
+    log.add("No target.", impossible)
+    return false
+  end
+  if victim == pc
+    log.add("Cannot confuse yourself!", impossible)
+    return false
+  end
+
+  local ai: tag? = match victim
+    HostileEnemy = HostileEnemy
+  end
+  if not ai
+    log.add("Cannot be confused.", impossible)
+    return false
+  end
+
+  log.add(join(' ', "The eyes of the", getName(victim), "look vacant."), statusApplied)
+  victim.add(ConfusedEnemy(item.Consumable.power, ai))
+  victim.remove(ai)
+  return true
+end
+
+fn fireballItem(pc: entity, item: entity, target: xy)
+  if not visible.at(target.x, target.y)
+    log.add("Cannot target there.", impossible)
+    return false
+  end
+
+  local damage: int = item.Consumable.power
+  local hit: bool = false
+  query (t: entity, p: Position, Fighter)
+    if distance(target, xy(p.x, p.y)) <= item.Consumable.radius
+      log.add(join(' ', "The", getName(t), "is engulfed in fire, taking", damage, "damage"))
+      hurt(t, damage)
+      hit = true
+    end
+  end
+
+  if not hit
+    log.add("No targets in range.", impossible)
+  end
+  return hit
+end
+
+fn redrawEverything(e: entity)
+  clear()
+  e.add(RecalculateFOV)
+  e.add(RedrawUI)
+  log.dirty = true
+end
+
+tiletype Floor '.' walkable transparent end
+tiletype Wall '#' end
+tiletype DownStairs '>' walkable transparent end
+
+global gameWidth: int = 80
+global gameHeight: int = 50
+global mapWidth: int = gameWidth
+global mapHeight: int = gameHeight - 5
+global hoverX: int = 0
+global hoverY: int = mapHeight
+global hpX: int = 0
+global hpY: int = hoverY + 1
+global hpWidth: int = 20
+global logX: int = hpWidth + 2
+global logY: int = hpY
+
+global maxEnemiesPerRoom: int = 2
+global maxItemsPerRoom: int = 2
+
+persistent map: grid = grid(mapWidth, mapHeight, Wall)
+persistent explored: grid = grid(mapWidth, mapHeight, false)
+persistent visible: grid = grid(mapWidth, mapHeight, false)
+persistent log: messages = messages()
+global targetAt: xy = xy(-1, -1)
+global targetSize: int = 1
+
+fn getKey(k: str): str
+  return match k
+    ;; arrows
+    "ArrowUp"    = "up"
+    "ArrowRight" = "right"
+    "ArrowDown"  = "down"
+    "ArrowLeft"  = "left"
+
+    ;; numpad
+    "Numpad8"    = "up"
+    "Numpad6"    = "right"
+    "Numpad2"    = "down"
+    "Numpad4"    = "left"
+    "Numpad5"    = "wait"
+
+    ;; vi
+    "KeyK"       = "up"
+    "KeyL"       = "right"
+    "KeyJ"       = "down"
+    "KeyH"       = "left"
+    "Period"     = "wait"
+
+    "KeyD"       = "drop"
+    "KeyG"       = "pickup"
+    "KeyI"       = "inventory"
+    "KeyV"       = "history"
+    "Slash"      = "look"
+
+    "Enter"       = "confirm"
+    "NumpadEnter" = "confirm"
+
+    "Escape" = "quit"
+
+    else = k
+  end
+end
+
+fn getNamesAtLocation(x: int, y: int): str
+  local total: str
+
+  query (a: Appearance, p: Position)
+    if p.x == x and p.y == y
+      if total
+        total = join(", ", total, a.name)
+      else
+        total = a.name
+      end
+    end
+  end
+
+  return total
+end
+
+fn showNamesAt(x: int, y: int)
+  draw(hoverX, hoverY, repeat(' ', gameWidth), "white", "black")
+
+  if visible.at(x, y)
+    local names: str = getNamesAtLocation(x, y)
+    if names
+      draw(hoverX, hoverY, names, "white")
+    end
+  end
+end
+
+system main_onMouse(m: MouseEvent)
+  showNamesAt(m.x, m.y)
+end
+
+system main_onKey(e: entity, IsPlayer, k: KeyEvent)
+  e.add(match getKey(k.key)
+    "up"        = MoveAction( 0, -1)
+    "right"     = MoveAction( 1,  0)
+    "down"      = MoveAction( 0,  1)
+    "left"      = MoveAction(-1,  0)
+
+    "wait"      = WaitAction
+    "history"   = HistoryAction
+    "pickup"    = PickupAction
+    "inventory" = InventoryAction
+    "drop"      = DropAction
+    "look"      = LookAction
+    "confirm"   = TakeStairsAction
+
+    "quit"      = QuitAction
+  end)
+end
+
+system dead_onKey(e: entity, IsPlayer, k: KeyEvent)
+  if k.key == "Escape"
+    mainMenu()
+  end
+end
+
+fn getBlockingMap(): grid
+  local blocked: grid = grid(mapWidth, mapHeight, false)
+  query (p: Position, IsBlocker)
+    blocked.put(p.x, p.y, true)
+  end
+
+  return blocked
+end
+
+fn getRandomMove(): MoveAction
+  return match randInt(1, 4)
+    1=MoveAction(0, -1)
+    2=MoveAction(1, 0)
+    3=MoveAction(0, 1)
+    4=MoveAction(-1, 0)
+  end
+end
+
+system confusedAI(e: entity, a: Appearance, c: ConfusedEnemy, MyTurn)
+  if c.duration <= 0
+    log.add(join(' ', "The", a.name, "is no longer confused."))
+    e.remove(c)
+    e.add(c.old)
+    exit
+  end
+
+  c.duration -= 1
+  e.add(getRandomMove())
+end
+
+system hostileAI(e: entity, p: Position, HostileEnemy, MyTurn)
+  if visible.at(p.x, p.y)
+    query (target: entity, tp: Position, IsPlayer)
+      local dx: int = tp.x - p.x
+      local dy: int = tp.y - p.y
+      local distance: int = abs(dx) + abs(dy)
+
+      if distance < 2
+        e.add(MeleeAction(target))
+        exit
+      end
+
+      local step: xy? = getNextMove(map, getBlockingMap(), xy(p.x, p.y), xy(tp.x, tp.y))
+      if step
+        e.add(MoveAction(step.x - p.x, step.y - p.y))
+        exit
+      end
+    end
+  end
+
+  e.add(WaitAction)
+end
+
+system doMove(e: entity, p: Position, m: MoveAction, MyTurn)
+  local x: int = p.x + m.x
+  local y: int = p.y + m.y
+
+  e.remove(m)
+
+  local t: tile? = map.at(x, y)
+  if t and t.walkable
+    local b: entity? = find(IsBlocker, Position(x, y))
+    if b
+      if b.Fighter
+        e.add(MeleeAction(b))
+      else
+        log.add("That way is blocked.", impossible)
+      end
+      exit
+    end
+
+    useTurn(e)
+    e.add(OldPosition(p.x, p.y))
+    p.x = x
+    p.y = y
+
+    if e.IsPlayer
+      e.add(RecalculateFOV)
+    end
+  else
+    if e.ConfusedEnemy
+      if visible.at(p.x, p.y)
+        log.add(join(' ', getName(e), "thumps into a wall."))
+      end
+
+      useTurn(e)
+      exit
+    end
+
+    log.add("That way is blocked.", impossible)
+  end
+end
+
+fn hurt(e: entity, damage: int)
+  e.Fighter.hp -= damage
+  if e.Fighter.hp < 1
+    local colour: str = match e IsPlayer=playerDied else=enemyDied end
+
+    if e.IsPlayer
+      log.add("You died! Press Escape to leave.", colour)
+    else
+      log.add(join(' ', e.Appearance.name, "is dead!"), colour)
+    end
+
+    local corpse: entity = spawn(Corpse, Position(e.Position.x, e.Position.y))
+    corpse.Appearance.name = join(' ', "corpse of", e.Appearance.name)
+
+    if e.IsPlayer
+      e.add(RedrawUI)
+      e.remove(Actor)
+      hostileAI.disable()
+      pushKeyHandler(dead_onKey)
+    else
+      remove(e)
+    end
+  else
+    if e.IsPlayer
+      e.add(RedrawUI)
+    end
+  end
+end
+
+system doMelee(e: entity, m: MeleeAction, a: Appearance, f: Fighter, MyTurn)
+  local target: entity = m.target
+  e.remove(m)
+  useTurn(e)
+
+  local attack: str = join(' ', a.name, "attacks", target.Appearance.name)
+  local damage: int = f.power - target.Fighter.defence
+  local colour: str = match e IsPlayer=playerAttack else=enemyAttack end
+  if damage > 0
+    log.add(join(' ', attack, "for", damage, "hit points"), colour)
+    hurt(target, damage)
+  else
+    log.add(join(' ', attack, "but does no damage"), colour)
+  end
+end
+
+system doWait(e: entity, WaitAction, MyTurn)
+  e.remove(WaitAction)
+  useTurn(e)
+end
+
+global historyOffset: int = 0
+fn showHistoryView()
+  drawLog(log, 0, 0, gameWidth, gameHeight, historyOffset)
+end
+
+system history_onMouse(m: MouseEvent) end
+system history_onKey(e: entity, IsPlayer, k: KeyEvent)
+  if k.key == "KeyV"
+    ;; forgive a long keypress
+    exit
+  end
+
+  local change: int = match getKey(k.key)
+    "up"        = -1
+    "down"      = 1
+    "PageUp"    = -10
+    "PageDown"  = 10
+    "Home"      = -historyOffset - 1
+    "End"       = log.length - historyOffset
+    else = 0
+  end
+
+  if not change
+    redrawEverything(e)
+    popKeyHandler()
+    popMouseHandler()
+    exit
+  end
+
+  historyOffset = clamp(historyOffset + change, 0, log.length - 1)
+  showHistoryView()
+end
+
+system doHistory(e: entity, HistoryAction, MyTurn)
+  e.remove(HistoryAction)
+
+  pushKeyHandler(history_onKey)
+  pushMouseHandler(history_onMouse)
+  historyOffset = 0
+  clear()   ;; TODO fix this so it clears background colours too!
+  clearHPBar()
+  showHistoryView()
+end
+
+system doPickup(e: entity, p: Position, v: Inventory, PickupAction, MyTurn)
+  e.remove(PickupAction)
+
+  local matches: int = 0
+  local got: int = 0
+  local failed: bool = false
+
+  query (item: entity, ia: Appearance, ip: Position, Item)
+    if ip.x == p.x and ip.y == p.y
+      matches += 1
+
+      local key: char? = v.items.add(item)
+      if key
+        got += 1
+        log.add(join("", "You got (", key, ") ", ia.name))
+        item.remove(ip)
+      else
+        failed = true
+      end
+    end
+  end
+
+  if got
+    useTurn(e)
+  end
+
+  if failed
+    log.add("Can't carry any more.", impossible)
+  else
+    if not matches
+      log.add("Nothing here.", impossible)
+    end
+  end
+end
+
+fn getName(e: entity): str
+  if e.Appearance
+    return e.Appearance.name
+  end
+
+  return "???"
+end
+
+fn openInventory(e: entity, v: Inventory, callback: fn, title: str)
+  if not v.items.count
+    log.add("You're not carrying anything.", impossible)
+    exit
+  end
+
+  e.add(InventoryActionConfig(callback))
+  pushKeyHandler(inventory_onKey)
+  ;; TODO mouse handler too?
+
+  drawBag(v.items, title, getName, "white", "silver", "grey", "black")
+end
+
+fn tcUseItem(e: entity, target: xy)
+  local config: TargetingItemConfig = e.TargetingItemConfig
+  if config
+    e.remove(config)
+
+    local item: entity = config.item
+    if item.Consumable.activate(e, item, target)
+      if e.Inventory
+        e.Inventory.items.remove(config.key)
+      end
+
+      useTurn(e)
+    end
+  end
+end
+
+fn icUse(e: entity, key: char, item: entity)
+  if not item.Consumable
+    log.add("You cannot use that.", impossible)
+    exit
+  end
+
+  if item.Consumable.targeted
+    log.add("Select a target.", needsTarget)
+    e.add(TargetingItemConfig(key, item))
+    startTargeting(e, tcUseItem, item.Consumable.radius)
+    exit
+  end
+
+  if item.Consumable.activate(e, item)
+    if e.Inventory
+      e.Inventory.items.remove(key)
+    end
+
+    useTurn(e)
+  end
+end
+
+system doInventory(e: entity, v: Inventory, InventoryAction, MyTurn)
+  e.remove(InventoryAction)
+  openInventory(e, v, icUse, "Use what?")
+end
+
+fn icDrop(e: entity, key: char, item: entity)
+  if e.Inventory and e.Position
+    e.Inventory.items.remove(key)
+    item.add(Position(e.Position.x, e.Position.y))
+
+    useTurn(e)
+    if item.Appearance
+      log.add(join(' ', "You drop the", item.Appearance.name))
+    end
+  end
+end
+
+system doDrop(e: entity, v: Inventory, DropAction, MyTurn)
+  e.remove(DropAction)
+  openInventory(e, v, icDrop, "Drop what?")
+end
+
+system inventory_onKey(e: entity, v: Inventory, config: InventoryActionConfig, k: KeyEvent)
+  local closing: bool = false
+  local firing: bool = false
+
+  if k.key == "Escape"
+    closing = true
+  end
+
+  if v.items.has(k.char)
+    firing = true
+    closing = true
+  end
+
+  if closing
+    e.remove(config)
+    popKeyHandler()
+    redrawEverything(e)
+  end
+
+  if firing
+    config.callback(e, k.char, v.items.get(k.char))
+  end
+end
+
+fn drawTilesAt(sx: int, sy: int, width: int, height: int)
+  for x = sx to sx + width
+    for y = sy to sy + height
+      drawTileAt(x, y)
+    end
+  end
+end
+
+fn setTargetTo(x: int, y: int, radius: int)
+  local oldX: int = targetAt.x
+  local oldY: int = targetAt.y
+  targetAt = xy(x, y)
+  targetSize = radius
+
+  if radius > 0
+    local size: int = radius * 2 + 1
+    drawTilesAt(oldX - radius, oldY - radius, size, size)
+    drawTilesAt(x - radius, y - radius, size, size)
+  else
+    drawTileAt(oldX, oldY)
+    drawTileAt(x, y)
+  end
+
+  showNamesAt(x, y)
+end
+
+system targeting_onKey(e: entity, config: TargetingActionConfig, k: KeyEvent)
+  local mul: int = 1
+  local key: str = getKey(k.key)
+  local move: xy? = match key
+    "up"    = xy(0, -1)
+    "right" = xy(1, 0)
+    "down"  = xy(0, 1)
+    "left"  = xy(-1, 0)
+  end
+
+  if move
+    if k.shift mul *= 5 end
+    if k.ctrl  mul *= 10 end
+    if k.alt   mul *= 20 end
+
+    local x: int = targetAt.x + move.x * mul
+    local y: int = targetAt.y + move.y * mul
+    setTargetTo(clamp(x, 0, mapWidth - 1), clamp(y, 0, mapHeight - 1), config.radius)
+    exit
+  end
+
+  if key == "confirm"
+    config.callback(e, targetAt)
+    stopTargeting(e)
+  end
+
+  if key == "quit"
+    stopTargeting(e)
+  end
+end
+
+system targeting_onMouse(e: entity, config: TargetingActionConfig, m: MouseEvent)
+  setTargetTo(m.x, m.y, config.radius)
+
+  if m.button == 1
+    config.callback(e, targetAt)
+    stopTargeting(e)
+  end
+end
+
+fn startTargeting(e: entity, callback: fn, radius: int)
+  e.add(TargetingActionConfig(callback, radius))
+
+  if e.Position
+    setTargetTo(e.Position.x, e.Position.y, radius)
+  end
+
+  pushKeyHandler(targeting_onKey)
+  pushMouseHandler(targeting_onMouse)
+end
+
+fn stopTargeting(e: entity)
+  setTargetTo(-1, -1, 0)
+
+  popKeyHandler()
+  popMouseHandler()
+
+  redrawEverything(e)
+end
+
+system doLook(e: entity, LookAction, MyTurn)
+  e.remove(LookAction)
+  startTargeting(e, stopTargeting, 0)
+end
+
+system doQuit(e: entity, QuitAction, IsPlayer, MyTurn)
+  e.remove(QuitAction)
+
+  redrawEverything(e)
+  saveGame()
+  mainMenu()
+end
+
+system doStairs(e: entity, p: Position, TakeStairsAction, IsPlayer, MyTurn)
+  e.remove(TakeStairsAction)
+
+  local t: tile = map.at(p.x, p.y)
+  if t.ch == ">"
+    log.add("You descend the staircase.", descended)
+    nextFloor(e)
+  else
+    log.add("There are no stairs here.", impossible)
+  end
+end
+
+system fov(e: entity, p: Position, RecalculateFOV)
+  getFOV(map, p.x, p.y, 5, visible, explored)
+  e.remove(RecalculateFOV)
+
+  ;; TODO this is kinda inefficient
+  for x = 0 to mapWidth-1
+    for y = 0 to mapHeight-1
+      drawTileAt(x, y)
+    end
+  end
+end
+
+fn useTurn(e: entity)
+  e.Actor.energy -= 100
+  e.remove(MyTurn)
+end
+
+fn drawTileAt(x: int, y: int)
+  local highlight: bool = distance(targetAt, xy(x, y)) <= targetSize
+  local ch: char = ' '
+  local fg: str = "white"
+  local bg: str = "black"
+  local layer: Layer = Layer.Nothing
+
+  if visible.at(x, y)
+    query (a: Appearance, p: Position)
+      if p.x == x and p.y == y and a.layer > layer
+        ch = a.ch
+        fg = a.fg
+        bg = a.bg
+        layer = a.layer
+      end
+    end
+  end
+
+  if layer == Layer.Nothing and explored.at(x, y)
+    local t: tile? = map.at(x, y)
+    if t
+      ch = t.ch
+      if visible.at(x, y)
+        fg = "silver"
+      else
+        fg = "#444"
+      end
+    end
+  end
+
+  if highlight bg = "#808000" end
+  draw(x, y, ch, fg, bg)
+end
+
+fn drawEntity(e: entity)
+  if e.Position and e.Appearance and visible.at(e.Position.x, e.Position.y)
+    draw(e.Position.x, e.Position.y, e.Appearance.ch, e.Appearance.fg, e.Appearance.bg)
+  end
+end
+
+system drawUnderTile(e: entity, o: OldPosition)
+  drawTileAt(o.x, o.y)
+  e.remove(o)
+  e.add(RedrawMe)
+end
+
+system RedrawMeEntity(e: entity, p: Position, RedrawMe)
+  drawTileAt(p.x, p.y)
+  e.remove(RedrawMe)
+end
+
+fn drawBar(x: int, y: int, value: int, maxValue: int, maxWidth: int, emptyColour: str, filledColour: str)
+  local barWidth: int = floor(value / maxValue * maxWidth)
+
+  draw(x, y, repeat(' ', maxWidth), "white", emptyColour)
+  if barWidth > 0
+    draw(x, y, repeat(' ', barWidth), "white", filledColour)
+  end
+end
+
+fn clearHPBar()
+  draw(hpX, hpY, repeat(' ', hpWidth), "white", "black")
+end
+
+system drawUI(e: entity, f: Fighter, RedrawUI)
+  e.remove(RedrawUI)
+
+  drawBar(hpX, hpY, f.hp, f.maxHp, hpWidth, "#401010", "#006000")
+  draw(hpX+1, hpY, join("", "HP: ", f.hp, "/", f.maxHp))
+end
+
+system nextTurn()
+  local highest: int = -99999
+  query (ac: Actor)
+    if ac.energy > highest
+      highest = ac.energy
+    end
+  end
+
+  if highest >= 100
+    return false
+  end
+  local elapse: int = 100 - highest
+  query (e: entity, ac: Actor)
+    ac.energy += elapse
+    if ac.energy >= 100
+      e.add(MyTurn)
+    end
+  end
+end
+
+system showLog()
+  if log.dirty
+    drawLog(log, logX, logY, gameWidth - logX, gameHeight - logY)
+  else
+    return false
+  end
+end
+
+fn randomRoom(): rect
+  local w: int = randInt(6, 14)
+  local h: int = randInt(6, 14)
+  local x: int = randInt(1, mapWidth - w - 1)
+  local y: int = randInt(1, mapHeight - h - 1)
+  return rect(x, y, w, h)
+end
+
+fn randomCorridor(x1: int, y1: int, x2: int, y2: int)
+  local cx: int = x2
+  local cy: int = y1
+
+  if randInt(0, 1)
+    cx = x1
+    cy = y2
+  end
+
+  map.line(x1, y1, cx, cy, Floor)
+  map.line(cx, cy, x2, y2, Floor)
+end
+
+fn generateDungeon(): xy
+  map.clear()
+  explored.clear()
+  visible.clear()
+
+  local prev: rect?
+  local room: rect
+  local taken: grid = grid(mapWidth, mapHeight, false)
+  local start: xy
+  local stairs: xy
+
+  for r = 1 to 30
+    room = randomRoom()
+    if not map.findInRegion(room, Floor)
+      map.rect(room.x + 1, room.y + 1, room.x2 - 1, room.y2 - 1, Floor)
+      if prev
+        randomCorridor(prev.cx, prev.cy, room.cx, room.cy)
+        addEnemies(room, taken)
+        addItems(room, taken)
+      else
+        start = room.centre
+      end
+
+      stairs = room.centre
+      prev = room
+    end
+  end
+
+  map.put(stairs.x, stairs.y, DownStairs)
+  hostileAI.enable()
+  return start
+end
+
+fn addEnemies(r: rect, taken: grid)
+  for z = 1 to randInt(0, maxEnemiesPerRoom)
+    local x: int = randInt(r.x + 1, r.x2 - 1)
+    local y: int = randInt(r.y + 1, r.y2 - 1)
+
+    if not taken.at(x, y)
+      taken.put(x, y, true)
+      spawn(match randInt(1, 100)
+        <=80 = Orc
+        else = Troll
+      end, Position(x, y))
+    end
+  end
+end
+
+fn addItems(r: rect, taken: grid)
+  for z = 1 to randInt(0, maxItemsPerRoom)
+    local x: int = randInt(r.x + 1, r.x2 - 1)
+    local y: int = randInt(r.y + 1, r.y2 - 1)
+
+    if not taken.at(x, y)
+      taken.put(x, y, true)
+      spawn(match randInt(1, 100)
+        <=70 = HealingPotion
+        <=80 = FireballScroll
+        <=90 = ConfusionScroll
+        else = LightningScroll
+      end, Position(x, y))
+    end
+  end
+end
+
+fn nextFloor(player: entity)
+  player.Progress.floor += 1
+  local start: xy = generateDungeon()
+
+  player.Position.x = start.x
+  player.Position.y = start.y
+
+  player.add(RecalculateFOV)
+  player.add(RedrawUI)
+end
+
+fn newGame()
+  local player: entity = spawn(Player)
+  local start: xy = generateDungeon()
+  player.add(Position(start.x, start.y))
+
+  log.add("Welcome to the RLscript dungeon!", welcomeText)
+  pushKeyHandler(main_onKey)
+  pushMouseHandler(main_onMouse)
+  nextTurn.enable()
+end
+
+system menu_onKey(k: KeyEvent)
+  if k.key == "KeyN"
+    newGame()
+    exit
+  end
+
+  if k.key == "KeyC"
+    if canLoadGame()
+      clear()
+      loadGame()
+    end
+  end
+end
+
+fn mainMenu()
+  query (e: entity)
+    remove(e)
+  end
+  log.clear()
+
+  clearHandlers()
+  pushKeyHandler(menu_onKey)
+  nextTurn.disable()
+
+  clear()
+  clearHPBar()
+  drawCentred(gameWidth / 2, gameHeight / 2 - 4, "An Improbable Roguelike", menuTitle)
+  drawCentred(gameWidth / 2, gameHeight - 2, "by Lag.Com", menuTitle)
+
+  drawCentred(gameWidth / 2, gameHeight / 2 - 2, "[N] Play a new game", "white")
+  if canLoadGame()
+    drawCentred(gameWidth / 2, gameHeight / 2 - 1, "[C] Continue last game", "white")
+  end
+end
+
+fn main()
+  setSize(gameWidth, gameHeight)
+  mainMenu()
+end

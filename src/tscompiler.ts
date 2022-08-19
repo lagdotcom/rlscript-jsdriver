@@ -149,6 +149,7 @@ const systemType = asType("system");
 const tagType = asType("tag");
 const templateType = asType("template");
 const tileType = asType("tile");
+const xyType = asType("xy");
 
 const builtinTypes = new Set<string>([
   "bag",
@@ -329,6 +330,7 @@ class RectScope implements TSScope {
       ["height", intType],
       ["cx", intType],
       ["cy", intType],
+      ["centre", xyType],
       ["x2", intType],
       ["y2", intType],
       ["intersects", builtinType],

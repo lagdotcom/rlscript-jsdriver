@@ -10,6 +10,7 @@ import type {
   MoveAction,
   OldPosition,
   Position,
+  Progress,
   RLComponent,
   RLComponentName,
   RLTagName,
@@ -49,6 +50,7 @@ export default class RLEntity {
   TargetingActionConfig?: TargetingActionConfig;
   TargetingItemConfig?: TargetingItemConfig;
   ConfusedEnemy?: ConfusedEnemy;
+  Progress?: Progress;
   IsBlocker: boolean;
   IsPlayer: boolean;
   RecalculateFOV: boolean;
@@ -64,6 +66,7 @@ export default class RLEntity {
   DropAction: boolean;
   LookAction: boolean;
   QuitAction: boolean;
+  TakeStairsAction: boolean;
   constructor() {
     this.type = "entity";
     this.id = nanoid();
@@ -84,6 +87,7 @@ export default class RLEntity {
     this.DropAction = false;
     this.LookAction = false;
     this.QuitAction = false;
+    this.TakeStairsAction = false;
   }
 
   toString() {

@@ -3050,6 +3050,23 @@ void main() {
     (data, m) => m.deserialize(data)
   );
 
+  // src/RLXY.ts
+  var _RLXY = class {
+    constructor(x, y) {
+      this.x = x;
+      this.y = y;
+      this.type = "xy";
+    }
+    equals(o) {
+      return this.x === o.x && this.y === o.y;
+    }
+    plus(o) {
+      return new _RLXY(this.x + o.x, this.y + o.y);
+    }
+  };
+  var RLXY = _RLXY;
+  RLXY.type = "xy";
+
   // src/RLRect.ts
   var RLRect = class {
     constructor(x, y, width, height) {
@@ -3070,6 +3087,9 @@ void main() {
     }
     get cy() {
       return Math.floor(this.y + this.height / 2);
+    }
+    get centre() {
+      return new RLXY(this.cx, this.cy);
     }
     intersects(o) {
       return this.x <= o.x2 && this.x2 >= o.x && this.y <= o.y2 && this.y2 >= o.y;
@@ -3093,6 +3113,7 @@ void main() {
       "TargetingActionConfig",
       "TargetingItemConfig",
       "ConfusedEnemy",
+      "Progress",
       "IsBlocker",
       "IsPlayer",
       "RecalculateFOV",
@@ -3107,7 +3128,8 @@ void main() {
       "InventoryAction",
       "DropAction",
       "LookAction",
-      "QuitAction"
+      "QuitAction",
+      "TakeStairsAction"
     ].includes(p.typeName);
   }
 
@@ -3169,23 +3191,6 @@ void main() {
     (ch) => RLTile.registry[ch]
   );
 
-  // src/RLXY.ts
-  var _RLXY = class {
-    constructor(x, y) {
-      this.x = x;
-      this.y = y;
-      this.type = "xy";
-    }
-    equals(o) {
-      return this.x === o.x && this.y === o.y;
-    }
-    plus(o) {
-      return new _RLXY(this.x + o.x, this.y + o.y);
-    }
-  };
-  var RLXY = _RLXY;
-  RLXY.type = "xy";
-
   // src/impl.ts
   function implementation(__lib) {
     let Layer;
@@ -3211,6 +3216,7 @@ void main() {
     const DropAction = new RLTag("DropAction");
     const LookAction = new RLTag("LookAction");
     const QuitAction = new RLTag("QuitAction");
+    const TakeStairsAction = new RLTag("TakeStairsAction");
     const mkAppearance = (name, ch, fg, bg, layer) => ({
       type: "component",
       typeName: "Appearance",
@@ -3293,6 +3299,11 @@ void main() {
       duration,
       old
     });
+    const mkProgress = (floor2) => ({
+      type: "component",
+      typeName: "Progress",
+      floor: floor2
+    });
     const tmPlayer = {
       type: "template",
       name: "Player",
@@ -3305,7 +3316,8 @@ void main() {
         mkInventory(new RLBag(20)),
         MyTurn,
         RecalculateFOV,
-        RedrawUI
+        RedrawUI,
+        mkProgress(1)
       ]
     };
     const tmEnemy = {
@@ -3377,6 +3389,7 @@ void main() {
     };
     const Floor = new RLTile(".", true, true);
     const Wall = new RLTile("#", false, false);
+    const DownStairs = new RLTile(">", true, true);
     const impossible = "#808080";
     const healed = "#00ff00";
     const playerDied = "#ff3030";
@@ -3387,6 +3400,7 @@ void main() {
     const needsTarget = "#3fffff";
     const statusApplied = "#3fff3f";
     const menuTitle = "#ffff3f";
+    const descended = "#9f3fff";
     const gameWidth = 80;
     const gameHeight = 50;
     const mapWidth = gameWidth;
@@ -4088,6 +4102,8 @@ void main() {
       let prev;
       let room;
       const taken = new RLGrid(mapWidth, mapHeight, false);
+      let start;
+      let stairs;
       for (let r = 1; r <= 30; r++) {
         room = randomRoom();
         if (!map.findInRegion(room, Floor)) {
@@ -4097,13 +4113,15 @@ void main() {
             addEnemies(room, taken);
             addItems(room, taken);
           } else {
-            __lib.spawn(tmPlayer, mkPosition(room.cx, room.cy));
+            start = room.centre;
           }
+          stairs = room.centre;
           prev = room;
         }
       }
+      map.put(stairs.x, stairs.y, DownStairs);
       hostileAI.enable();
-      log.add("Welcome to the RLscript dungeon!", welcomeText);
+      return start;
     }
     const fn_generateDungeon = new RLFn("generateDungeon", generateDungeon, []);
     function addEnemies(r, taken) {
@@ -4182,8 +4200,22 @@ void main() {
       { type: "param", name: "r", typeName: "rect" },
       { type: "param", name: "taken", typeName: "grid" }
     ]);
+    function nextFloor(player) {
+      player.Progress.floor += 1;
+      const start = generateDungeon();
+      player.Position.x = start.x;
+      player.Position.y = start.y;
+      player.add(RecalculateFOV);
+      player.add(RedrawUI);
+    }
+    const fn_nextFloor = new RLFn("nextFloor", nextFloor, [
+      { type: "param", name: "player", typeName: "entity" }
+    ]);
     function newGame() {
-      generateDungeon();
+      const player = __lib.spawn(tmPlayer);
+      const start = generateDungeon();
+      player.add(mkPosition(start.x, start.y));
+      log.add("Welcome to the RLscript dungeon!", welcomeText);
       __lib.pushKeyHandler(main_onKey);
       __lib.pushMouseHandler(main_onMouse);
       nextTurn.enable();
@@ -4264,6 +4296,8 @@ void main() {
             return DropAction;
           else if (__match === "look")
             return LookAction;
+          else if (__match === "confirm")
+            return TakeStairsAction;
           else if (__match === "quit")
             return QuitAction;
         })(getKey(k.key))
@@ -4693,6 +4727,23 @@ void main() {
       { type: "constraint", typeName: "IsPlayer" },
       { type: "constraint", typeName: "MyTurn" }
     ]);
+    function code_doStairs(e, p) {
+      e.remove(TakeStairsAction);
+      const t = map.at(p.x, p.y);
+      if (t.ch == ">") {
+        log.add("You descend the staircase.", descended);
+        nextFloor(e);
+      } else {
+        log.add("There are no stairs here.", impossible);
+      }
+    }
+    const doStairs = new RLSystem("doStairs", code_doStairs, [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "param", name: "p", typeName: "Position" },
+      { type: "constraint", typeName: "TakeStairsAction" },
+      { type: "constraint", typeName: "IsPlayer" },
+      { type: "constraint", typeName: "MyTurn" }
+    ]);
     function code_fov(e, p) {
       __lib.getFOV(
         map,
@@ -4838,6 +4889,7 @@ void main() {
       ["generateDungeon", fn_generateDungeon],
       ["addEnemies", fn_addEnemies],
       ["addItems", fn_addItems],
+      ["nextFloor", fn_nextFloor],
       ["newGame", fn_newGame],
       ["mainMenu", fn_mainMenu],
       ["main", fn_main],
@@ -4860,6 +4912,7 @@ void main() {
       ["targeting_onMouse", targeting_onMouse],
       ["doLook", doLook],
       ["doQuit", doQuit],
+      ["doStairs", doStairs],
       ["fov", fov],
       ["drawUnderTile", drawUnderTile],
       ["RedrawMeEntity", RedrawMeEntity],
@@ -4882,6 +4935,7 @@ void main() {
       ["DropAction", DropAction],
       ["LookAction", LookAction],
       ["QuitAction", QuitAction],
+      ["TakeStairsAction", TakeStairsAction],
       ["Player", tmPlayer],
       ["Enemy", tmEnemy],
       ["Orc", tmOrc],
@@ -5024,6 +5078,7 @@ void main() {
       this.DropAction = false;
       this.LookAction = false;
       this.QuitAction = false;
+      this.TakeStairsAction = false;
     }
     toString() {
       return `#${this.id} (${Array.from(this.templates.values()).join(" ")})`;
