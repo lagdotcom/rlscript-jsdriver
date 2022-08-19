@@ -1668,7 +1668,7 @@ void main() {
         while (this.running) {
           activated.clear();
           let fired = false;
-          for (const sys of this.rl.systems.filter((s) => s.enabled)) {
+          for (const sys of this.rl.systems) {
             if (this.trySystem(sys)) {
               activated.add(sys.name);
               fired = true;
@@ -1708,6 +1708,8 @@ void main() {
       }
     }
     trySystem(sys, ...args) {
+      if (!sys.enabled)
+        return;
       for (const e of sys.externals) {
         if (typeof e.default !== "undefined")
           continue;
@@ -4181,11 +4183,6 @@ void main() {
       { type: "param", name: "taken", typeName: "grid" }
     ]);
     function newGame() {
-      for (const e of new RLQuery(RL.instance, []).get()) {
-        const {} = e;
-        __lib.remove(e);
-      }
-      log.clear();
       generateDungeon();
       __lib.pushKeyHandler(main_onKey);
       __lib.pushMouseHandler(main_onMouse);
@@ -4193,6 +4190,10 @@ void main() {
     }
     const fn_newGame = new RLFn("newGame", newGame, []);
     function mainMenu() {
+      for (const e of new RLQuery(RL.instance, []).get()) {
+        __lib.remove(e);
+      }
+      log.clear();
       __lib.clearHandlers();
       __lib.pushKeyHandler(menu_onKey);
       nextTurn.disable();
@@ -4216,12 +4217,14 @@ void main() {
         { type: "str", value: "[N] Play a new game" },
         { type: "str", value: "white" }
       );
-      __lib.drawCentred(
-        { type: "int", value: gameWidth / 2 },
-        { type: "int", value: gameHeight / 2 - 1 },
-        { type: "str", value: "[C] Continue last game" },
-        { type: "str", value: "white" }
-      );
+      if (__lib.canLoadGame()) {
+        __lib.drawCentred(
+          { type: "int", value: gameWidth / 2 },
+          { type: "int", value: gameHeight / 2 - 1 },
+          { type: "str", value: "[C] Continue last game" },
+          { type: "str", value: "white" }
+        );
+      }
     }
     const fn_mainMenu = new RLFn("mainMenu", mainMenu, []);
     function main() {
@@ -4682,7 +4685,7 @@ void main() {
       e.remove(QuitAction);
       redrawEverything(e);
       __lib.saveGame();
-      log.add("Game saved.");
+      mainMenu();
     }
     const doQuit = new RLSystem("doQuit", code_doQuit, [
       { type: "param", name: "e", typeName: "entity" },
@@ -4796,8 +4799,6 @@ void main() {
         if (__lib.canLoadGame()) {
           __lib.clear();
           __lib.loadGame();
-        } else {
-          __lib.debug({ type: "str", value: "no saved game?" });
         }
       }
     }

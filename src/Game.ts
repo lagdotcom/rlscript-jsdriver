@@ -58,7 +58,7 @@ export default class Game {
       activated.clear();
       let fired = false;
 
-      for (const sys of this.rl.systems.filter((s) => s.enabled)) {
+      for (const sys of this.rl.systems) {
         if (this.trySystem(sys)) {
           activated.add(sys.name);
           fired = true;
@@ -106,6 +106,8 @@ export default class Game {
   }
 
   trySystem(sys: RLSystem, ...args: RLArg[]) {
+    if (!sys.enabled) return;
+
     for (const e of sys.externals) {
       if (typeof e.default !== "undefined") continue;
       const a = args.find(

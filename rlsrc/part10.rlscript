@@ -811,7 +811,7 @@ system doQuit(e: entity, QuitAction, IsPlayer, MyTurn)
 
   redrawEverything(e)
   saveGame()
-  log.add("Game saved.")
+  mainMenu()
 end
 
 system fov(e: entity, p: Position, RecalculateFOV)
@@ -1013,11 +1013,6 @@ fn addItems(r: rect, taken: grid)
 end
 
 fn newGame()
-  query (e: entity)
-    remove(e)
-  end
-
-  log.clear()
   generateDungeon()
   pushKeyHandler(main_onKey)
   pushMouseHandler(main_onMouse)
@@ -1034,14 +1029,16 @@ system menu_onKey(k: KeyEvent)
     if canLoadGame()
       clear()
       loadGame()
-    else
-      ;; TODO
-      debug("no saved game?")
     end
   end
 end
 
 fn mainMenu()
+  query (e: entity)
+    remove(e)
+  end
+  log.clear()
+
   clearHandlers()
   pushKeyHandler(menu_onKey)
   nextTurn.disable()
@@ -1052,7 +1049,9 @@ fn mainMenu()
   drawCentred(gameWidth / 2, gameHeight - 2, "by Lag.Com", menuTitle)
 
   drawCentred(gameWidth / 2, gameHeight / 2 - 2, "[N] Play a new game", "white")
-  drawCentred(gameWidth / 2, gameHeight / 2 - 1, "[C] Continue last game", "white")
+  if canLoadGame()
+    drawCentred(gameWidth / 2, gameHeight / 2 - 1, "[C] Continue last game", "white")
+  end
 end
 
 fn main()

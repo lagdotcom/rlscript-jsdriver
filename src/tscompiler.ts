@@ -1050,13 +1050,15 @@ import RLTag from "./RLTag";
   }
 
   getQueryDestructure(q: ASTQuery) {
-    const vars: string[] = [];
+    const fields: string[] = [];
     for (const p of q.params) {
       if (p._ === "field" && p.type.value !== "entity")
-        vars.push(`${p.type.value}: ${p.name}`);
+        fields.push(`${p.type.value}: ${p.name}`);
     }
 
-    return `const { ${vars.join(", ")} } = ${this.getQueryEntityVar(q)};`;
+    if (!fields.length) return "";
+
+    return `const { ${fields.join(", ")} } = ${this.getQueryEntityVar(q)};`;
   }
 
   getQueryTypes(q: ASTQuery) {
