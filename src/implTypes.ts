@@ -46,6 +46,7 @@ export type Fighter = {
   hp: number;
   defence: number;
   power: number;
+  xp: number;
 };
 export type Consumable = {
   type: "component";
@@ -88,6 +89,9 @@ export type Progress = {
   type: "component";
   typeName: "Progress";
   floor: number;
+  level: number;
+  formulaBase: number;
+  formulaFactor: number;
 };
 export type RLComponent =
   | Appearance
@@ -121,4 +125,5 @@ export type RLTagName =
   | "DropAction"
   | "LookAction"
   | "QuitAction"
-  | "TakeStairsAction";
+  | "TakeStairsAction"
+  | "GainingLevel";

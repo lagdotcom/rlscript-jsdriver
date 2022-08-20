@@ -76,6 +76,14 @@ const library = [
   f("canLoadGame", [], p("exists", "bool")),
   f("clear", []),
   f("clearHandlers", []),
+  f("clearRect", [
+    p("x", "int"),
+    p("y", "int"),
+    p("width", "int"),
+    p("height", "int"),
+    o("fg", "str"),
+    o("bg", "str"),
+  ]),
   f(
     "clamp",
     [

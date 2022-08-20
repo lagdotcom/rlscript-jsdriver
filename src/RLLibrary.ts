@@ -27,6 +27,14 @@ type RLLibrary = {
   ): number;
   clear(): void;
   clearHandlers(): void;
+  clearRect(
+    x: RLInt,
+    y: RLInt,
+    width: RLInt,
+    height: RLInt,
+    fg?: RLStr,
+    bg?: RLStr
+  ): void;
   debug(...args: RLObject[]): void;
   draw(x: RLInt, y: RLInt, s: RLChar | RLStr, fg?: RLStr, bg?: RLStr): void;
   drawBag(

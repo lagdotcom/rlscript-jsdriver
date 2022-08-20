@@ -9,7 +9,7 @@ export default class RLFn<A extends any[] = any[], V = any> {
 
   constructor(
     public name: string,
-    private code: (...args: A) => V,
+    public code: (...args: A) => V,
     public params: RLFnParam[],
     public variadic: RLObjectType[] = []
   ) {

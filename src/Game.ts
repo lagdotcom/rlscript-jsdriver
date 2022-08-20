@@ -16,6 +16,8 @@ const metaKeys = [
   Key.VK_ALT_RIGHT,
 ];
 
+export type AfterInitFn = (term: Terminal) => void;
+
 export default class Game {
   static instance: Game;
   terminal!: Terminal;
@@ -24,7 +26,7 @@ export default class Game {
   running: boolean;
   mouseX: number;
   mouseY: number;
-  afterInit: CallableFunction[];
+  afterInit: AfterInitFn[];
 
   constructor(public rl: RL, public canvas: HTMLCanvasElement) {
     Game.instance = this;
@@ -46,7 +48,7 @@ export default class Game {
     this.terminal = new Terminal(this.canvas, this.width, this.height);
     this.terminal.update = this.terminalUpdate.bind(this);
 
-    for (const pending of this.afterInit.splice(0)) pending();
+    for (const pending of this.afterInit.splice(0)) pending(this.terminal);
   }
 
   async start() {

@@ -61,6 +61,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
   const LookAction = new RLTag("LookAction");
   const QuitAction = new RLTag("QuitAction");
   const TakeStairsAction = new RLTag("TakeStairsAction");
+  const GainingLevel = new RLTag("GainingLevel");
 
   const mkAppearance = (
     name: string,
@@ -109,7 +110,8 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     maxHp: number,
     hp: number,
     defence: number,
-    power: number
+    power: number,
+    xp: number
   ): Fighter => ({
     type: "component",
     typeName: "Fighter",
@@ -117,6 +119,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     hp,
     defence,
     power,
+    xp,
   });
   const mkConsumable = (
     activate: CallableFunction,
@@ -169,10 +172,18 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     duration,
     old,
   });
-  const mkProgress = (floor: number): Progress => ({
+  const mkProgress = (
+    floor: number,
+    level: number,
+    formulaBase: number,
+    formulaFactor: number
+  ): Progress => ({
     type: "component",
     typeName: "Progress",
     floor,
+    level,
+    formulaBase,
+    formulaFactor,
   });
 
   const tmPlayer: RLTemplate = {
@@ -182,13 +193,13 @@ export default function implementation(__lib: RLLibrary): RLEnv {
       IsBlocker,
       IsPlayer,
       mkAppearance("player", "@", "white", "black", Layer.Player),
-      mkFighter(30, 30, 2, 5),
+      mkFighter(30, 30, 2, 5, 0),
       mkActor(100),
       mkInventory(new RLBag(20)),
       MyTurn,
       RecalculateFOV,
       RedrawUI,
-      mkProgress(1),
+      mkProgress(1, 1, 0, 200),
     ],
   };
   const tmEnemy: RLTemplate = {
@@ -202,7 +213,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     get: () => [
       tmEnemy,
       mkAppearance("orc", "o", "green", "black", Layer.Enemy),
-      mkFighter(10, 10, 0, 3),
+      mkFighter(10, 10, 0, 3, 35),
     ],
   };
   const tmTroll: RLTemplate = {
@@ -211,7 +222,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     get: () => [
       tmEnemy,
       mkAppearance("troll", "T", "lime", "black", Layer.Enemy),
-      mkFighter(16, 16, 1, 4),
+      mkFighter(16, 16, 1, 4, 100),
     ],
   };
   const tmCorpse: RLTemplate = {
@@ -283,6 +294,9 @@ export default function implementation(__lib: RLLibrary): RLEnv {
   const hpX = 0;
   const hpY: number = hoverY + 1;
   const hpWidth = 20;
+  const xpX: number = hpX;
+  const xpY: number = hpY + 1;
+  const xpWidth: number = hpWidth;
   const floorX: number = hpX;
   const floorY: number = hpY + 2;
   const logX: number = hpWidth + 2;
@@ -371,7 +385,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
           { type: "str", value: "damage!" }
         )
       );
-      hurt(target, item.Consumable.power);
+      hurt(target, item.Consumable.power, pc);
       return true;
     }
     log.add("No enemy is close enough.", impossible);
@@ -445,7 +459,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
             { type: "str", value: "damage" }
           )
         );
-        hurt(t, damage);
+        hurt(t, damage, pc);
         hit = true;
       }
     }
@@ -585,7 +599,37 @@ export default function implementation(__lib: RLLibrary): RLEnv {
   }
   const fn_getRandomMove = new RLFn("getRandomMove", getRandomMove, []);
 
-  function hurt(e: RLEntity, damage: number) {
+  function toNextLevel(e: RLEntity) {
+    return e.Progress.formulaBase + e.Progress.level * e.Progress.formulaFactor;
+  }
+  const fn_toNextLevel = new RLFn("toNextLevel", toNextLevel, [
+    { type: "param", name: "e", typeName: "entity" },
+  ]);
+
+  function giveXp(e: RLEntity, xp: number) {
+    e.Fighter.xp += xp;
+    if (e.IsPlayer) {
+      log.add(
+        __lib.join(
+          { type: "char", value: " " },
+          { type: "str", value: "You gain" },
+          { type: "int", value: xp },
+          { type: "str", value: "experience." }
+        )
+      );
+      e.add(RedrawUI);
+      if (e.Fighter.xp >= toNextLevel(e)) {
+        log.add("You are ready to gain a level.");
+        e.add(GainingLevel);
+      }
+    }
+  }
+  const fn_giveXp = new RLFn("giveXp", giveXp, [
+    { type: "param", name: "e", typeName: "entity" },
+    { type: "param", name: "xp", typeName: "int" },
+  ]);
+
+  function hurt(e: RLEntity, damage: number, attacker: RLEntity) {
     e.Fighter.hp -= damage;
     if (e.Fighter.hp < 1) {
       const colour: string = ((__match) => {
@@ -613,6 +657,9 @@ export default function implementation(__lib: RLLibrary): RLEnv {
         { type: "str", value: "corpse of" },
         { type: "str", value: e.Appearance.name }
       );
+      if (attacker.Progress) {
+        giveXp(attacker, e.Fighter.xp);
+      }
       if (e.IsPlayer) {
         e.add(RedrawUI);
         e.remove("Actor");
@@ -630,6 +677,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
   const fn_hurt = new RLFn("hurt", hurt, [
     { type: "param", name: "e", typeName: "entity" },
     { type: "param", name: "damage", typeName: "int" },
+    { type: "param", name: "attacker", typeName: "entity" },
   ]);
 
   function showHistoryView() {
@@ -891,7 +939,14 @@ export default function implementation(__lib: RLLibrary): RLEnv {
   ) {
     const barWidth: number = __lib.floor({
       type: "int",
-      value: (value / maxValue) * maxWidth,
+      value:
+        (__lib.clamp(
+          { type: "int", value: value },
+          { type: "int", value: 0 },
+          { type: "int", value: maxValue }
+        ) /
+          maxValue) *
+        maxWidth,
     });
     __lib.draw(
       { type: "int", value: x },
@@ -932,7 +987,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     { type: "param", name: "filledColour", typeName: "str" },
   ]);
 
-  function clearHPBar() {
+  function clearUI() {
     __lib.draw(
       { type: "int", value: hpX },
       { type: "int", value: hpY },
@@ -946,8 +1001,21 @@ export default function implementation(__lib: RLLibrary): RLEnv {
       { type: "str", value: "white" },
       { type: "str", value: "black" }
     );
+    __lib.draw(
+      { type: "int", value: xpX },
+      { type: "int", value: xpY },
+      {
+        type: "str",
+        value: __lib.repeat(
+          { type: "char", value: " " },
+          { type: "int", value: xpWidth }
+        ),
+      },
+      { type: "str", value: "white" },
+      { type: "str", value: "black" }
+    );
   }
-  const fn_clearHPBar = new RLFn("clearHPBar", clearHPBar, []);
+  const fn_clearUI = new RLFn("clearUI", clearUI, []);
 
   function randomRoom() {
     const w: number = __lib.randInt(
@@ -988,6 +1056,11 @@ export default function implementation(__lib: RLLibrary): RLEnv {
   ]);
 
   function generateDungeon() {
+    for (const e of new RLQuery(RL.instance, ["Position"]).get()) {
+      if (!e.IsPlayer) {
+        __lib.remove(e);
+      }
+    }
     map.clear();
     explored.clear();
     visible.clear();
@@ -1131,7 +1204,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     __lib.pushKeyHandler(menu_onKey);
     nextTurn.disable();
     __lib.clear();
-    clearHPBar();
+    clearUI();
     __lib.drawCentred(
       { type: "int", value: gameWidth / 2 },
       { type: "int", value: gameHeight / 2 - 4 },
@@ -1350,7 +1423,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
         ),
         colour
       );
-      hurt(target, damage);
+      hurt(target, damage, e);
     } else {
       log.add(
         __lib.join(
@@ -1425,7 +1498,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     __lib.pushMouseHandler(history_onMouse);
     historyOffset = 0;
     __lib.clear();
-    clearHPBar();
+    clearUI();
     showHistoryView();
   }
   const doHistory = new RLSystem("doHistory", code_doHistory, [
@@ -1703,7 +1776,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     { type: "constraint", typeName: "RedrawMe" },
   ]);
 
-  function code_drawUI(e: RLEntity, f: Fighter) {
+  function code_drawUI(e: RLEntity, f: Fighter, pr: Progress) {
     e.remove(RedrawUI);
     drawBar(hpX, hpY, f.hp, f.maxHp, hpWidth, "#401010", "#006000");
     __lib.draw(
@@ -1720,6 +1793,22 @@ export default function implementation(__lib: RLLibrary): RLEnv {
         ),
       }
     );
+    const tnl: number = toNextLevel(e);
+    drawBar(xpX, xpY, f.xp, tnl, xpWidth, "#600060", "#A000A0");
+    __lib.draw(
+      { type: "int", value: xpX + 1 },
+      { type: "int", value: xpY },
+      {
+        type: "str",
+        value: __lib.join(
+          { type: "str", value: "" },
+          { type: "str", value: "XP: " },
+          { type: "int", value: f.xp },
+          { type: "str", value: "/" },
+          { type: "int", value: tnl }
+        ),
+      }
+    );
     __lib.draw(
       { type: "int", value: floorX },
       { type: "int", value: floorY },
@@ -1728,7 +1817,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
         value: __lib.join(
           { type: "char", value: " " },
           { type: "str", value: "Floor:" },
-          { type: "int", value: e.Progress.floor }
+          { type: "int", value: pr.floor }
         ),
       }
     );
@@ -1736,6 +1825,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
   const drawUI = new RLSystem("drawUI", code_drawUI, [
     { type: "param", name: "e", typeName: "entity" },
     { type: "param", name: "f", typeName: "Fighter" },
+    { type: "param", name: "pr", typeName: "Progress" },
     { type: "constraint", typeName: "RedrawUI" },
   ]);
 
@@ -1760,6 +1850,131 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     }
   }
   const nextTurn = new RLSystem("nextTurn", code_nextTurn, []);
+
+  function code_level_onMouse(m: RLMouseEvent) {}
+  const level_onMouse = new RLSystem("level_onMouse", code_level_onMouse, [
+    { type: "param", name: "m", typeName: "MouseEvent" },
+  ]);
+
+  function code_level_onKey(
+    e: RLEntity,
+    f: Fighter,
+    pr: Progress,
+    k: RLKeyEvent
+  ) {
+    let done = false;
+    if (k.key == "KeyC") {
+      done = true;
+      f.hp += 20;
+      f.maxHp += 20;
+      log.add("Your health improves.");
+    }
+    if (k.key == "KeyS") {
+      done = true;
+      f.power += 1;
+      log.add("You feel stronger.");
+    }
+    if (k.key == "KeyA") {
+      done = true;
+      f.defence += 1;
+      log.add("Your feel swifter.");
+    }
+    if (done) {
+      f.xp -= toNextLevel(e);
+      pr.level += 1;
+      e.add(RedrawUI);
+      __lib.popKeyHandler();
+      __lib.popMouseHandler();
+      redrawEverything(e);
+    }
+  }
+  const level_onKey = new RLSystem("level_onKey", code_level_onKey, [
+    { type: "param", name: "e", typeName: "entity" },
+    { type: "param", name: "f", typeName: "Fighter" },
+    { type: "param", name: "pr", typeName: "Progress" },
+    { type: "param", name: "k", typeName: "KeyEvent" },
+  ]);
+
+  function code_gainLevel(e: RLEntity, p: Position, f: Fighter) {
+    e.remove(GainingLevel);
+    e.remove(RecalculateFOV);
+    let x = 0;
+    if (p.x <= gameWidth / 2) {
+      x = 40;
+    }
+    __lib.clearRect(
+      { type: "int", value: x },
+      { type: "int", value: 5 },
+      { type: "int", value: 40 },
+      { type: "int", value: 10 },
+      { type: "str", value: "white" },
+      { type: "str", value: "black" }
+    );
+    __lib.drawBox(
+      { type: "int", value: x },
+      { type: "int", value: 5 },
+      { type: "int", value: 40 },
+      { type: "int", value: 10 }
+    );
+    __lib.draw(
+      { type: "int", value: x + 2 },
+      { type: "int", value: 7 },
+      { type: "str", value: "You gain a level." },
+      { type: "str", value: "yellow" }
+    );
+    __lib.draw(
+      { type: "int", value: x + 2 },
+      { type: "int", value: 9 },
+      { type: "str", value: "Choose your boon:" }
+    );
+    __lib.draw(
+      { type: "int", value: x + 4 },
+      { type: "int", value: 10 },
+      {
+        type: "str",
+        value: __lib.join(
+          { type: "str", value: "" },
+          { type: "str", value: "C)onstitution (+20 hp, was " },
+          { type: "int", value: f.maxHp },
+          { type: "char", value: ")" }
+        ),
+      }
+    );
+    __lib.draw(
+      { type: "int", value: x + 4 },
+      { type: "int", value: 11 },
+      {
+        type: "str",
+        value: __lib.join(
+          { type: "str", value: "" },
+          { type: "str", value: "S)trength (+1 power, was " },
+          { type: "int", value: f.power },
+          { type: "char", value: ")" }
+        ),
+      }
+    );
+    __lib.draw(
+      { type: "int", value: x + 4 },
+      { type: "int", value: 12 },
+      {
+        type: "str",
+        value: __lib.join(
+          { type: "str", value: "" },
+          { type: "str", value: "A)gility (+1 defence, was " },
+          { type: "int", value: f.defence },
+          { type: "char", value: ")" }
+        ),
+      }
+    );
+    __lib.pushKeyHandler(level_onKey);
+    __lib.pushMouseHandler(level_onMouse);
+  }
+  const gainLevel = new RLSystem("gainLevel", code_gainLevel, [
+    { type: "param", name: "e", typeName: "entity" },
+    { type: "param", name: "p", typeName: "Position" },
+    { type: "param", name: "f", typeName: "Fighter" },
+    { type: "constraint", typeName: "GainingLevel" },
+  ]);
 
   function code_showLog() {
     if (log.dirty) {
@@ -1804,6 +2019,8 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     ["showNamesAt", fn_showNamesAt],
     ["getBlockingMap", fn_getBlockingMap],
     ["getRandomMove", fn_getRandomMove],
+    ["toNextLevel", fn_toNextLevel],
+    ["giveXp", fn_giveXp],
     ["hurt", fn_hurt],
     ["showHistoryView", fn_showHistoryView],
     ["getName", fn_getName],
@@ -1819,7 +2036,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     ["drawTileAt", fn_drawTileAt],
     ["drawEntity", fn_drawEntity],
     ["drawBar", fn_drawBar],
-    ["clearHPBar", fn_clearHPBar],
+    ["clearUI", fn_clearUI],
     ["randomRoom", fn_randomRoom],
     ["randomCorridor", fn_randomCorridor],
     ["generateDungeon", fn_generateDungeon],
@@ -1854,6 +2071,9 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     ["RedrawMeEntity", RedrawMeEntity],
     ["drawUI", drawUI],
     ["nextTurn", nextTurn],
+    ["level_onMouse", level_onMouse],
+    ["level_onKey", level_onKey],
+    ["gainLevel", gainLevel],
     ["showLog", showLog],
     ["menu_onKey", menu_onKey],
     ["IsBlocker", IsBlocker],
@@ -1872,6 +2092,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     ["LookAction", LookAction],
     ["QuitAction", QuitAction],
     ["TakeStairsAction", TakeStairsAction],
+    ["GainingLevel", GainingLevel],
     ["Player", tmPlayer],
     ["Enemy", tmEnemy],
     ["Orc", tmOrc],

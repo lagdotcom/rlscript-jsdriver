@@ -34,6 +34,7 @@ component Fighter
   hp: int
   defence: int
   power: int
+  xp: int
 end
 
 component Consumable
@@ -69,6 +70,9 @@ end
 
 component Progress
   floor: int
+  level: int
+  formulaBase: int
+  formulaFactor: int
 end
 
 tag IsBlocker
@@ -87,6 +91,7 @@ tag DropAction
 tag LookAction
 tag QuitAction
 tag TakeStairsAction
+tag GainingLevel
 
 global impossible: str = "#808080"
 global healed: str = "#00ff00"
@@ -112,13 +117,13 @@ template Player
   IsBlocker
   IsPlayer
   Appearance("player", '@', "white", "black", Layer.Player)
-  Fighter(30, 30, 2, 5)
+  Fighter(30, 30, 2, 5, 0)
   Actor(100)
   Inventory(bag(20))
   MyTurn
   RecalculateFOV
   RedrawUI
-  Progress(1)
+  Progress(1, 1, 0, 200)
 end
 
 template Enemy
@@ -130,13 +135,13 @@ end
 template Orc
   Enemy
   Appearance("orc", 'o', "green", "black", Layer.Enemy)
-  Fighter(10, 10, 0, 3)
+  Fighter(10, 10, 0, 3, 35)
 end
 
 template Troll
   Enemy
   Appearance("troll", 'T', "lime", "black", Layer.Enemy)
-  Fighter(16, 16, 1, 4)
+  Fighter(16, 16, 1, 4, 100)
 end
 
 template Corpse
@@ -211,7 +216,7 @@ fn zapItem(pc: entity, item: entity)
 
   if target
     log.add(join(' ', "A lightning bolt strikes", target.Appearance.name, "for", item.Consumable.power, "damage!"))
-    hurt(target, item.Consumable.power)
+    hurt(target, item.Consumable.power, pc)
     return true
   end
 
@@ -260,7 +265,7 @@ fn fireballItem(pc: entity, item: entity, target: xy)
   query (t: entity, p: Position, Fighter)
     if distance(target, xy(p.x, p.y)) <= item.Consumable.radius
       log.add(join(' ', "The", getName(t), "is engulfed in fire, taking", damage, "damage"))
-      hurt(t, damage)
+      hurt(t, damage, pc)
       hit = true
     end
   end
@@ -291,6 +296,9 @@ global hoverY: int = mapHeight
 global hpX: int = 0
 global hpY: int = hoverY + 1
 global hpWidth: int = 20
+global xpX: int = hpX
+global xpY: int = hpY + 1
+global xpWidth: int = hpWidth
 global floorX: int = hpX
 global floorY: int = hpY + 2
 global logX: int = hpWidth + 2
@@ -492,7 +500,25 @@ system doMove(e: entity, p: Position, m: MoveAction, MyTurn)
   end
 end
 
-fn hurt(e: entity, damage: int)
+fn toNextLevel(e: entity): int
+  return e.Progress.formulaBase + e.Progress.level * e.Progress.formulaFactor
+end
+
+fn giveXp(e: entity, xp: int)
+  e.Fighter.xp += xp
+
+  if e.IsPlayer
+    log.add(join(' ', "You gain", xp, "experience."))
+    e.add(RedrawUI)
+
+    if e.Fighter.xp >= toNextLevel(e)
+      log.add("You are ready to gain a level.")
+      e.add(GainingLevel)
+    end
+  end
+end
+
+fn hurt(e: entity, damage: int, attacker: entity)
   e.Fighter.hp -= damage
   if e.Fighter.hp < 1
     local colour: str = match e IsPlayer=playerDied else=enemyDied end
@@ -505,6 +531,10 @@ fn hurt(e: entity, damage: int)
 
     local corpse: entity = spawn(Corpse, Position(e.Position.x, e.Position.y))
     corpse.Appearance.name = join(' ', "corpse of", e.Appearance.name)
+
+    if attacker.Progress
+      giveXp(attacker, e.Fighter.xp)
+    end
 
     if e.IsPlayer
       e.add(RedrawUI)
@@ -531,7 +561,7 @@ system doMelee(e: entity, m: MeleeAction, a: Appearance, f: Fighter, MyTurn)
   local colour: str = match e IsPlayer=playerAttack else=enemyAttack end
   if damage > 0
     log.add(join(' ', attack, "for", damage, "hit points"), colour)
-    hurt(target, damage)
+    hurt(target, damage, e)
   else
     log.add(join(' ', attack, "but does no damage"), colour)
   end
@@ -582,7 +612,7 @@ system doHistory(e: entity, HistoryAction, MyTurn)
   pushMouseHandler(history_onMouse)
   historyOffset = 0
   clear()   ;; TODO fix this so it clears background colours too!
-  clearHPBar()
+  clearUI()
   showHistoryView()
 end
 
@@ -906,7 +936,7 @@ system RedrawMeEntity(e: entity, p: Position, RedrawMe)
 end
 
 fn drawBar(x: int, y: int, value: int, maxValue: int, maxWidth: int, emptyColour: str, filledColour: str)
-  local barWidth: int = floor(value / maxValue * maxWidth)
+  local barWidth: int = floor(clamp(value, 0, maxValue) / maxValue * maxWidth)
 
   draw(x, y, repeat(' ', maxWidth), "white", emptyColour)
   if barWidth > 0
@@ -914,17 +944,22 @@ fn drawBar(x: int, y: int, value: int, maxValue: int, maxWidth: int, emptyColour
   end
 end
 
-fn clearHPBar()
+fn clearUI()
   draw(hpX, hpY, repeat(' ', hpWidth), "white", "black")
+  draw(xpX, xpY, repeat(' ', xpWidth), "white", "black")
 end
 
-system drawUI(e: entity, f: Fighter, RedrawUI)
+system drawUI(e: entity, f: Fighter, pr: Progress, RedrawUI)
   e.remove(RedrawUI)
 
   drawBar(hpX, hpY, f.hp, f.maxHp, hpWidth, "#401010", "#006000")
   draw(hpX+1, hpY, join("", "HP: ", f.hp, "/", f.maxHp))
 
-  draw(floorX, floorY, join(' ', "Floor:", e.Progress.floor))
+  local tnl: int = toNextLevel(e)
+  drawBar(xpX, xpY, f.xp, tnl, xpWidth, "#600060", "#A000A0")
+  draw(xpX+1, xpY, join("", "XP: ", f.xp, "/", tnl))
+
+  draw(floorX, floorY, join(' ', "Floor:", pr.floor))
 end
 
 system nextTurn()
@@ -945,6 +980,57 @@ system nextTurn()
       e.add(MyTurn)
     end
   end
+end
+
+system level_onMouse(m: MouseEvent) end
+system level_onKey(e: entity, f: Fighter, pr: Progress, k: KeyEvent)
+  local done: bool = false
+
+  if k.key == "KeyC"
+    done = true
+    f.hp += 20
+    f.maxHp += 20
+    log.add("Your health improves.")
+  end
+  if k.key == "KeyS"
+    done = true
+    f.power += 1
+    log.add("You feel stronger.")
+  end
+  if k.key == "KeyA"
+    done = true
+    f.defence += 1
+    log.add("Your feel swifter.")
+  end
+
+  if done
+    f.xp -= toNextLevel(e)
+    pr.level += 1
+    e.add(RedrawUI)
+
+    popKeyHandler()
+    popMouseHandler()
+    redrawEverything(e)
+  end
+end
+
+system gainLevel(e: entity, p: Position, f: Fighter, GainingLevel)
+  e.remove(GainingLevel)
+  e.remove(RecalculateFOV)
+
+  let x: int = 0
+  if p.x <= gameWidth / 2 x = 40 end
+
+  clearRect(x, 5, 40, 10, "white", "black")
+  drawBox(x, 5, 40, 10)
+  draw(x+2, 7, "You gain a level.", "yellow")
+  draw(x+2, 9, "Choose your boon:")
+  draw(x+4,10, join("", "C)onstitution (+20 hp, was ", f.maxHp, ')'))
+  draw(x+4,11, join("", "S)trength (+1 power, was ", f.power, ')'))
+  draw(x+4,12, join("", "A)gility (+1 defence, was ", f.defence, ')'))
+
+  pushKeyHandler(level_onKey)
+  pushMouseHandler(level_onMouse)
 end
 
 system showLog()
@@ -977,6 +1063,10 @@ fn randomCorridor(x1: int, y1: int, x2: int, y2: int)
 end
 
 fn generateDungeon(): xy
+  query (e: entity, Position)
+    if not e.IsPlayer remove(e) end
+  end
+
   map.clear()
   explored.clear()
   visible.clear()
@@ -1088,7 +1178,7 @@ fn mainMenu()
   nextTurn.disable()
 
   clear()
-  clearHPBar()
+  clearUI()
   drawCentred(gameWidth / 2, gameHeight / 2 - 4, "An Improbable Roguelike", menuTitle)
   drawCentred(gameWidth / 2, gameHeight - 2, "by Lag.Com", menuTitle)
 

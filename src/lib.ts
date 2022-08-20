@@ -1,8 +1,7 @@
 import { ComputeVisibility, ShadowCastingGrid } from "./RecursiveShadowCasting";
+import Game, { AfterInitFn } from "./Game";
 import { RLComponent, RLComponentName } from "./implTypes";
-import Serializer, { getTypeName } from "./Serializer";
 
-import Game from "./Game";
 import RL from "./RL";
 import RLBag from "./RLBag";
 import RLChar from "./RLChar";
@@ -20,6 +19,7 @@ import RLTag from "./RLTag";
 import RLTemplate from "./RLTemplate";
 import RLTile from "./RLTile";
 import RLXY from "./RLXY";
+import Serializer from "./Serializer";
 import { TinyColor } from "tinycolor-ts";
 
 function setSize({ value: width }: RLInt, { value: height }: RLInt) {
@@ -43,8 +43,8 @@ function getColour(s?: RLStr) {
   return s ? new TinyColor(s.value).toNumber() << 8 : undefined;
 }
 
-function drawable(fn: CallableFunction) {
-  if (Game.instance.terminal) fn();
+function drawable(fn: AfterInitFn) {
+  if (Game.instance.terminal) fn(Game.instance.terminal);
   else Game.instance.afterInit.push(fn);
 }
 
@@ -55,13 +55,12 @@ function draw(
   fg?: RLStr,
   bg?: RLStr
 ) {
-  drawable(() => {
+  drawable((term) => {
     const f = getColour(fg);
     const b = getColour(bg);
 
-    if (display.type === "char")
-      Game.instance.terminal.drawChar(x, y, display.value, f, b);
-    else Game.instance.terminal.drawString(x, y, display.value, f, b);
+    if (display.type === "char") term.drawChar(x, y, display.value, f, b);
+    else term.drawString(x, y, display.value, f, b);
   });
 }
 
@@ -284,15 +283,8 @@ function drawLog(
   { value: height }: RLInt,
   offset?: RLInt
 ) {
-  drawable(() =>
-    log.render(
-      Game.instance.terminal,
-      x,
-      y,
-      width,
-      height,
-      offset ? offset.value : 0
-    )
+  drawable((term) =>
+    log.render(term, x, y, width, height, offset ? offset.value : 0)
   );
 }
 
@@ -328,13 +320,21 @@ function drawBox(
   fg?: RLStr,
   bg?: RLStr
 ) {
-  Game.instance.terminal.drawSingleBox(
-    x,
-    y,
-    width,
-    height,
-    getColour(fg),
-    getColour(bg)
+  drawable((term) =>
+    term.drawSingleBox(x, y, width, height, getColour(fg), getColour(bg))
+  );
+}
+
+function clearRect(
+  { value: x }: RLInt,
+  { value: y }: RLInt,
+  { value: width }: RLInt,
+  { value: height }: RLInt,
+  fg?: RLStr,
+  bg?: RLStr
+) {
+  drawable((term) =>
+    term.fillRect(x, y, width, height, " ", getColour(fg), getColour(bg))
   );
 }
 
@@ -395,8 +395,15 @@ const persistent: Map<string, RLObject> = new Map();
 
 Serializer.instance.add(
   "n:function",
-  (fn: Function) => fn.name,
-  (data: string) => RL.instance.env.get(data).code
+  (fn: CallableFunction) => fn.name,
+  (data: string) => {
+    const obj = RL.instance.env.get(data);
+    if (!obj) throw new Error(`${data} does not exist`);
+    if (obj.type !== "fn")
+      throw new Error(`${data} is type ${obj.type}, expected fn`);
+
+    return obj.code;
+  }
 );
 
 function saveObj(name: string, obj: RLObject): [string, [string, any]] {
@@ -472,6 +479,7 @@ const lib: RLLibrary = {
   clamp,
   clear,
   clearHandlers,
+  clearRect,
   debug,
   draw,
   drawBag,

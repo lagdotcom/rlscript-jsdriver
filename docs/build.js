@@ -1658,7 +1658,7 @@ void main() {
       this.terminal = new Terminal(this.canvas, this.width, this.height);
       this.terminal.update = this.terminalUpdate.bind(this);
       for (const pending of this.afterInit.splice(0))
-        pending();
+        pending(this.terminal);
     }
     start() {
       return __async(this, null, function* () {
@@ -3187,7 +3187,8 @@ void main() {
       "DropAction",
       "LookAction",
       "QuitAction",
-      "TakeStairsAction"
+      "TakeStairsAction",
+      "GainingLevel"
     ].includes(p.typeName);
   }
 
@@ -3280,6 +3281,7 @@ void main() {
     const LookAction = new RLTag("LookAction");
     const QuitAction = new RLTag("QuitAction");
     const TakeStairsAction = new RLTag("TakeStairsAction");
+    const GainingLevel = new RLTag("GainingLevel");
     const mkAppearance = (name, ch, fg, bg, layer) => ({
       type: "component",
       typeName: "Appearance",
@@ -3317,13 +3319,14 @@ void main() {
       typeName: "Actor",
       energy
     });
-    const mkFighter = (maxHp, hp, defence, power) => ({
+    const mkFighter = (maxHp, hp, defence, power, xp) => ({
       type: "component",
       typeName: "Fighter",
       maxHp,
       hp,
       defence,
-      power
+      power,
+      xp
     });
     const mkConsumable = (activate, power, range, targeted, radius) => ({
       type: "component",
@@ -3362,10 +3365,13 @@ void main() {
       duration,
       old
     });
-    const mkProgress = (floor2) => ({
+    const mkProgress = (floor2, level, formulaBase, formulaFactor) => ({
       type: "component",
       typeName: "Progress",
-      floor: floor2
+      floor: floor2,
+      level,
+      formulaBase,
+      formulaFactor
     });
     const tmPlayer = {
       type: "template",
@@ -3374,13 +3380,13 @@ void main() {
         IsBlocker,
         IsPlayer,
         mkAppearance("player", "@", "white", "black", 4 /* Player */),
-        mkFighter(30, 30, 2, 5),
+        mkFighter(30, 30, 2, 5, 0),
         mkActor(100),
         mkInventory(new RLBag(20)),
         MyTurn,
         RecalculateFOV,
         RedrawUI,
-        mkProgress(1)
+        mkProgress(1, 1, 0, 200)
       ]
     };
     const tmEnemy = {
@@ -3394,7 +3400,7 @@ void main() {
       get: () => [
         tmEnemy,
         mkAppearance("orc", "o", "green", "black", 3 /* Enemy */),
-        mkFighter(10, 10, 0, 3)
+        mkFighter(10, 10, 0, 3, 35)
       ]
     };
     const tmTroll = {
@@ -3403,7 +3409,7 @@ void main() {
       get: () => [
         tmEnemy,
         mkAppearance("troll", "T", "lime", "black", 3 /* Enemy */),
-        mkFighter(16, 16, 1, 4)
+        mkFighter(16, 16, 1, 4, 100)
       ]
     };
     const tmCorpse = {
@@ -3473,6 +3479,9 @@ void main() {
     const hpX = 0;
     const hpY = hoverY + 1;
     const hpWidth = 20;
+    const xpX = hpX;
+    const xpY = hpY + 1;
+    const xpWidth = hpWidth;
     const floorX = hpX;
     const floorY = hpY + 2;
     const logX = hpWidth + 2;
@@ -3558,7 +3567,7 @@ void main() {
             { type: "str", value: "damage!" }
           )
         );
-        hurt(target, item.Consumable.power);
+        hurt(target, item.Consumable.power, pc);
         return true;
       }
       log.add("No enemy is close enough.", impossible);
@@ -3631,7 +3640,7 @@ void main() {
               { type: "str", value: "damage" }
             )
           );
-          hurt(t, damage);
+          hurt(t, damage, pc);
           hit = true;
         }
       }
@@ -3791,7 +3800,35 @@ void main() {
       })(__lib.randInt({ type: "int", value: 1 }, { type: "int", value: 4 }));
     }
     const fn_getRandomMove = new RLFn("getRandomMove", getRandomMove, []);
-    function hurt(e, damage) {
+    function toNextLevel(e) {
+      return e.Progress.formulaBase + e.Progress.level * e.Progress.formulaFactor;
+    }
+    const fn_toNextLevel = new RLFn("toNextLevel", toNextLevel, [
+      { type: "param", name: "e", typeName: "entity" }
+    ]);
+    function giveXp(e, xp) {
+      e.Fighter.xp += xp;
+      if (e.IsPlayer) {
+        log.add(
+          __lib.join(
+            { type: "char", value: " " },
+            { type: "str", value: "You gain" },
+            { type: "int", value: xp },
+            { type: "str", value: "experience." }
+          )
+        );
+        e.add(RedrawUI);
+        if (e.Fighter.xp >= toNextLevel(e)) {
+          log.add("You are ready to gain a level.");
+          e.add(GainingLevel);
+        }
+      }
+    }
+    const fn_giveXp = new RLFn("giveXp", giveXp, [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "param", name: "xp", typeName: "int" }
+    ]);
+    function hurt(e, damage, attacker) {
       e.Fighter.hp -= damage;
       if (e.Fighter.hp < 1) {
         const colour = ((__match) => {
@@ -3821,6 +3858,9 @@ void main() {
           { type: "str", value: "corpse of" },
           { type: "str", value: e.Appearance.name }
         );
+        if (attacker.Progress) {
+          giveXp(attacker, e.Fighter.xp);
+        }
         if (e.IsPlayer) {
           e.add(RedrawUI);
           e.remove("Actor");
@@ -3837,7 +3877,8 @@ void main() {
     }
     const fn_hurt = new RLFn("hurt", hurt, [
       { type: "param", name: "e", typeName: "entity" },
-      { type: "param", name: "damage", typeName: "int" }
+      { type: "param", name: "damage", typeName: "int" },
+      { type: "param", name: "attacker", typeName: "entity" }
     ]);
     function showHistoryView() {
       __lib.drawLog(
@@ -4068,7 +4109,11 @@ void main() {
     function drawBar(x, y, value, maxValue, maxWidth, emptyColour, filledColour) {
       const barWidth = __lib.floor({
         type: "int",
-        value: value / maxValue * maxWidth
+        value: __lib.clamp(
+          { type: "int", value },
+          { type: "int", value: 0 },
+          { type: "int", value: maxValue }
+        ) / maxValue * maxWidth
       });
       __lib.draw(
         { type: "int", value: x },
@@ -4108,7 +4153,7 @@ void main() {
       { type: "param", name: "emptyColour", typeName: "str" },
       { type: "param", name: "filledColour", typeName: "str" }
     ]);
-    function clearHPBar() {
+    function clearUI() {
       __lib.draw(
         { type: "int", value: hpX },
         { type: "int", value: hpY },
@@ -4122,8 +4167,21 @@ void main() {
         { type: "str", value: "white" },
         { type: "str", value: "black" }
       );
+      __lib.draw(
+        { type: "int", value: xpX },
+        { type: "int", value: xpY },
+        {
+          type: "str",
+          value: __lib.repeat(
+            { type: "char", value: " " },
+            { type: "int", value: xpWidth }
+          )
+        },
+        { type: "str", value: "white" },
+        { type: "str", value: "black" }
+      );
     }
-    const fn_clearHPBar = new RLFn("clearHPBar", clearHPBar, []);
+    const fn_clearUI = new RLFn("clearUI", clearUI, []);
     function randomRoom() {
       const w = __lib.randInt(
         { type: "int", value: 6 },
@@ -4161,6 +4219,11 @@ void main() {
       { type: "param", name: "y2", typeName: "int" }
     ]);
     function generateDungeon() {
+      for (const e of new RLQuery(RL.instance, ["Position"]).get()) {
+        if (!e.IsPlayer) {
+          __lib.remove(e);
+        }
+      }
       map.clear();
       explored.clear();
       visible.clear();
@@ -4295,7 +4358,7 @@ void main() {
       __lib.pushKeyHandler(menu_onKey);
       nextTurn.disable();
       __lib.clear();
-      clearHPBar();
+      clearUI();
       __lib.drawCentred(
         { type: "int", value: gameWidth / 2 },
         { type: "int", value: gameHeight / 2 - 4 },
@@ -4513,7 +4576,7 @@ void main() {
           ),
           colour
         );
-        hurt(target, damage);
+        hurt(target, damage, e);
       } else {
         log.add(
           __lib.join(
@@ -4592,7 +4655,7 @@ void main() {
       __lib.pushMouseHandler(history_onMouse);
       historyOffset = 0;
       __lib.clear();
-      clearHPBar();
+      clearUI();
       showHistoryView();
     }
     const doHistory = new RLSystem("doHistory", code_doHistory, [
@@ -4848,7 +4911,7 @@ void main() {
       { type: "param", name: "p", typeName: "Position" },
       { type: "constraint", typeName: "RedrawMe" }
     ]);
-    function code_drawUI(e, f) {
+    function code_drawUI(e, f, pr) {
       e.remove(RedrawUI);
       drawBar(hpX, hpY, f.hp, f.maxHp, hpWidth, "#401010", "#006000");
       __lib.draw(
@@ -4865,6 +4928,22 @@ void main() {
           )
         }
       );
+      const tnl = toNextLevel(e);
+      drawBar(xpX, xpY, f.xp, tnl, xpWidth, "#600060", "#A000A0");
+      __lib.draw(
+        { type: "int", value: xpX + 1 },
+        { type: "int", value: xpY },
+        {
+          type: "str",
+          value: __lib.join(
+            { type: "str", value: "" },
+            { type: "str", value: "XP: " },
+            { type: "int", value: f.xp },
+            { type: "str", value: "/" },
+            { type: "int", value: tnl }
+          )
+        }
+      );
       __lib.draw(
         { type: "int", value: floorX },
         { type: "int", value: floorY },
@@ -4873,7 +4952,7 @@ void main() {
           value: __lib.join(
             { type: "char", value: " " },
             { type: "str", value: "Floor:" },
-            { type: "int", value: e.Progress.floor }
+            { type: "int", value: pr.floor }
           )
         }
       );
@@ -4881,6 +4960,7 @@ void main() {
     const drawUI = new RLSystem("drawUI", code_drawUI, [
       { type: "param", name: "e", typeName: "entity" },
       { type: "param", name: "f", typeName: "Fighter" },
+      { type: "param", name: "pr", typeName: "Progress" },
       { type: "constraint", typeName: "RedrawUI" }
     ]);
     function code_nextTurn() {
@@ -4904,6 +4984,124 @@ void main() {
       }
     }
     const nextTurn = new RLSystem("nextTurn", code_nextTurn, []);
+    function code_level_onMouse(m) {
+    }
+    const level_onMouse = new RLSystem("level_onMouse", code_level_onMouse, [
+      { type: "param", name: "m", typeName: "MouseEvent" }
+    ]);
+    function code_level_onKey(e, f, pr, k) {
+      let done = false;
+      if (k.key == "KeyC") {
+        done = true;
+        f.hp += 20;
+        f.maxHp += 20;
+        log.add("Your health improves.");
+      }
+      if (k.key == "KeyS") {
+        done = true;
+        f.power += 1;
+        log.add("You feel stronger.");
+      }
+      if (k.key == "KeyA") {
+        done = true;
+        f.defence += 1;
+        log.add("Your feel swifter.");
+      }
+      if (done) {
+        f.xp -= toNextLevel(e);
+        pr.level += 1;
+        e.add(RedrawUI);
+        __lib.popKeyHandler();
+        __lib.popMouseHandler();
+        redrawEverything(e);
+      }
+    }
+    const level_onKey = new RLSystem("level_onKey", code_level_onKey, [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "param", name: "f", typeName: "Fighter" },
+      { type: "param", name: "pr", typeName: "Progress" },
+      { type: "param", name: "k", typeName: "KeyEvent" }
+    ]);
+    function code_gainLevel(e, p, f) {
+      e.remove(GainingLevel);
+      e.remove(RecalculateFOV);
+      let x = 0;
+      if (p.x <= gameWidth / 2) {
+        x = 40;
+      }
+      __lib.clearRect(
+        { type: "int", value: x },
+        { type: "int", value: 5 },
+        { type: "int", value: 40 },
+        { type: "int", value: 10 },
+        { type: "str", value: "white" },
+        { type: "str", value: "black" }
+      );
+      __lib.drawBox(
+        { type: "int", value: x },
+        { type: "int", value: 5 },
+        { type: "int", value: 40 },
+        { type: "int", value: 10 }
+      );
+      __lib.draw(
+        { type: "int", value: x + 2 },
+        { type: "int", value: 7 },
+        { type: "str", value: "You gain a level." },
+        { type: "str", value: "yellow" }
+      );
+      __lib.draw(
+        { type: "int", value: x + 2 },
+        { type: "int", value: 9 },
+        { type: "str", value: "Choose your boon:" }
+      );
+      __lib.draw(
+        { type: "int", value: x + 4 },
+        { type: "int", value: 10 },
+        {
+          type: "str",
+          value: __lib.join(
+            { type: "str", value: "" },
+            { type: "str", value: "C)onstitution (+20 hp, was " },
+            { type: "int", value: f.maxHp },
+            { type: "char", value: ")" }
+          )
+        }
+      );
+      __lib.draw(
+        { type: "int", value: x + 4 },
+        { type: "int", value: 11 },
+        {
+          type: "str",
+          value: __lib.join(
+            { type: "str", value: "" },
+            { type: "str", value: "S)trength (+1 power, was " },
+            { type: "int", value: f.power },
+            { type: "char", value: ")" }
+          )
+        }
+      );
+      __lib.draw(
+        { type: "int", value: x + 4 },
+        { type: "int", value: 12 },
+        {
+          type: "str",
+          value: __lib.join(
+            { type: "str", value: "" },
+            { type: "str", value: "A)gility (+1 defence, was " },
+            { type: "int", value: f.defence },
+            { type: "char", value: ")" }
+          )
+        }
+      );
+      __lib.pushKeyHandler(level_onKey);
+      __lib.pushMouseHandler(level_onMouse);
+    }
+    const gainLevel = new RLSystem("gainLevel", code_gainLevel, [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "param", name: "p", typeName: "Position" },
+      { type: "param", name: "f", typeName: "Fighter" },
+      { type: "constraint", typeName: "GainingLevel" }
+    ]);
     function code_showLog() {
       if (log.dirty) {
         __lib.drawLog(
@@ -4945,6 +5143,8 @@ void main() {
       ["showNamesAt", fn_showNamesAt],
       ["getBlockingMap", fn_getBlockingMap],
       ["getRandomMove", fn_getRandomMove],
+      ["toNextLevel", fn_toNextLevel],
+      ["giveXp", fn_giveXp],
       ["hurt", fn_hurt],
       ["showHistoryView", fn_showHistoryView],
       ["getName", fn_getName],
@@ -4960,7 +5160,7 @@ void main() {
       ["drawTileAt", fn_drawTileAt],
       ["drawEntity", fn_drawEntity],
       ["drawBar", fn_drawBar],
-      ["clearHPBar", fn_clearHPBar],
+      ["clearUI", fn_clearUI],
       ["randomRoom", fn_randomRoom],
       ["randomCorridor", fn_randomCorridor],
       ["generateDungeon", fn_generateDungeon],
@@ -4995,6 +5195,9 @@ void main() {
       ["RedrawMeEntity", RedrawMeEntity],
       ["drawUI", drawUI],
       ["nextTurn", nextTurn],
+      ["level_onMouse", level_onMouse],
+      ["level_onKey", level_onKey],
+      ["gainLevel", gainLevel],
       ["showLog", showLog],
       ["menu_onKey", menu_onKey],
       ["IsBlocker", IsBlocker],
@@ -5013,6 +5216,7 @@ void main() {
       ["LookAction", LookAction],
       ["QuitAction", QuitAction],
       ["TakeStairsAction", TakeStairsAction],
+      ["GainingLevel", GainingLevel],
       ["Player", tmPlayer],
       ["Enemy", tmEnemy],
       ["Orc", tmOrc],
@@ -5156,6 +5360,7 @@ void main() {
       this.LookAction = false;
       this.QuitAction = false;
       this.TakeStairsAction = false;
+      this.GainingLevel = false;
     }
     toString() {
       return `#${this.id} (${Array.from(this.templates.values()).join(" ")})`;
@@ -5240,18 +5445,18 @@ void main() {
   }
   function drawable(fn) {
     if (Game.instance.terminal)
-      fn();
+      fn(Game.instance.terminal);
     else
       Game.instance.afterInit.push(fn);
   }
   function draw({ value: x }, { value: y }, display, fg, bg) {
-    drawable(() => {
+    drawable((term) => {
       const f = getColour(fg);
       const b = getColour(bg);
       if (display.type === "char")
-        Game.instance.terminal.drawChar(x, y, display.value, f, b);
+        term.drawChar(x, y, display.value, f, b);
       else
-        Game.instance.terminal.drawString(x, y, display.value, f, b);
+        term.drawString(x, y, display.value, f, b);
     });
   }
   function drawCentred({ value: x }, y, display, fg, bg) {
@@ -5414,14 +5619,7 @@ void main() {
   }
   function drawLog(log, { value: x }, { value: y }, { value: width }, { value: height }, offset) {
     drawable(
-      () => log.render(
-        Game.instance.terminal,
-        x,
-        y,
-        width,
-        height,
-        offset ? offset.value : 0
-      )
+      (term) => log.render(term, x, y, width, height, offset ? offset.value : 0)
     );
   }
   function pushMouseHandler(handler) {
@@ -5441,13 +5639,13 @@ void main() {
     (_a = Game.instance.terminal) == null ? void 0 : _a.clear();
   }
   function drawBox({ value: x }, { value: y }, { value: width }, { value: height }, fg, bg) {
-    Game.instance.terminal.drawSingleBox(
-      x,
-      y,
-      width,
-      height,
-      getColour(fg),
-      getColour(bg)
+    drawable(
+      (term) => term.drawSingleBox(x, y, width, height, getColour(fg), getColour(bg))
+    );
+  }
+  function clearRect({ value: x }, { value: y }, { value: width }, { value: height }, fg, bg) {
+    drawable(
+      (term) => term.fillRect(x, y, width, height, " ", getColour(fg), getColour(bg))
     );
   }
   function drawBag(bag, { value: title }, getName, titleColour, itemColour, borderColour, bgColour) {
@@ -5481,7 +5679,14 @@ void main() {
   Serializer.instance.add(
     "n:function",
     (fn) => fn.name,
-    (data) => RL.instance.env.get(data).code
+    (data) => {
+      const obj = RL.instance.env.get(data);
+      if (!obj)
+        throw new Error(`${data} does not exist`);
+      if (obj.type !== "fn")
+        throw new Error(`${data} is type ${obj.type}, expected fn`);
+      return obj.code;
+    }
   );
   function saveObj(name, obj) {
     return [name, Serializer.instance.serialize(obj.type, obj)];
@@ -5547,6 +5752,7 @@ void main() {
     clamp,
     clear,
     clearHandlers,
+    clearRect,
     debug,
     draw,
     drawBag,
