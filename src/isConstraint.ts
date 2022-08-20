@@ -33,5 +33,6 @@ export default function isConstraint(p: RLSystemParam) {
     "QuitAction",
     "TakeStairsAction",
     "GainingLevel",
+    "CharacterInfoAction",
   ].includes(p.typeName);
 }

@@ -62,6 +62,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
   const QuitAction = new RLTag("QuitAction");
   const TakeStairsAction = new RLTag("TakeStairsAction");
   const GainingLevel = new RLTag("GainingLevel");
+  const CharacterInfoAction = new RLTag("CharacterInfoAction");
 
   const mkAppearance = (
     name: string,
@@ -500,6 +501,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
       else if (__match === "KeyJ") return "down";
       else if (__match === "KeyH") return "left";
       else if (__match === "Period") return "wait";
+      else if (__match === "KeyC") return "character";
       else if (__match === "KeyD") return "drop";
       else if (__match === "KeyG") return "pickup";
       else if (__match === "KeyI") return "inventory";
@@ -1264,6 +1266,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
         else if (__match === "drop") return DropAction;
         else if (__match === "look") return LookAction;
         else if (__match === "confirm") return TakeStairsAction;
+        else if (__match === "character") return CharacterInfoAction;
         else if (__match === "quit") return QuitAction;
       })(getKey(k.key))
     );
@@ -1734,6 +1737,136 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     { type: "constraint", typeName: "MyTurn" },
   ]);
 
+  function code_info_onMouse(m: RLMouseEvent) {}
+  const info_onMouse = new RLSystem("info_onMouse", code_info_onMouse, [
+    { type: "param", name: "m", typeName: "MouseEvent" },
+  ]);
+
+  function code_info_onKey(
+    e: RLEntity,
+    f: Fighter,
+    pr: Progress,
+    k: RLKeyEvent
+  ) {
+    if (
+      ((__match) => {
+        if (__match === "confirm") return true;
+        else if (__match === "quit") return true;
+      })(getKey(k.key))
+    ) {
+      __lib.popKeyHandler();
+      __lib.popMouseHandler();
+      redrawEverything(e);
+    }
+  }
+  const info_onKey = new RLSystem("info_onKey", code_info_onKey, [
+    { type: "param", name: "e", typeName: "entity" },
+    { type: "param", name: "f", typeName: "Fighter" },
+    { type: "param", name: "pr", typeName: "Progress" },
+    { type: "param", name: "k", typeName: "KeyEvent" },
+  ]);
+
+  function code_doCharacterScreen(
+    e: RLEntity,
+    p: Position,
+    f: Fighter,
+    pr: Progress
+  ) {
+    e.remove(CharacterInfoAction);
+    let x = 0;
+    if (p.x <= gameWidth / 2) {
+      x = 40;
+    }
+    __lib.clearRect(
+      { type: "int", value: x },
+      { type: "int", value: 5 },
+      { type: "int", value: 30 },
+      { type: "int", value: 10 },
+      { type: "str", value: "white" },
+      { type: "str", value: "black" }
+    );
+    __lib.drawBox(
+      { type: "int", value: x },
+      { type: "int", value: 5 },
+      { type: "int", value: 30 },
+      { type: "int", value: 10 }
+    );
+    __lib.draw(
+      { type: "int", value: x + 2 },
+      { type: "int", value: 7 },
+      {
+        type: "str",
+        value: __lib.join(
+          { type: "char", value: " " },
+          { type: "str", value: "Level:" },
+          { type: "int", value: pr.level }
+        ),
+      }
+    );
+    __lib.draw(
+      { type: "int", value: x + 2 },
+      { type: "int", value: 8 },
+      {
+        type: "str",
+        value: __lib.join(
+          { type: "char", value: " " },
+          { type: "str", value: "XP:" },
+          { type: "int", value: f.xp }
+        ),
+      }
+    );
+    __lib.draw(
+      { type: "int", value: x + 2 },
+      { type: "int", value: 9 },
+      {
+        type: "str",
+        value: __lib.join(
+          { type: "char", value: " " },
+          { type: "str", value: "...next level:" },
+          { type: "int", value: toNextLevel(e) }
+        ),
+      }
+    );
+    __lib.draw(
+      { type: "int", value: x + 2 },
+      { type: "int", value: 11 },
+      {
+        type: "str",
+        value: __lib.join(
+          { type: "char", value: " " },
+          { type: "str", value: "Power:" },
+          { type: "int", value: f.power }
+        ),
+      }
+    );
+    __lib.draw(
+      { type: "int", value: x + 2 },
+      { type: "int", value: 12 },
+      {
+        type: "str",
+        value: __lib.join(
+          { type: "char", value: " " },
+          { type: "str", value: "Defence:" },
+          { type: "int", value: f.defence }
+        ),
+      }
+    );
+    __lib.pushKeyHandler(info_onKey);
+    __lib.pushMouseHandler(info_onMouse);
+  }
+  const doCharacterScreen = new RLSystem(
+    "doCharacterScreen",
+    code_doCharacterScreen,
+    [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "param", name: "p", typeName: "Position" },
+      { type: "param", name: "f", typeName: "Fighter" },
+      { type: "param", name: "pr", typeName: "Progress" },
+      { type: "constraint", typeName: "CharacterInfoAction" },
+      { type: "constraint", typeName: "MyTurn" },
+    ]
+  );
+
   function code_fov(e: RLEntity, p: Position) {
     __lib.getFOV(
       map,
@@ -1882,7 +2015,6 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     if (done) {
       f.xp -= toNextLevel(e);
       pr.level += 1;
-      e.add(RedrawUI);
       __lib.popKeyHandler();
       __lib.popMouseHandler();
       redrawEverything(e);
@@ -2066,6 +2198,9 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     ["doLook", doLook],
     ["doQuit", doQuit],
     ["doStairs", doStairs],
+    ["info_onMouse", info_onMouse],
+    ["info_onKey", info_onKey],
+    ["doCharacterScreen", doCharacterScreen],
     ["fov", fov],
     ["drawUnderTile", drawUnderTile],
     ["RedrawMeEntity", RedrawMeEntity],
@@ -2093,6 +2228,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     ["QuitAction", QuitAction],
     ["TakeStairsAction", TakeStairsAction],
     ["GainingLevel", GainingLevel],
+    ["CharacterInfoAction", CharacterInfoAction],
     ["Player", tmPlayer],
     ["Enemy", tmEnemy],
     ["Orc", tmOrc],

@@ -126,4 +126,5 @@ export type RLTagName =
   | "LookAction"
   | "QuitAction"
   | "TakeStairsAction"
-  | "GainingLevel";
+  | "GainingLevel"
+  | "CharacterInfoAction";

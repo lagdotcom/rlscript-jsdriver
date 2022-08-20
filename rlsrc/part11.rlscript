@@ -92,6 +92,7 @@ tag LookAction
 tag QuitAction
 tag TakeStairsAction
 tag GainingLevel
+tag CharacterInfoAction
 
 global impossible: str = "#808080"
 global healed: str = "#00ff00"
@@ -336,6 +337,7 @@ fn getKey(k: str): str
     "KeyH"       = "left"
     "Period"     = "wait"
 
+    "KeyC"       = "character"
     "KeyD"       = "drop"
     "KeyG"       = "pickup"
     "KeyI"       = "inventory"
@@ -396,6 +398,7 @@ system main_onKey(e: entity, IsPlayer, k: KeyEvent)
     "drop"      = DropAction
     "look"      = LookAction
     "confirm"   = TakeStairsAction
+    "character" = CharacterInfoAction
 
     "quit"      = QuitAction
   end)
@@ -838,7 +841,6 @@ fn stopTargeting(e: entity)
 
   popKeyHandler()
   popMouseHandler()
-
   redrawEverything(e)
 end
 
@@ -865,6 +867,36 @@ system doStairs(e: entity, p: Position, TakeStairsAction, IsPlayer, MyTurn)
   else
     log.add("There are no stairs here.", impossible)
   end
+end
+
+system info_onMouse(m: MouseEvent) end
+system info_onKey(e: entity, f: Fighter, pr: Progress, k: KeyEvent)
+  if match getKey(k.key)
+    "confirm" = true
+    "quit" = true
+  end
+    popKeyHandler()
+    popMouseHandler()
+    redrawEverything(e)
+  end
+end
+
+system doCharacterScreen(e: entity, p: Position, f: Fighter, pr: Progress, CharacterInfoAction, MyTurn)
+  e.remove(CharacterInfoAction)
+
+  let x: int = 0
+  if p.x <= gameWidth / 2 x = 40 end
+
+  clearRect(x, 5, 30, 10, "white", "black")
+  drawBox(x, 5, 30, 10)
+  draw(x+2, 7, join(' ', "Level:", pr.level))
+  draw(x+2, 8, join(' ', "XP:", f.xp))
+  draw(x+2, 9, join(' ', "...next level:", toNextLevel(e)))
+  draw(x+2, 11, join(' ', "Power:", f.power))
+  draw(x+2, 12, join(' ', "Defence:", f.defence))
+
+  pushKeyHandler(info_onKey)
+  pushMouseHandler(info_onMouse)
 end
 
 system fov(e: entity, p: Position, RecalculateFOV)
@@ -1006,7 +1038,6 @@ system level_onKey(e: entity, f: Fighter, pr: Progress, k: KeyEvent)
   if done
     f.xp -= toNextLevel(e)
     pr.level += 1
-    e.add(RedrawUI)
 
     popKeyHandler()
     popMouseHandler()

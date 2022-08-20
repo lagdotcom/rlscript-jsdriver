@@ -69,6 +69,7 @@ export default class RLEntity {
   QuitAction: boolean;
   TakeStairsAction: boolean;
   GainingLevel: boolean;
+  CharacterInfoAction: boolean;
   constructor() {
     this.type = "entity";
     this.id = nanoid();
@@ -91,6 +92,7 @@ export default class RLEntity {
     this.QuitAction = false;
     this.TakeStairsAction = false;
     this.GainingLevel = false;
+    this.CharacterInfoAction = false;
   }
 
   toString() {
