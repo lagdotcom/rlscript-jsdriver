@@ -90,6 +90,7 @@ type RLLibrary = {
   ): RLXY | undefined;
   join(glue: RLChar | RLStr, ...parts: (RLChar | RLStr | RLInt)[]): string;
   loadGame(): void;
+  lookup(eid: RLStr): RLEntity | undefined;
   persist(name: RLStr, obj: RLObject): void;
   popKeyHandler(): void;
   popMouseHandler(): void;

@@ -3,6 +3,8 @@ import type {
   Appearance,
   ConfusedEnemy,
   Consumable,
+  Equipment,
+  Equippable,
   Fighter,
   Inventory,
   InventoryActionConfig,
@@ -44,6 +46,10 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     Item,
     Enemy,
     Player,
+  }
+  enum Slot {
+    Weapon,
+    Armour,
   }
 
   const IsBlocker = new RLTag("IsBlocker");
@@ -187,6 +193,23 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     formulaBase,
     formulaFactor,
   });
+  const mkEquippable = (
+    slot: Slot,
+    power: number,
+    defence: number
+  ): Equippable => ({
+    type: "component",
+    typeName: "Equippable",
+    slot,
+    power,
+    defence,
+  });
+  const mkEquipment = (weapon: string, armour: string): Equipment => ({
+    type: "component",
+    typeName: "Equipment",
+    weapon,
+    armour,
+  });
 
   const Player: RLTemplate = {
     type: "template",
@@ -195,9 +218,10 @@ export default function implementation(__lib: RLLibrary): RLEnv {
       IsBlocker,
       IsPlayer,
       mkAppearance("player", "@", "white", "black", Layer.Player),
-      mkFighter(30, 30, 2, 5, 0),
+      mkFighter(30, 30, 1, 2, 0),
       mkActor(100),
       mkInventory(new RLBag(20)),
+      mkEquipment(),
       MyTurn,
       RecalculateFOV,
       RedrawUI,
@@ -271,6 +295,42 @@ export default function implementation(__lib: RLLibrary): RLEnv {
       mkConsumable(fireballItem, 12, 100, true, 3),
     ],
   };
+  const Dagger: RLTemplate = {
+    type: "template",
+    name: "Dagger",
+    get: () => [
+      Item,
+      mkAppearance("dagger", "/", "silver", "black", Layer.Item),
+      mkEquippable(Slot.Weapon, 2, 0),
+    ],
+  };
+  const Sword: RLTemplate = {
+    type: "template",
+    name: "Sword",
+    get: () => [
+      Item,
+      mkAppearance("sword", "/", "white", "black", Layer.Item),
+      mkEquippable(Slot.Weapon, 4, 0),
+    ],
+  };
+  const LeatherArmour: RLTemplate = {
+    type: "template",
+    name: "LeatherArmour",
+    get: () => [
+      Item,
+      mkAppearance("leather armour", "[", "brown", "black", Layer.Item),
+      mkEquippable(Slot.Armour, 0, 1),
+    ],
+  };
+  const ChainMail: RLTemplate = {
+    type: "template",
+    name: "ChainMail",
+    get: () => [
+      Item,
+      mkAppearance("chain mail", "[", "silver", "black", Layer.Item),
+      mkEquippable(Slot.Armour, 0, 3),
+    ],
+  };
 
   const Floor = new RLTile(".", true, true);
   const Wall = new RLTile("#", false, false);
@@ -314,6 +374,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
   let targetAt: RLXY = new RLXY(-1, -1);
   let targetSize = 1;
   let historyOffset = 0;
+  let gPlayer: RLEntity;
 
   function getRandomEnemy(floor: number) {
     const gen: RLWeighted = new RLWeighted();
@@ -341,14 +402,71 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     }
     if (floor >= 4) {
       gen.set(LightningScroll, 25);
+      gen.set(Sword, 5);
     }
     if (floor >= 6) {
       gen.set(FireballScroll, 25);
+      gen.set(ChainMail, 5);
     }
     return gen.roll();
   }
   const fn_getRandomItem = new RLFn("getRandomItem", getRandomItem, [
     { type: "param", name: "floor", typeName: "int" },
+  ]);
+
+  function getPower(e: RLEntity) {
+    let power = 0;
+    if (!e) {
+      return 0;
+    }
+    if (e.Fighter) {
+      power += e.Fighter.power;
+    }
+    if (e.Equipment) {
+      if (e.Equipment.weapon) {
+        power += getPower(
+          __lib.lookup({ type: "eid", value: e.Equipment.weapon })
+        );
+      }
+      if (e.Equipment.armour) {
+        power += getPower(
+          __lib.lookup({ type: "eid", value: e.Equipment.armour })
+        );
+      }
+    }
+    if (e.Equippable) {
+      power += e.Equippable.power;
+    }
+    return power;
+  }
+  const fn_getPower = new RLFn("getPower", getPower, [
+    { type: "param", name: "e", typeName: "entity" },
+  ]);
+
+  function getDefence(e: RLEntity) {
+    let defence = 0;
+    if (e.Fighter) {
+      defence += e.Fighter.defence;
+    }
+    if (e.Equipment) {
+      if (e.Equipment.weapon) {
+        defence += getDefence(
+          __lib.lookup({ type: "eid", value: e.Equipment.weapon })
+        );
+      }
+      if (e.Equipment.armour) {
+        defence += getDefence(
+          __lib.lookup({ type: "eid", value: e.Equipment.armour })
+        );
+      }
+    }
+    if (e.Equippable) {
+      defence += e.Equippable.defence;
+    }
+    return defence;
+  }
+  const fn_getDefence = new RLFn("getDefence", getDefence, [
+    { type: "param", name: "e", typeName: "entity" },
   ]);
 
   function distance(a: RLXY, b: RLXY) {
@@ -764,6 +882,24 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     { type: "param", name: "e", typeName: "entity" },
   ]);
 
+  function getEquippedName(e: RLEntity) {
+    let name: string = getName(e);
+    if (
+      e.Equippable &&
+      getEquipmentInSlot(gPlayer.Equipment, e.Equippable.slot) == e.id
+    ) {
+      name = __lib.join(
+        { type: "char", value: " " },
+        { type: "str", value: name },
+        { type: "str", value: "(E)" }
+      );
+    }
+    return name;
+  }
+  const fn_getEquippedName = new RLFn("getEquippedName", getEquippedName, [
+    { type: "param", name: "e", typeName: "entity" },
+  ]);
+
   function openInventory(
     e: RLEntity,
     v: Inventory,
@@ -779,7 +915,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     __lib.drawBag(
       v.items,
       { type: "str", value: title },
-      fn_getName,
+      fn_getEquippedName,
       { type: "str", value: "white" },
       { type: "str", value: "silver" },
       { type: "str", value: "grey" },
@@ -811,7 +947,106 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     { type: "param", name: "target", typeName: "xy" },
   ]);
 
+  function getEquipmentInSlot(eq: Equipment, slot: Slot) {
+    return ((__match) => {
+      if (__match === Slot.Weapon) return eq.weapon;
+      else if (__match === Slot.Armour) return eq.armour;
+    })(slot);
+  }
+  const fn_getEquipmentInSlot = new RLFn(
+    "getEquipmentInSlot",
+    getEquipmentInSlot,
+    [
+      { type: "param", name: "eq", typeName: "Equipment" },
+      { type: "param", name: "slot", typeName: "Slot" },
+    ]
+  );
+
+  function setEquipmentInSlot(eq: Equipment, slot: Slot, id: string) {
+    if (slot == Slot.Weapon) {
+      eq.weapon = id;
+    }
+    if (slot == Slot.Armour) {
+      eq.armour = id;
+    }
+  }
+  const fn_setEquipmentInSlot = new RLFn(
+    "setEquipmentInSlot",
+    setEquipmentInSlot,
+    [
+      { type: "param", name: "eq", typeName: "Equipment" },
+      { type: "param", name: "slot", typeName: "Slot" },
+      { type: "param", name: "id", typeName: "eid" },
+    ]
+  );
+
+  function removeItem(e: RLEntity, item: RLEntity) {
+    if (getEquipmentInSlot(e.Equipment, item.Equippable.slot) == item.id) {
+      setEquipmentInSlot(e.Equipment, item.Equippable.slot, "");
+      log.add(
+        __lib.join(
+          { type: "str", value: "" },
+          { type: "str", value: "You remove the " },
+          { type: "str", value: getName(item) },
+          { type: "char", value: "." }
+        )
+      );
+      return true;
+    }
+  }
+  const fn_removeItem = new RLFn("removeItem", removeItem, [
+    { type: "param", name: "e", typeName: "entity" },
+    { type: "param", name: "item", typeName: "entity" },
+  ]);
+
+  function equipItem(e: RLEntity, item: RLEntity) {
+    const slot: Slot = item.Equippable.slot;
+    const old: string | undefined = getEquipmentInSlot(e.Equipment, slot);
+    if (old) {
+      removeItem(e, __lib.lookup({ type: "eid", value: old }));
+    }
+    setEquipmentInSlot(e.Equipment, slot, item.id);
+    log.add(
+      __lib.join(
+        { type: "str", value: "" },
+        { type: "str", value: "You equip the " },
+        { type: "str", value: getName(item) },
+        { type: "char", value: "." }
+      )
+    );
+    useTurn(e);
+  }
+  const fn_equipItem = new RLFn("equipItem", equipItem, [
+    { type: "param", name: "e", typeName: "entity" },
+    { type: "param", name: "item", typeName: "entity" },
+  ]);
+
+  function toggleEquipped(e: RLEntity, item: RLEntity) {
+    if (!e.Equipment) {
+      log.add("You can't equip anything.", impossible);
+      return;
+    }
+    if (!item.Equippable) {
+      log.add("You can't equip that.", impossible);
+      return;
+    }
+    if (getEquipmentInSlot(e.Equipment, item.Equippable.slot) == item.id) {
+      removeItem(e, item);
+    } else {
+      equipItem(e, item);
+    }
+  }
+  const fn_toggleEquipped = new RLFn("toggleEquipped", toggleEquipped, [
+    { type: "param", name: "e", typeName: "entity" },
+    { type: "param", name: "item", typeName: "entity" },
+  ]);
+
   function icUse(e: RLEntity, key: string, item: RLEntity) {
+    if (item.Equippable) {
+      toggleEquipped(e, item);
+      useTurn(e);
+      return;
+    }
     if (!item.Consumable) {
       log.add("You cannot use that.", impossible);
       return;
@@ -839,6 +1074,9 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     if (e.Inventory && e.Position) {
       e.Inventory.items.remove(key);
       item.add(mkPosition(e.Position.x, e.Position.y));
+      if (e.Equipment && item.Equippable) {
+        removeItem(e, item);
+      }
       useTurn(e);
       if (item.Appearance) {
         log.add(
@@ -1224,10 +1462,22 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     { type: "param", name: "player", typeName: "entity" },
   ]);
 
+  function giveAndEquip(e: RLEntity, item: RLEntity) {
+    e.Inventory.items.add(item);
+    equipItem(e, item);
+  }
+  const fn_giveAndEquip = new RLFn("giveAndEquip", giveAndEquip, [
+    { type: "param", name: "e", typeName: "entity" },
+    { type: "param", name: "item", typeName: "entity" },
+  ]);
+
   function newGame() {
-    const player: RLEntity = __lib.spawn(Player);
+    gPlayer = __lib.spawn(Player);
     const start: RLXY = generateDungeon(1);
-    player.add(mkPosition(start.x, start.y));
+    gPlayer.add(mkPosition(start.x, start.y));
+    giveAndEquip(gPlayer, __lib.spawn(Dagger));
+    giveAndEquip(gPlayer, __lib.spawn(LeatherArmour));
+    log.clear();
     log.add("Welcome to the RLscript dungeon!", welcomeText);
     __lib.pushKeyHandler(main_onKey);
     __lib.pushMouseHandler(main_onMouse);
@@ -1433,12 +1683,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     { type: "constraint", typeName: "MyTurn" },
   ]);
 
-  function code_doMelee(
-    e: RLEntity,
-    m: MeleeAction,
-    a: Appearance,
-    f: Fighter
-  ) {
+  function code_doMelee(e: RLEntity, m: MeleeAction, a: Appearance) {
     const target: RLEntity = m.target;
     e.remove(m);
     useTurn(e);
@@ -1448,7 +1693,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
       { type: "str", value: "attacks" },
       { type: "str", value: target.Appearance.name }
     );
-    const damage: number = f.power - target.Fighter.defence;
+    const damage: number = getPower(e) - getDefence(target);
     const colour: string = ((__match) => {
       if (__match.has(IsPlayer.typeName)) return playerAttack;
       else return enemyAttack;
@@ -1480,7 +1725,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     { type: "param", name: "e", typeName: "entity" },
     { type: "param", name: "m", typeName: "MeleeAction" },
     { type: "param", name: "a", typeName: "Appearance" },
-    { type: "param", name: "f", typeName: "Fighter" },
+    { type: "constraint", typeName: "Fighter" },
     { type: "constraint", typeName: "MyTurn" },
   ]);
 
@@ -1873,7 +2118,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
         value: __lib.join(
           { type: "char", value: " " },
           { type: "str", value: "Power:" },
-          { type: "int", value: f.power }
+          { type: "int", value: getPower(e) }
         ),
       }
     );
@@ -1885,7 +2130,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
         value: __lib.join(
           { type: "char", value: " " },
           { type: "str", value: "Defence:" },
-          { type: "int", value: f.defence }
+          { type: "int", value: getDefence(e) }
         ),
       }
     );
@@ -1990,7 +2235,8 @@ export default function implementation(__lib: RLLibrary): RLEnv {
           { type: "str", value: "Floor:" },
           { type: "int", value: pr.floor }
         ),
-      }
+      },
+      { type: "str", value: "white" }
     );
   }
   const drawUI = new RLSystem("drawUI", code_drawUI, [
@@ -2170,6 +2416,9 @@ export default function implementation(__lib: RLLibrary): RLEnv {
       if (__lib.canLoadGame()) {
         __lib.clear();
         __lib.loadGame();
+        for (const e of new RLQuery(RL.instance, ["IsPlayer"]).get()) {
+          gPlayer = e;
+        }
       }
     }
   }
@@ -2180,6 +2429,8 @@ export default function implementation(__lib: RLLibrary): RLEnv {
   return new Map<string, RLObject>([
     ["getRandomEnemy", fn_getRandomEnemy],
     ["getRandomItem", fn_getRandomItem],
+    ["getPower", fn_getPower],
+    ["getDefence", fn_getDefence],
     ["distance", fn_distance],
     ["healingItem", fn_healingItem],
     ["zapItem", fn_zapItem],
@@ -2198,8 +2449,14 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     ["hurt", fn_hurt],
     ["showHistoryView", fn_showHistoryView],
     ["getName", fn_getName],
+    ["getEquippedName", fn_getEquippedName],
     ["openInventory", fn_openInventory],
     ["tcUseItem", fn_tcUseItem],
+    ["getEquipmentInSlot", fn_getEquipmentInSlot],
+    ["setEquipmentInSlot", fn_setEquipmentInSlot],
+    ["removeItem", fn_removeItem],
+    ["equipItem", fn_equipItem],
+    ["toggleEquipped", fn_toggleEquipped],
     ["icUse", fn_icUse],
     ["icDrop", fn_icDrop],
     ["drawTilesAt", fn_drawTilesAt],
@@ -2217,6 +2474,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     ["addEnemies", fn_addEnemies],
     ["addItems", fn_addItems],
     ["nextFloor", fn_nextFloor],
+    ["giveAndEquip", fn_giveAndEquip],
     ["newGame", fn_newGame],
     ["mainMenu", fn_mainMenu],
     ["main", fn_main],
@@ -2280,5 +2538,9 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     ["LightningScroll", LightningScroll],
     ["ConfusionScroll", ConfusionScroll],
     ["FireballScroll", FireballScroll],
+    ["Dagger", Dagger],
+    ["Sword", Sword],
+    ["LeatherArmour", LeatherArmour],
+    ["ChainMail", ChainMail],
   ]);
 }

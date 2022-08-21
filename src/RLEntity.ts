@@ -3,6 +3,8 @@ import type {
   Appearance,
   ConfusedEnemy,
   Consumable,
+  Equipment,
+  Equippable,
   Fighter,
   Inventory,
   InventoryActionConfig,
@@ -52,6 +54,8 @@ export default class RLEntity {
   TargetingItemConfig?: TargetingItemConfig;
   ConfusedEnemy?: ConfusedEnemy;
   Progress?: Progress;
+  Equippable?: Equippable;
+  Equipment?: Equipment;
   IsBlocker: boolean;
   IsPlayer: boolean;
   RecalculateFOV: boolean;

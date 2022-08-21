@@ -3172,6 +3172,8 @@ void main() {
       "TargetingItemConfig",
       "ConfusedEnemy",
       "Progress",
+      "Equippable",
+      "Equipment",
       "IsBlocker",
       "IsPlayer",
       "RecalculateFOV",
@@ -3292,6 +3294,11 @@ void main() {
       Layer2[Layer2["Enemy"] = 3] = "Enemy";
       Layer2[Layer2["Player"] = 4] = "Player";
     })(Layer || (Layer = {}));
+    let Slot;
+    ((Slot2) => {
+      Slot2[Slot2["Weapon"] = 0] = "Weapon";
+      Slot2[Slot2["Armour"] = 1] = "Armour";
+    })(Slot || (Slot = {}));
     const IsBlocker = new RLTag("IsBlocker");
     const IsPlayer = new RLTag("IsPlayer");
     const RecalculateFOV = new RLTag("RecalculateFOV");
@@ -3401,6 +3408,19 @@ void main() {
       formulaBase,
       formulaFactor
     });
+    const mkEquippable = (slot, power, defence) => ({
+      type: "component",
+      typeName: "Equippable",
+      slot,
+      power,
+      defence
+    });
+    const mkEquipment = (weapon, armour) => ({
+      type: "component",
+      typeName: "Equipment",
+      weapon,
+      armour
+    });
     const Player = {
       type: "template",
       name: "Player",
@@ -3408,9 +3428,10 @@ void main() {
         IsBlocker,
         IsPlayer,
         mkAppearance("player", "@", "white", "black", 4 /* Player */),
-        mkFighter(30, 30, 2, 5, 0),
+        mkFighter(30, 30, 1, 2, 0),
         mkActor(100),
         mkInventory(new RLBag(20)),
+        mkEquipment(),
         MyTurn,
         RecalculateFOV,
         RedrawUI,
@@ -3484,6 +3505,42 @@ void main() {
         mkConsumable(fireballItem, 12, 100, true, 3)
       ]
     };
+    const Dagger = {
+      type: "template",
+      name: "Dagger",
+      get: () => [
+        Item,
+        mkAppearance("dagger", "/", "silver", "black", 2 /* Item */),
+        mkEquippable(0 /* Weapon */, 2, 0)
+      ]
+    };
+    const Sword = {
+      type: "template",
+      name: "Sword",
+      get: () => [
+        Item,
+        mkAppearance("sword", "/", "white", "black", 2 /* Item */),
+        mkEquippable(0 /* Weapon */, 4, 0)
+      ]
+    };
+    const LeatherArmour = {
+      type: "template",
+      name: "LeatherArmour",
+      get: () => [
+        Item,
+        mkAppearance("leather armour", "[", "brown", "black", 2 /* Item */),
+        mkEquippable(1 /* Armour */, 0, 1)
+      ]
+    };
+    const ChainMail = {
+      type: "template",
+      name: "ChainMail",
+      get: () => [
+        Item,
+        mkAppearance("chain mail", "[", "silver", "black", 2 /* Item */),
+        mkEquippable(1 /* Armour */, 0, 3)
+      ]
+    };
     const Floor = new RLTile(".", true, true);
     const Wall = new RLTile("#", false, false);
     const DownStairs = new RLTile(">", true, true);
@@ -3525,6 +3582,7 @@ void main() {
     let targetAt = new RLXY(-1, -1);
     let targetSize = 1;
     let historyOffset = 0;
+    let gPlayer;
     function getRandomEnemy(floor2) {
       const gen = new RLWeighted();
       gen.set(Orc, 80);
@@ -3554,14 +3612,69 @@ void main() {
       }
       if (floor2 >= 4) {
         gen.set(LightningScroll, 25);
+        gen.set(Sword, 5);
       }
       if (floor2 >= 6) {
         gen.set(FireballScroll, 25);
+        gen.set(ChainMail, 5);
       }
       return gen.roll();
     }
     const fn_getRandomItem = new RLFn("getRandomItem", getRandomItem, [
       { type: "param", name: "floor", typeName: "int" }
+    ]);
+    function getPower(e) {
+      let power = 0;
+      if (!e) {
+        return 0;
+      }
+      if (e.Fighter) {
+        power += e.Fighter.power;
+      }
+      if (e.Equipment) {
+        if (e.Equipment.weapon) {
+          power += getPower(
+            __lib.lookup({ type: "eid", value: e.Equipment.weapon })
+          );
+        }
+        if (e.Equipment.armour) {
+          power += getPower(
+            __lib.lookup({ type: "eid", value: e.Equipment.armour })
+          );
+        }
+      }
+      if (e.Equippable) {
+        power += e.Equippable.power;
+      }
+      return power;
+    }
+    const fn_getPower = new RLFn("getPower", getPower, [
+      { type: "param", name: "e", typeName: "entity" }
+    ]);
+    function getDefence(e) {
+      let defence = 0;
+      if (e.Fighter) {
+        defence += e.Fighter.defence;
+      }
+      if (e.Equipment) {
+        if (e.Equipment.weapon) {
+          defence += getDefence(
+            __lib.lookup({ type: "eid", value: e.Equipment.weapon })
+          );
+        }
+        if (e.Equipment.armour) {
+          defence += getDefence(
+            __lib.lookup({ type: "eid", value: e.Equipment.armour })
+          );
+        }
+      }
+      if (e.Equippable) {
+        defence += e.Equippable.defence;
+      }
+      return defence;
+    }
+    const fn_getDefence = new RLFn("getDefence", getDefence, [
+      { type: "param", name: "e", typeName: "entity" }
     ]);
     function distance(a, b) {
       const dx = a.x - b.x;
@@ -3994,6 +4107,20 @@ void main() {
     const fn_getName = new RLFn("getName", getName, [
       { type: "param", name: "e", typeName: "entity" }
     ]);
+    function getEquippedName(e) {
+      let name = getName(e);
+      if (e.Equippable && getEquipmentInSlot(gPlayer.Equipment, e.Equippable.slot) == e.id) {
+        name = __lib.join(
+          { type: "char", value: " " },
+          { type: "str", value: name },
+          { type: "str", value: "(E)" }
+        );
+      }
+      return name;
+    }
+    const fn_getEquippedName = new RLFn("getEquippedName", getEquippedName, [
+      { type: "param", name: "e", typeName: "entity" }
+    ]);
     function openInventory(e, v, callback, title) {
       if (!v.items.count) {
         log.add("You're not carrying anything.", impossible);
@@ -4004,7 +4131,7 @@ void main() {
       __lib.drawBag(
         v.items,
         { type: "str", value: title },
-        fn_getName,
+        fn_getEquippedName,
         { type: "str", value: "white" },
         { type: "str", value: "silver" },
         { type: "str", value: "grey" },
@@ -4034,7 +4161,103 @@ void main() {
       { type: "param", name: "e", typeName: "entity" },
       { type: "param", name: "target", typeName: "xy" }
     ]);
+    function getEquipmentInSlot(eq, slot) {
+      return ((__match) => {
+        if (__match === 0 /* Weapon */)
+          return eq.weapon;
+        else if (__match === 1 /* Armour */)
+          return eq.armour;
+      })(slot);
+    }
+    const fn_getEquipmentInSlot = new RLFn(
+      "getEquipmentInSlot",
+      getEquipmentInSlot,
+      [
+        { type: "param", name: "eq", typeName: "Equipment" },
+        { type: "param", name: "slot", typeName: "Slot" }
+      ]
+    );
+    function setEquipmentInSlot(eq, slot, id) {
+      if (slot == 0 /* Weapon */) {
+        eq.weapon = id;
+      }
+      if (slot == 1 /* Armour */) {
+        eq.armour = id;
+      }
+    }
+    const fn_setEquipmentInSlot = new RLFn(
+      "setEquipmentInSlot",
+      setEquipmentInSlot,
+      [
+        { type: "param", name: "eq", typeName: "Equipment" },
+        { type: "param", name: "slot", typeName: "Slot" },
+        { type: "param", name: "id", typeName: "eid" }
+      ]
+    );
+    function removeItem(e, item) {
+      if (getEquipmentInSlot(e.Equipment, item.Equippable.slot) == item.id) {
+        setEquipmentInSlot(e.Equipment, item.Equippable.slot, "");
+        log.add(
+          __lib.join(
+            { type: "str", value: "" },
+            { type: "str", value: "You remove the " },
+            { type: "str", value: getName(item) },
+            { type: "char", value: "." }
+          )
+        );
+        return true;
+      }
+    }
+    const fn_removeItem = new RLFn("removeItem", removeItem, [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "param", name: "item", typeName: "entity" }
+    ]);
+    function equipItem(e, item) {
+      const slot = item.Equippable.slot;
+      const old = getEquipmentInSlot(e.Equipment, slot);
+      if (old) {
+        removeItem(e, __lib.lookup({ type: "eid", value: old }));
+      }
+      setEquipmentInSlot(e.Equipment, slot, item.id);
+      log.add(
+        __lib.join(
+          { type: "str", value: "" },
+          { type: "str", value: "You equip the " },
+          { type: "str", value: getName(item) },
+          { type: "char", value: "." }
+        )
+      );
+      useTurn(e);
+    }
+    const fn_equipItem = new RLFn("equipItem", equipItem, [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "param", name: "item", typeName: "entity" }
+    ]);
+    function toggleEquipped(e, item) {
+      if (!e.Equipment) {
+        log.add("You can't equip anything.", impossible);
+        return;
+      }
+      if (!item.Equippable) {
+        log.add("You can't equip that.", impossible);
+        return;
+      }
+      if (getEquipmentInSlot(e.Equipment, item.Equippable.slot) == item.id) {
+        removeItem(e, item);
+      } else {
+        equipItem(e, item);
+      }
+    }
+    const fn_toggleEquipped = new RLFn("toggleEquipped", toggleEquipped, [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "param", name: "item", typeName: "entity" }
+    ]);
     function icUse(e, key, item) {
+      if (item.Equippable) {
+        toggleEquipped(e, item);
+        useTurn(e);
+        return;
+      }
       if (!item.Consumable) {
         log.add("You cannot use that.", impossible);
         return;
@@ -4061,6 +4284,9 @@ void main() {
       if (e.Inventory && e.Position) {
         e.Inventory.items.remove(key);
         item.add(mkPosition(e.Position.x, e.Position.y));
+        if (e.Equipment && item.Equippable) {
+          removeItem(e, item);
+        }
         useTurn(e);
         if (item.Appearance) {
           log.add(
@@ -4405,10 +4631,21 @@ void main() {
     const fn_nextFloor = new RLFn("nextFloor", nextFloor, [
       { type: "param", name: "player", typeName: "entity" }
     ]);
+    function giveAndEquip(e, item) {
+      e.Inventory.items.add(item);
+      equipItem(e, item);
+    }
+    const fn_giveAndEquip = new RLFn("giveAndEquip", giveAndEquip, [
+      { type: "param", name: "e", typeName: "entity" },
+      { type: "param", name: "item", typeName: "entity" }
+    ]);
     function newGame() {
-      const player = __lib.spawn(Player);
+      gPlayer = __lib.spawn(Player);
       const start = generateDungeon(1);
-      player.add(mkPosition(start.x, start.y));
+      gPlayer.add(mkPosition(start.x, start.y));
+      giveAndEquip(gPlayer, __lib.spawn(Dagger));
+      giveAndEquip(gPlayer, __lib.spawn(LeatherArmour));
+      log.clear();
       log.add("Welcome to the RLscript dungeon!", welcomeText);
       __lib.pushKeyHandler(main_onKey);
       __lib.pushMouseHandler(main_onMouse);
@@ -4616,7 +4853,7 @@ void main() {
       { type: "param", name: "m", typeName: "MoveAction" },
       { type: "constraint", typeName: "MyTurn" }
     ]);
-    function code_doMelee(e, m, a, f) {
+    function code_doMelee(e, m, a) {
       const target = m.target;
       e.remove(m);
       useTurn(e);
@@ -4626,7 +4863,7 @@ void main() {
         { type: "str", value: "attacks" },
         { type: "str", value: target.Appearance.name }
       );
-      const damage = f.power - target.Fighter.defence;
+      const damage = getPower(e) - getDefence(target);
       const colour = ((__match) => {
         if (__match.has(IsPlayer.typeName))
           return playerAttack;
@@ -4660,7 +4897,7 @@ void main() {
       { type: "param", name: "e", typeName: "entity" },
       { type: "param", name: "m", typeName: "MeleeAction" },
       { type: "param", name: "a", typeName: "Appearance" },
-      { type: "param", name: "f", typeName: "Fighter" },
+      { type: "constraint", typeName: "Fighter" },
       { type: "constraint", typeName: "MyTurn" }
     ]);
     function code_doWait(e) {
@@ -5027,7 +5264,7 @@ void main() {
           value: __lib.join(
             { type: "char", value: " " },
             { type: "str", value: "Power:" },
-            { type: "int", value: f.power }
+            { type: "int", value: getPower(e) }
           )
         }
       );
@@ -5039,7 +5276,7 @@ void main() {
           value: __lib.join(
             { type: "char", value: " " },
             { type: "str", value: "Defence:" },
-            { type: "int", value: f.defence }
+            { type: "int", value: getDefence(e) }
           )
         }
       );
@@ -5140,7 +5377,8 @@ void main() {
             { type: "str", value: "Floor:" },
             { type: "int", value: pr.floor }
           )
-        }
+        },
+        { type: "str", value: "white" }
       );
     }
     const drawUI = new RLSystem("drawUI", code_drawUI, [
@@ -5310,6 +5548,9 @@ void main() {
         if (__lib.canLoadGame()) {
           __lib.clear();
           __lib.loadGame();
+          for (const e of new RLQuery(RL.instance, ["IsPlayer"]).get()) {
+            gPlayer = e;
+          }
         }
       }
     }
@@ -5319,6 +5560,8 @@ void main() {
     return /* @__PURE__ */ new Map([
       ["getRandomEnemy", fn_getRandomEnemy],
       ["getRandomItem", fn_getRandomItem],
+      ["getPower", fn_getPower],
+      ["getDefence", fn_getDefence],
       ["distance", fn_distance],
       ["healingItem", fn_healingItem],
       ["zapItem", fn_zapItem],
@@ -5337,8 +5580,14 @@ void main() {
       ["hurt", fn_hurt],
       ["showHistoryView", fn_showHistoryView],
       ["getName", fn_getName],
+      ["getEquippedName", fn_getEquippedName],
       ["openInventory", fn_openInventory],
       ["tcUseItem", fn_tcUseItem],
+      ["getEquipmentInSlot", fn_getEquipmentInSlot],
+      ["setEquipmentInSlot", fn_setEquipmentInSlot],
+      ["removeItem", fn_removeItem],
+      ["equipItem", fn_equipItem],
+      ["toggleEquipped", fn_toggleEquipped],
       ["icUse", fn_icUse],
       ["icDrop", fn_icDrop],
       ["drawTilesAt", fn_drawTilesAt],
@@ -5356,6 +5605,7 @@ void main() {
       ["addEnemies", fn_addEnemies],
       ["addItems", fn_addItems],
       ["nextFloor", fn_nextFloor],
+      ["giveAndEquip", fn_giveAndEquip],
       ["newGame", fn_newGame],
       ["mainMenu", fn_mainMenu],
       ["main", fn_main],
@@ -5418,7 +5668,11 @@ void main() {
       ["HealingPotion", HealingPotion],
       ["LightningScroll", LightningScroll],
       ["ConfusionScroll", ConfusionScroll],
-      ["FireballScroll", FireballScroll]
+      ["FireballScroll", FireballScroll],
+      ["Dagger", Dagger],
+      ["Sword", Sword],
+      ["LeatherArmour", LeatherArmour],
+      ["ChainMail", ChainMail]
     ]);
   }
 
@@ -5939,6 +6193,9 @@ void main() {
         throw new Error(`Cannot persist type: ${obj.type}`);
     }
   }
+  function lookup({ value: id }) {
+    return RL.instance.entities.get(id);
+  }
   var lib = {
     abs,
     add,
@@ -5960,6 +6217,7 @@ void main() {
     getNextMove,
     join,
     loadGame,
+    lookup,
     persist,
     popKeyHandler,
     popMouseHandler,

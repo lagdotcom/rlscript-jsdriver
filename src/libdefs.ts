@@ -158,6 +158,7 @@ const library = [
     p("string", "str")
   ),
   f("loadGame", []),
+  f("lookup", [p("eid", "str")], o("entity", "entity")),
   f("persist", [p("name", "str"), p("obj", "any")]),
   f("popKeyHandler", []),
   f("popMouseHandler", []),

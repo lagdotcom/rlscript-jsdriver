@@ -535,6 +535,11 @@ export default class TSCompiler implements TSScope {
       for (const accepted of valid) {
         if (accepted === type.value) matched = true;
         else if (
+          ["eid", "str"].includes(type.value) &&
+          ["eid", "str"].includes(accepted)
+        )
+          matched = true;
+        else if (
           accepted === "component" &&
           this.componentNames.includes(type.value)
         )
@@ -1147,6 +1152,7 @@ import RLTag from "./RLTag";
       case "float":
         return "number" + suffix;
 
+      case "eid":
       case "str":
       case "char":
         return "string" + suffix;

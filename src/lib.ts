@@ -472,6 +472,10 @@ function persist({ value: name }: RLStr, obj: RLObject) {
   }
 }
 
+function lookup({ value: id }: RLStr) {
+  return RL.instance.entities.get(id);
+}
+
 const lib: RLLibrary = {
   abs,
   add,
@@ -493,6 +497,7 @@ const lib: RLLibrary = {
   getNextMove,
   join,
   loadGame,
+  lookup,
   persist,
   popKeyHandler,
   popMouseHandler,

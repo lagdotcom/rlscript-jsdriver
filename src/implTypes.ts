@@ -93,6 +93,19 @@ export type Progress = {
   formulaBase: number;
   formulaFactor: number;
 };
+export type Equippable = {
+  type: "component";
+  typeName: "Equippable";
+  slot: Slot;
+  power: number;
+  defence: number;
+};
+export type Equipment = {
+  type: "component";
+  typeName: "Equipment";
+  weapon: string;
+  armour: string;
+};
 export type RLComponent =
   | Appearance
   | OldPosition
@@ -107,7 +120,9 @@ export type RLComponent =
   | TargetingActionConfig
   | TargetingItemConfig
   | ConfusedEnemy
-  | Progress;
+  | Progress
+  | Equippable
+  | Equipment;
 export type RLComponentName = RLComponent["typeName"];
 export type RLTagName =
   | "IsBlocker"

@@ -16,6 +16,8 @@ export default function isConstraint(p: RLSystemParam) {
     "TargetingItemConfig",
     "ConfusedEnemy",
     "Progress",
+    "Equippable",
+    "Equipment",
     "IsBlocker",
     "IsPlayer",
     "RecalculateFOV",
