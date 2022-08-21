@@ -34,6 +34,7 @@ import RLSystem from "./RLSystem";
 import RLTag from "./RLTag";
 import RLTemplate from "./RLTemplate";
 import RLTile from "./RLTile";
+import RLWeighted from "./RLWeighted";
 import RLXY from "./RLXY";
 
 export default function implementation(__lib: RLLibrary): RLEnv {
@@ -187,7 +188,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     formulaFactor,
   });
 
-  const tmPlayer: RLTemplate = {
+  const Player: RLTemplate = {
     type: "template",
     name: "Player",
     get: () => [
@@ -203,30 +204,30 @@ export default function implementation(__lib: RLLibrary): RLEnv {
       mkProgress(1, 1, 0, 200),
     ],
   };
-  const tmEnemy: RLTemplate = {
+  const Enemy: RLTemplate = {
     type: "template",
     name: "Enemy",
     get: () => [IsBlocker, HostileEnemy, mkActor(1)],
   };
-  const tmOrc: RLTemplate = {
+  const Orc: RLTemplate = {
     type: "template",
     name: "Orc",
     get: () => [
-      tmEnemy,
+      Enemy,
       mkAppearance("orc", "o", "green", "black", Layer.Enemy),
       mkFighter(10, 10, 0, 3, 35),
     ],
   };
-  const tmTroll: RLTemplate = {
+  const Troll: RLTemplate = {
     type: "template",
     name: "Troll",
     get: () => [
-      tmEnemy,
+      Enemy,
       mkAppearance("troll", "T", "lime", "black", Layer.Enemy),
       mkFighter(16, 16, 1, 4, 100),
     ],
   };
-  const tmCorpse: RLTemplate = {
+  const Corpse: RLTemplate = {
     type: "template",
     name: "Corpse",
     get: () => [
@@ -234,7 +235,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
       mkAppearance("corpse", "%", "red", "black", Layer.Corpse),
     ],
   };
-  const tmHealingPotion: RLTemplate = {
+  const HealingPotion: RLTemplate = {
     type: "template",
     name: "HealingPotion",
     get: () => [
@@ -243,7 +244,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
       mkConsumable(healingItem, 4, 0, false, 0),
     ],
   };
-  const tmLightningScroll: RLTemplate = {
+  const LightningScroll: RLTemplate = {
     type: "template",
     name: "LightningScroll",
     get: () => [
@@ -252,7 +253,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
       mkConsumable(zapItem, 20, 5, false, 0),
     ],
   };
-  const tmConfusionScroll: RLTemplate = {
+  const ConfusionScroll: RLTemplate = {
     type: "template",
     name: "ConfusionScroll",
     get: () => [
@@ -261,7 +262,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
       mkConsumable(confuseItem, 10, 100, true, 0),
     ],
   };
-  const tmFireballScroll: RLTemplate = {
+  const FireballScroll: RLTemplate = {
     type: "template",
     name: "FireballScroll",
     get: () => [
@@ -313,6 +314,42 @@ export default function implementation(__lib: RLLibrary): RLEnv {
   let targetAt: RLXY = new RLXY(-1, -1);
   let targetSize = 1;
   let historyOffset = 0;
+
+  function getRandomEnemy(floor: number) {
+    const gen: RLWeighted = new RLWeighted();
+    gen.set(Orc, 80);
+    gen.set(
+      Troll,
+      ((__match) => {
+        if (__match >= 3) return 15;
+        else if (__match >= 5) return 30;
+        else if (__match >= 7) return 60;
+        else return 0;
+      })(floor)
+    );
+    return gen.roll();
+  }
+  const fn_getRandomEnemy = new RLFn("getRandomEnemy", getRandomEnemy, [
+    { type: "param", name: "floor", typeName: "int" },
+  ]);
+
+  function getRandomItem(floor: number) {
+    const gen: RLWeighted = new RLWeighted();
+    gen.set(HealingPotion, 35);
+    if (floor >= 2) {
+      gen.set(ConfusionScroll, 10);
+    }
+    if (floor >= 4) {
+      gen.set(LightningScroll, 25);
+    }
+    if (floor >= 6) {
+      gen.set(FireballScroll, 25);
+    }
+    return gen.roll();
+  }
+  const fn_getRandomItem = new RLFn("getRandomItem", getRandomItem, [
+    { type: "param", name: "floor", typeName: "int" },
+  ]);
 
   function distance(a: RLXY, b: RLXY) {
     const dx: number = a.x - b.x;
@@ -674,7 +711,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
         );
       }
       const corpse: RLEntity = __lib.spawn(
-        tmCorpse,
+        Corpse,
         mkPosition(e.Position.x, e.Position.y)
       );
       corpse.Appearance.name = __lib.join(
@@ -1102,8 +1139,8 @@ export default function implementation(__lib: RLLibrary): RLEnv {
         map.rect(room.x + 1, room.y + 1, room.x2 - 1, room.y2 - 1, Floor);
         if (prev) {
           randomCorridor(prev.cx, prev.cy, room.cx, room.cy);
-          addEnemies(room, taken, maxEnemies);
-          addItems(room, taken, maxItems);
+          addEnemies(room, taken, maxEnemies, floor);
+          addItems(room, taken, maxItems, floor);
         } else {
           start = room.centre;
         }
@@ -1119,11 +1156,11 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     { type: "param", name: "floor", typeName: "int" },
   ]);
 
-  function addEnemies(r: RLRect, taken: RLGrid, count: number) {
+  function addEnemies(r: RLRect, taken: RLGrid, max: number, floor: number) {
     for (
       let z = 1;
       z <=
-      __lib.randInt({ type: "int", value: 0 }, { type: "int", value: count });
+      __lib.randInt({ type: "int", value: 0 }, { type: "int", value: max });
       z++
     ) {
       const x: number = __lib.randInt(
@@ -1136,32 +1173,22 @@ export default function implementation(__lib: RLLibrary): RLEnv {
       );
       if (!taken.at(x, y)) {
         taken.put(x, y, true);
-        __lib.spawn(
-          ((__match) => {
-            if (__match <= 80) return tmOrc;
-            else return tmTroll;
-          })(
-            __lib.randInt(
-              { type: "int", value: 1 },
-              { type: "int", value: 100 }
-            )
-          ),
-          mkPosition(x, y)
-        );
+        __lib.spawn(getRandomEnemy(floor), mkPosition(x, y));
       }
     }
   }
   const fn_addEnemies = new RLFn("addEnemies", addEnemies, [
     { type: "param", name: "r", typeName: "rect" },
     { type: "param", name: "taken", typeName: "grid" },
-    { type: "param", name: "count", typeName: "int" },
+    { type: "param", name: "max", typeName: "int" },
+    { type: "param", name: "floor", typeName: "int" },
   ]);
 
-  function addItems(r: RLRect, taken: RLGrid, count: number) {
+  function addItems(r: RLRect, taken: RLGrid, max: number, floor: number) {
     for (
       let z = 1;
       z <=
-      __lib.randInt({ type: "int", value: 0 }, { type: "int", value: count });
+      __lib.randInt({ type: "int", value: 0 }, { type: "int", value: max });
       z++
     ) {
       const x: number = __lib.randInt(
@@ -1174,27 +1201,15 @@ export default function implementation(__lib: RLLibrary): RLEnv {
       );
       if (!taken.at(x, y)) {
         taken.put(x, y, true);
-        __lib.spawn(
-          ((__match) => {
-            if (__match <= 70) return tmHealingPotion;
-            else if (__match <= 80) return tmFireballScroll;
-            else if (__match <= 90) return tmConfusionScroll;
-            else return tmLightningScroll;
-          })(
-            __lib.randInt(
-              { type: "int", value: 1 },
-              { type: "int", value: 100 }
-            )
-          ),
-          mkPosition(x, y)
-        );
+        __lib.spawn(getRandomItem(floor), mkPosition(x, y));
       }
     }
   }
   const fn_addItems = new RLFn("addItems", addItems, [
     { type: "param", name: "r", typeName: "rect" },
     { type: "param", name: "taken", typeName: "grid" },
-    { type: "param", name: "count", typeName: "int" },
+    { type: "param", name: "max", typeName: "int" },
+    { type: "param", name: "floor", typeName: "int" },
   ]);
 
   function nextFloor(player: RLEntity) {
@@ -1210,7 +1225,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
   ]);
 
   function newGame() {
-    const player: RLEntity = __lib.spawn(tmPlayer);
+    const player: RLEntity = __lib.spawn(Player);
     const start: RLXY = generateDungeon(1);
     player.add(mkPosition(start.x, start.y));
     log.add("Welcome to the RLscript dungeon!", welcomeText);
@@ -2163,6 +2178,8 @@ export default function implementation(__lib: RLLibrary): RLEnv {
   ]);
 
   return new Map<string, RLObject>([
+    ["getRandomEnemy", fn_getRandomEnemy],
+    ["getRandomItem", fn_getRandomItem],
     ["distance", fn_distance],
     ["healingItem", fn_healingItem],
     ["zapItem", fn_zapItem],
@@ -2254,14 +2271,14 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     ["TakeStairsAction", TakeStairsAction],
     ["GainingLevel", GainingLevel],
     ["CharacterInfoAction", CharacterInfoAction],
-    ["Player", tmPlayer],
-    ["Enemy", tmEnemy],
-    ["Orc", tmOrc],
-    ["Troll", tmTroll],
-    ["Corpse", tmCorpse],
-    ["HealingPotion", tmHealingPotion],
-    ["LightningScroll", tmLightningScroll],
-    ["ConfusionScroll", tmConfusionScroll],
-    ["FireballScroll", tmFireballScroll],
+    ["Player", Player],
+    ["Enemy", Enemy],
+    ["Orc", Orc],
+    ["Troll", Troll],
+    ["Corpse", Corpse],
+    ["HealingPotion", HealingPotion],
+    ["LightningScroll", LightningScroll],
+    ["ConfusionScroll", ConfusionScroll],
+    ["FireballScroll", FireballScroll],
   ]);
 }

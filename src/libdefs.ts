@@ -17,6 +17,7 @@ export type LibFunctionType =
   | "tag"
   | "template"
   | "tile"
+  | "weighted"
   | "xy";
 
 export type LibFunctionParam = {
@@ -68,6 +69,7 @@ const library = [
     [p("x", "int"), p("y", "int"), p("width", "int"), p("height", "int")],
     p("r", "rect")
   ),
+  f("weighted", [], p("generator", "weighted")),
   f("xy", [p("x", "int"), p("y", "int")], p("coord", "xy")),
 
   // library

@@ -167,6 +167,7 @@ const builtinTypes = new Set<string>([
   "tag",
   "template",
   "tile",
+  "weighted",
   "xy",
 ]);
 function fixType(n: string | ASTType) {
@@ -424,6 +425,19 @@ class BagScope implements TSScope {
       ["get", builtinType],
       ["has", builtinType],
       ["remove", builtinType],
+    ]);
+  }
+}
+
+class WeightedScope implements TSScope {
+  members: Map<string, ASTType>;
+  name: "weighted";
+
+  constructor(public parent: TSScope) {
+    this.name = "weighted";
+    this.members = new Map<string, ASTType>([
+      ["set", builtinType],
+      ["roll", builtinType],
     ]);
   }
 }
@@ -760,7 +774,7 @@ import RLTag from "./RLTag";
   getTemplates() {
     return this.templates
       .map((t) => {
-        return `const tm${t.name}: RLTemplate = {
+        return `const ${t.name}: RLTemplate = {
   type: "template",
   name: "${t.name}",
   get: () => [${t.fields
@@ -768,7 +782,7 @@ import RLTag from "./RLTag";
       if (f._ === "tag") {
         const thing = this.resolveType(f.name.value);
         if (thing.value === "tag") return `${fixName(f.name.value)}`;
-        else if (thing.value === "template") return `tm${f.name.value}`;
+        else if (thing.value === "template") return `${f.name.value}`;
 
         throw new Error(`Cannot add ${thing.value} to template`);
       }
@@ -894,11 +908,12 @@ import RLTag from "./RLTag";
       if (!lib) throw new Error(`Invalid global entry for ${n}`);
       this.checkLibraryCall(lib, args);
 
-      if (n === "grid") return `new RLGrid(${this.getArgs(args)})`;
-      else if (n === "rect") return `new RLRect(${this.getArgs(args)})`;
-      else if (n === "xy") return `new RLXY(${this.getArgs(args)})`;
+      if (n === "bag") return `new RLBag(${this.getArgs(args)})`;
+      else if (n === "grid") return `new RLGrid(${this.getArgs(args)})`;
       else if (n === "messages") return `new RLMessages(${this.getArgs(args)})`;
-      else if (n === "bag") return `new RLBag(${this.getArgs(args)})`;
+      else if (n === "rect") return `new RLRect(${this.getArgs(args)})`;
+      else if (n === "weighted") return `new RLWeighted(${this.getArgs(args)})`;
+      else if (n === "xy") return `new RLXY(${this.getArgs(args)})`;
     }
 
     if (s.value === "fn") {
@@ -937,16 +952,15 @@ import RLTag from "./RLTag";
           case "fn":
             return `fn_${name}`;
 
-          case "template":
-            return `tm${name}`;
-
           case "bag":
           case "entity":
           case "grid":
           case "messages":
           case "system":
           case "tag":
+          case "template":
           case "tile":
+          case "weighted":
           case "xy":
             return fixName(name);
         }
@@ -963,7 +977,18 @@ import RLTag from "./RLTag";
         if (
           this.componentNames.includes(type.value) ||
           this.tagNames.includes(type.value) ||
-          ["grid", "xy"].includes(type.value)
+          [
+            "bag",
+            "entity",
+            "grid",
+            "messages",
+            "system",
+            "tag",
+            "template",
+            "tile",
+            "weighted",
+            "xy",
+          ].includes(type.value)
         )
           return value;
 
@@ -1090,7 +1115,7 @@ import RLTag from "./RLTag";
       .map((f) => `["${f.name}", fn_${f.name}],`)
       .concat(this.systems.map((s) => `["${s.name}", ${s.name}],`))
       .concat(this.tagNames.map((t) => `["${t}", ${t}],`))
-      .concat(this.templates.map((t) => `["${t.name}", tm${t.name}],`))
+      .concat(this.templates.map((t) => `["${t.name}", ${t.name}],`))
       .join("\n");
   }
 
@@ -1148,8 +1173,12 @@ import RLTag from "./RLTag";
         return "RLRect" + suffix;
       case "tag":
         return "RLTag" + suffix;
+      case "template":
+        return "RLTemplate" + suffix;
       case "tile":
         return "RLTile" + suffix;
+      case "weighted":
+        return "RLWeighted" + suffix;
       case "xy":
         return "RLXY" + suffix;
 
@@ -1409,6 +1438,7 @@ import RLTag from "./RLTag";
       else if (type.value === "xy") scope = new XYScope(scope);
       else if (type.value === "messages") scope = new MessagesScope(scope);
       else if (type.value === "bag") scope = new BagScope(scope);
+      else if (type.value === "weighted") scope = new WeightedScope(scope);
       else if (type.value === "KeyEvent") scope = new KeyEventScope(scope);
       else if (type.value === "MouseEvent") scope = new MouseEventScope(scope);
       else if (this.componentNames.includes(type.value))

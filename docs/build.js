@@ -3256,6 +3256,32 @@ void main() {
     (ch) => RLTile.registry[ch]
   );
 
+  // src/RLWeighted.ts
+  var RLWeighted = class {
+    constructor() {
+      this.type = "weighted";
+      this.entries = /* @__PURE__ */ new Map();
+    }
+    get chanceTotal() {
+      let total = 0;
+      for (const [, chance] of this.entries)
+        total += chance;
+      return total;
+    }
+    set(item, chance) {
+      this.entries.set(item, chance);
+    }
+    roll() {
+      let roll = Math.floor(Math.random() * this.chanceTotal);
+      for (const [item, chance] of this.entries) {
+        if (roll <= chance)
+          return item;
+        roll -= chance;
+      }
+      throw new Error("I can't add up?");
+    }
+  };
+
   // src/impl.ts
   function implementation(__lib) {
     let Layer;
@@ -3375,7 +3401,7 @@ void main() {
       formulaBase,
       formulaFactor
     });
-    const tmPlayer = {
+    const Player = {
       type: "template",
       name: "Player",
       get: () => [
@@ -3391,30 +3417,30 @@ void main() {
         mkProgress(1, 1, 0, 200)
       ]
     };
-    const tmEnemy = {
+    const Enemy = {
       type: "template",
       name: "Enemy",
       get: () => [IsBlocker, HostileEnemy, mkActor(1)]
     };
-    const tmOrc = {
+    const Orc = {
       type: "template",
       name: "Orc",
       get: () => [
-        tmEnemy,
+        Enemy,
         mkAppearance("orc", "o", "green", "black", 3 /* Enemy */),
         mkFighter(10, 10, 0, 3, 35)
       ]
     };
-    const tmTroll = {
+    const Troll = {
       type: "template",
       name: "Troll",
       get: () => [
-        tmEnemy,
+        Enemy,
         mkAppearance("troll", "T", "lime", "black", 3 /* Enemy */),
         mkFighter(16, 16, 1, 4, 100)
       ]
     };
-    const tmCorpse = {
+    const Corpse = {
       type: "template",
       name: "Corpse",
       get: () => [
@@ -3422,7 +3448,7 @@ void main() {
         mkAppearance("corpse", "%", "red", "black", 1 /* Corpse */)
       ]
     };
-    const tmHealingPotion = {
+    const HealingPotion = {
       type: "template",
       name: "HealingPotion",
       get: () => [
@@ -3431,7 +3457,7 @@ void main() {
         mkConsumable(healingItem, 4, 0, false, 0)
       ]
     };
-    const tmLightningScroll = {
+    const LightningScroll = {
       type: "template",
       name: "LightningScroll",
       get: () => [
@@ -3440,7 +3466,7 @@ void main() {
         mkConsumable(zapItem, 20, 5, false, 0)
       ]
     };
-    const tmConfusionScroll = {
+    const ConfusionScroll = {
       type: "template",
       name: "ConfusionScroll",
       get: () => [
@@ -3449,7 +3475,7 @@ void main() {
         mkConsumable(confuseItem, 10, 100, true, 0)
       ]
     };
-    const tmFireballScroll = {
+    const FireballScroll = {
       type: "template",
       name: "FireballScroll",
       get: () => [
@@ -3499,6 +3525,44 @@ void main() {
     let targetAt = new RLXY(-1, -1);
     let targetSize = 1;
     let historyOffset = 0;
+    function getRandomEnemy(floor2) {
+      const gen = new RLWeighted();
+      gen.set(Orc, 80);
+      gen.set(
+        Troll,
+        ((__match) => {
+          if (__match >= 3)
+            return 15;
+          else if (__match >= 5)
+            return 30;
+          else if (__match >= 7)
+            return 60;
+          else
+            return 0;
+        })(floor2)
+      );
+      return gen.roll();
+    }
+    const fn_getRandomEnemy = new RLFn("getRandomEnemy", getRandomEnemy, [
+      { type: "param", name: "floor", typeName: "int" }
+    ]);
+    function getRandomItem(floor2) {
+      const gen = new RLWeighted();
+      gen.set(HealingPotion, 35);
+      if (floor2 >= 2) {
+        gen.set(ConfusionScroll, 10);
+      }
+      if (floor2 >= 4) {
+        gen.set(LightningScroll, 25);
+      }
+      if (floor2 >= 6) {
+        gen.set(FireballScroll, 25);
+      }
+      return gen.roll();
+    }
+    const fn_getRandomItem = new RLFn("getRandomItem", getRandomItem, [
+      { type: "param", name: "floor", typeName: "int" }
+    ]);
     function distance(a, b) {
       const dx = a.x - b.x;
       const dy = a.y - b.y;
@@ -3880,7 +3944,7 @@ void main() {
           );
         }
         const corpse = __lib.spawn(
-          tmCorpse,
+          Corpse,
           mkPosition(e.Position.x, e.Position.y)
         );
         corpse.Appearance.name = __lib.join(
@@ -4270,8 +4334,8 @@ void main() {
           map.rect(room.x + 1, room.y + 1, room.x2 - 1, room.y2 - 1, Floor);
           if (prev) {
             randomCorridor(prev.cx, prev.cy, room.cx, room.cy);
-            addEnemies(room, taken, maxEnemies);
-            addItems(room, taken, maxItems);
+            addEnemies(room, taken, maxEnemies, floor2);
+            addItems(room, taken, maxItems, floor2);
           } else {
             start = room.centre;
           }
@@ -4286,8 +4350,8 @@ void main() {
     const fn_generateDungeon = new RLFn("generateDungeon", generateDungeon, [
       { type: "param", name: "floor", typeName: "int" }
     ]);
-    function addEnemies(r, taken, count) {
-      for (let z = 1; z <= __lib.randInt({ type: "int", value: 0 }, { type: "int", value: count }); z++) {
+    function addEnemies(r, taken, max, floor2) {
+      for (let z = 1; z <= __lib.randInt({ type: "int", value: 0 }, { type: "int", value: max }); z++) {
         const x = __lib.randInt(
           { type: "int", value: r.x + 1 },
           { type: "int", value: r.x2 - 1 }
@@ -4298,30 +4362,18 @@ void main() {
         );
         if (!taken.at(x, y)) {
           taken.put(x, y, true);
-          __lib.spawn(
-            ((__match) => {
-              if (__match <= 80)
-                return tmOrc;
-              else
-                return tmTroll;
-            })(
-              __lib.randInt(
-                { type: "int", value: 1 },
-                { type: "int", value: 100 }
-              )
-            ),
-            mkPosition(x, y)
-          );
+          __lib.spawn(getRandomEnemy(floor2), mkPosition(x, y));
         }
       }
     }
     const fn_addEnemies = new RLFn("addEnemies", addEnemies, [
       { type: "param", name: "r", typeName: "rect" },
       { type: "param", name: "taken", typeName: "grid" },
-      { type: "param", name: "count", typeName: "int" }
+      { type: "param", name: "max", typeName: "int" },
+      { type: "param", name: "floor", typeName: "int" }
     ]);
-    function addItems(r, taken, count) {
-      for (let z = 1; z <= __lib.randInt({ type: "int", value: 0 }, { type: "int", value: count }); z++) {
+    function addItems(r, taken, max, floor2) {
+      for (let z = 1; z <= __lib.randInt({ type: "int", value: 0 }, { type: "int", value: max }); z++) {
         const x = __lib.randInt(
           { type: "int", value: r.x + 1 },
           { type: "int", value: r.x2 - 1 }
@@ -4332,31 +4384,15 @@ void main() {
         );
         if (!taken.at(x, y)) {
           taken.put(x, y, true);
-          __lib.spawn(
-            ((__match) => {
-              if (__match <= 70)
-                return tmHealingPotion;
-              else if (__match <= 80)
-                return tmFireballScroll;
-              else if (__match <= 90)
-                return tmConfusionScroll;
-              else
-                return tmLightningScroll;
-            })(
-              __lib.randInt(
-                { type: "int", value: 1 },
-                { type: "int", value: 100 }
-              )
-            ),
-            mkPosition(x, y)
-          );
+          __lib.spawn(getRandomItem(floor2), mkPosition(x, y));
         }
       }
     }
     const fn_addItems = new RLFn("addItems", addItems, [
       { type: "param", name: "r", typeName: "rect" },
       { type: "param", name: "taken", typeName: "grid" },
-      { type: "param", name: "count", typeName: "int" }
+      { type: "param", name: "max", typeName: "int" },
+      { type: "param", name: "floor", typeName: "int" }
     ]);
     function nextFloor(player) {
       player.Progress.floor += 1;
@@ -4370,7 +4406,7 @@ void main() {
       { type: "param", name: "player", typeName: "entity" }
     ]);
     function newGame() {
-      const player = __lib.spawn(tmPlayer);
+      const player = __lib.spawn(Player);
       const start = generateDungeon(1);
       player.add(mkPosition(start.x, start.y));
       log.add("Welcome to the RLscript dungeon!", welcomeText);
@@ -5281,6 +5317,8 @@ void main() {
       { type: "param", name: "k", typeName: "KeyEvent" }
     ]);
     return /* @__PURE__ */ new Map([
+      ["getRandomEnemy", fn_getRandomEnemy],
+      ["getRandomItem", fn_getRandomItem],
       ["distance", fn_distance],
       ["healingItem", fn_healingItem],
       ["zapItem", fn_zapItem],
@@ -5372,15 +5410,15 @@ void main() {
       ["TakeStairsAction", TakeStairsAction],
       ["GainingLevel", GainingLevel],
       ["CharacterInfoAction", CharacterInfoAction],
-      ["Player", tmPlayer],
-      ["Enemy", tmEnemy],
-      ["Orc", tmOrc],
-      ["Troll", tmTroll],
-      ["Corpse", tmCorpse],
-      ["HealingPotion", tmHealingPotion],
-      ["LightningScroll", tmLightningScroll],
-      ["ConfusionScroll", tmConfusionScroll],
-      ["FireballScroll", tmFireballScroll]
+      ["Player", Player],
+      ["Enemy", Enemy],
+      ["Orc", Orc],
+      ["Troll", Troll],
+      ["Corpse", Corpse],
+      ["HealingPotion", HealingPotion],
+      ["LightningScroll", LightningScroll],
+      ["ConfusionScroll", ConfusionScroll],
+      ["FireballScroll", FireballScroll]
     ]);
   }
 

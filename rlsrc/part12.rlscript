@@ -174,6 +174,27 @@ template FireballScroll
   Consumable(fireballItem, 12, 100, true, 3)
 end
 
+fn getRandomEnemy(floor: int): template
+  local gen: weighted = weighted()
+  gen.set(Orc, 80)
+  gen.set(Troll, match floor
+    >=3 = 15
+    >=5 = 30
+    >=7 = 60
+    else=0
+  end)
+  return gen.roll()
+end
+
+fn getRandomItem(floor: int): template
+  local gen: weighted = weighted()
+  gen.set(HealingPotion, 35)
+  if floor>=2 gen.set(ConfusionScroll, 10) end
+  if floor>=4 gen.set(LightningScroll, 25) end
+  if floor>=6 gen.set(FireballScroll, 25) end
+  return gen.roll()
+end
+
 fn distance(a: xy, b: xy): float
   local dx: int = a.x - b.x
   local dy: int = a.y - b.y
@@ -1128,8 +1149,8 @@ fn generateDungeon(floor: int): xy
       map.rect(room.x + 1, room.y + 1, room.x2 - 1, room.y2 - 1, Floor)
       if prev
         randomCorridor(prev.cx, prev.cy, room.cx, room.cy)
-        addEnemies(room, taken, maxEnemies)
-        addItems(room, taken, maxItems)
+        addEnemies(room, taken, maxEnemies, floor)
+        addItems(room, taken, maxItems, floor)
       else
         start = room.centre
       end
@@ -1144,34 +1165,26 @@ fn generateDungeon(floor: int): xy
   return start
 end
 
-fn addEnemies(r: rect, taken: grid, count: int)
-  for z = 1 to randInt(0, count)
+fn addEnemies(r: rect, taken: grid, max: int, floor: int)
+  for z = 1 to randInt(0, max)
     local x: int = randInt(r.x + 1, r.x2 - 1)
     local y: int = randInt(r.y + 1, r.y2 - 1)
 
     if not taken.at(x, y)
       taken.put(x, y, true)
-      spawn(match randInt(1, 100)
-        <=80 = Orc
-        else = Troll
-      end, Position(x, y))
+      spawn(getRandomEnemy(floor), Position(x, y))
     end
   end
 end
 
-fn addItems(r: rect, taken: grid, count: int)
-  for z = 1 to randInt(0, count)
+fn addItems(r: rect, taken: grid, max: int, floor: int)
+  for z = 1 to randInt(0, max)
     local x: int = randInt(r.x + 1, r.x2 - 1)
     local y: int = randInt(r.y + 1, r.y2 - 1)
 
     if not taken.at(x, y)
       taken.put(x, y, true)
-      spawn(match randInt(1, 100)
-        <=70 = HealingPotion
-        <=80 = FireballScroll
-        <=90 = ConfusionScroll
-        else = LightningScroll
-      end, Position(x, y))
+      spawn(getRandomItem(floor), Position(x, y))
     end
   end
 end

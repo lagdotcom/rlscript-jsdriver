@@ -15,6 +15,7 @@ import RLSystem from "./RLSystem";
 import RLTag from "./RLTag";
 import RLTemplate from "./RLTemplate";
 import RLTile from "./RLTile";
+import RLWeighted from "./RLWeighted";
 import RLXY from "./RLXY";
 
 type RLObject =
@@ -35,5 +36,6 @@ type RLObject =
   | RLTag
   | RLTemplate
   | RLTile
+  | RLWeighted<unknown>
   | RLXY;
 export default RLObject;
