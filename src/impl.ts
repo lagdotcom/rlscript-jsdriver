@@ -302,8 +302,6 @@ export default function implementation(__lib: RLLibrary): RLEnv {
   const floorY: number = hpY + 2;
   const logX: number = hpWidth + 2;
   const logY: number = hpY;
-  const maxEnemiesPerRoom = 2;
-  const maxItemsPerRoom = 2;
   const map: RLGrid = new RLGrid(mapWidth, mapHeight, Wall);
   __lib.persist({ type: "str", value: "map" }, map);
   const explored: RLGrid = new RLGrid(mapWidth, mapHeight, false);
@@ -484,6 +482,31 @@ export default function implementation(__lib: RLLibrary): RLEnv {
   const fn_redrawEverything = new RLFn("redrawEverything", redrawEverything, [
     { type: "param", name: "e", typeName: "entity" },
   ]);
+
+  function getMaxItemsPerRoom(floor: number) {
+    return ((__match) => {
+      if (__match <= 4) return 1;
+      else return 2;
+    })(floor);
+  }
+  const fn_getMaxItemsPerRoom = new RLFn(
+    "getMaxItemsPerRoom",
+    getMaxItemsPerRoom,
+    [{ type: "param", name: "floor", typeName: "int" }]
+  );
+
+  function getMaxEnemiesPerRoom(floor: number) {
+    return ((__match) => {
+      if (__match <= 4) return 2;
+      else if (__match <= 6) return 3;
+      else return 5;
+    })(floor);
+  }
+  const fn_getMaxEnemiesPerRoom = new RLFn(
+    "getMaxEnemiesPerRoom",
+    getMaxEnemiesPerRoom,
+    [{ type: "param", name: "floor", typeName: "int" }]
+  );
 
   function getKey(k: string) {
     return ((__match) => {
@@ -1057,7 +1080,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     { type: "param", name: "y2", typeName: "int" },
   ]);
 
-  function generateDungeon() {
+  function generateDungeon(floor: number) {
     for (const e of new RLQuery(RL.instance, ["Position"]).get()) {
       if (!e.IsPlayer) {
         __lib.remove(e);
@@ -1071,14 +1094,16 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     const taken: RLGrid = new RLGrid(mapWidth, mapHeight, false);
     let start: RLXY;
     let stairs: RLXY;
+    const maxEnemies: number = getMaxEnemiesPerRoom(floor);
+    const maxItems: number = getMaxItemsPerRoom(floor);
     for (let r = 1; r <= 30; r++) {
       room = randomRoom();
       if (!map.findInRegion(room, Floor)) {
         map.rect(room.x + 1, room.y + 1, room.x2 - 1, room.y2 - 1, Floor);
         if (prev) {
           randomCorridor(prev.cx, prev.cy, room.cx, room.cy);
-          addEnemies(room, taken);
-          addItems(room, taken);
+          addEnemies(room, taken, maxEnemies);
+          addItems(room, taken, maxItems);
         } else {
           start = room.centre;
         }
@@ -1090,16 +1115,15 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     hostileAI.enable();
     return start;
   }
-  const fn_generateDungeon = new RLFn("generateDungeon", generateDungeon, []);
+  const fn_generateDungeon = new RLFn("generateDungeon", generateDungeon, [
+    { type: "param", name: "floor", typeName: "int" },
+  ]);
 
-  function addEnemies(r: RLRect, taken: RLGrid) {
+  function addEnemies(r: RLRect, taken: RLGrid, count: number) {
     for (
       let z = 1;
       z <=
-      __lib.randInt(
-        { type: "int", value: 0 },
-        { type: "int", value: maxEnemiesPerRoom }
-      );
+      __lib.randInt({ type: "int", value: 0 }, { type: "int", value: count });
       z++
     ) {
       const x: number = __lib.randInt(
@@ -1130,16 +1154,14 @@ export default function implementation(__lib: RLLibrary): RLEnv {
   const fn_addEnemies = new RLFn("addEnemies", addEnemies, [
     { type: "param", name: "r", typeName: "rect" },
     { type: "param", name: "taken", typeName: "grid" },
+    { type: "param", name: "count", typeName: "int" },
   ]);
 
-  function addItems(r: RLRect, taken: RLGrid) {
+  function addItems(r: RLRect, taken: RLGrid, count: number) {
     for (
       let z = 1;
       z <=
-      __lib.randInt(
-        { type: "int", value: 0 },
-        { type: "int", value: maxItemsPerRoom }
-      );
+      __lib.randInt({ type: "int", value: 0 }, { type: "int", value: count });
       z++
     ) {
       const x: number = __lib.randInt(
@@ -1172,11 +1194,12 @@ export default function implementation(__lib: RLLibrary): RLEnv {
   const fn_addItems = new RLFn("addItems", addItems, [
     { type: "param", name: "r", typeName: "rect" },
     { type: "param", name: "taken", typeName: "grid" },
+    { type: "param", name: "count", typeName: "int" },
   ]);
 
   function nextFloor(player: RLEntity) {
     player.Progress.floor += 1;
-    const start: RLXY = generateDungeon();
+    const start: RLXY = generateDungeon(player.Progress.floor);
     player.Position.x = start.x;
     player.Position.y = start.y;
     player.add(RecalculateFOV);
@@ -1188,7 +1211,7 @@ export default function implementation(__lib: RLLibrary): RLEnv {
 
   function newGame() {
     const player: RLEntity = __lib.spawn(tmPlayer);
-    const start: RLXY = generateDungeon();
+    const start: RLXY = generateDungeon(1);
     player.add(mkPosition(start.x, start.y));
     log.add("Welcome to the RLscript dungeon!", welcomeText);
     __lib.pushKeyHandler(main_onKey);
@@ -2146,6 +2169,8 @@ export default function implementation(__lib: RLLibrary): RLEnv {
     ["confuseItem", fn_confuseItem],
     ["fireballItem", fn_fireballItem],
     ["redrawEverything", fn_redrawEverything],
+    ["getMaxItemsPerRoom", fn_getMaxItemsPerRoom],
+    ["getMaxEnemiesPerRoom", fn_getMaxEnemiesPerRoom],
     ["getKey", fn_getKey],
     ["getNamesAtLocation", fn_getNamesAtLocation],
     ["showNamesAt", fn_showNamesAt],
